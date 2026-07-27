@@ -326,7 +326,11 @@ class FixtureAdapter implements NarrationProviderAdapter {
       adapterVersion: this.adapterVersion,
       requestId: request.requestId,
       idempotencyKey: request.idempotencyKey,
-      audio: new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45]),
+      audio: new Uint8Array([
+        0x52, 0x49, 0x46, 0x46,
+        0, 0, 0, 0,
+        0x57, 0x41, 0x56, 0x45,
+      ]),
       contentType: "audio/wav",
       transcript: request.text,
       usage: {
@@ -394,7 +398,10 @@ test("per-job calibration binding is immutable, idempotent and publicly redacted
       "greg_parker",
     ]) assert.equal(serialised.includes(forbidden), false);
 
-    const audit = await readFile(join(root, "state", "audit", "2026-07-27.jsonl"), "utf8");
+    const audit = await readFile(
+      join(root, "state", "audit", "2026-07-27.jsonl"),
+      "utf8",
+    );
     for (const forbidden of [
       approved.id,
       approved.voiceProfileId,
@@ -438,7 +445,11 @@ test("calibrated material resolution blocks a production claim until its approve
       actorId: "director_generation_calibration_001",
       now: new Date(t0.getTime() + 6_000),
     });
-    assert.deepEqual(await materials.resolve(claim), input);
+    assert.deepEqual(await materials.resolve(claim), {
+      ...input,
+      pronunciations: [],
+      parentArtifactIds: [],
+    });
   });
 });
 
