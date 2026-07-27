@@ -279,10 +279,10 @@ function executionAccounting(
     ? { totalEstimatedCost: Number(total.toFixed(6)), currency }
     : {};
   if (policy) {
-    if (observedCosts !== report.results.length) {
+    if (report.results.length > 0 && observedCosts !== report.results.length) {
       return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_EVIDENCE_MISSING" };
     }
-    if (currency !== policy.currency) {
+    if (observedCosts > 0 && currency !== policy.currency) {
       return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_POLICY_CURRENCY_MISMATCH" };
     }
     if (total > policy.maximumTotalEstimatedCost) {
