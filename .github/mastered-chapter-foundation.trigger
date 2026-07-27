@@ -1,1 +1,1 @@
-repair mastered chapter duration, policy, profile and true-peak evidence contracts
+run structural mastered chapter duration, policy, profile and true-peak repair
