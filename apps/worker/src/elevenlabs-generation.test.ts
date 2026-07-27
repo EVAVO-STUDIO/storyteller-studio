@@ -3,6 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import type {
+  AudioEngineeringCommand,
+  AudioEngineeringCommandResult,
+  AudioEngineeringRunner,
+} from "@evavo/storyteller-engine/audio-engineering";
 import { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
 import {
   FileBudgetLedger,
@@ -45,6 +50,7 @@ import type {
   SegmentedManuscript,
 } from "@evavo/storyteller-engine";
 import { FileProjectStore } from "@evavo/storyteller-engine/project-store";
+import { resolveWorkerAudioEngineeringPolicy } from "./audio-engineering.js";
 import {
   EnvironmentCredentialResolver,
   resolveWorkerRuntimeConfiguration,
@@ -141,6 +147,13 @@ function environment(dataDirectory: string): WorkerEnvironment {
     STORYTELLER_WORKER_CREDENTIAL_BINDINGS: JSON.stringify({
       elevenlabs: "ELEVENLABS_API_KEY",
     }),
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE: "acx-audiobook",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION: "acx-2026-07",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT: "2026-07-01T00:00:00.000Z",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE:
+      "acx-audio-submission-requirements-reviewed-2026-07",
+    STORYTELLER_AUDIO_ENGINEERING_TIMEOUT_MS: "5000",
+    STORYTELLER_AUDIO_ENGINEERING_MAX_OUTPUT_BYTES: String(1024 * 1024),
     ELEVENLABS_API_KEY: "fixture-elevenlabs-generation-secret",
     STORYTELLER_ELEVENLABS_ENABLED: "true",
     STORYTELLER_ELEVENLABS_ADAPTER_VERSION: "1.0.0",
@@ -221,6 +234,66 @@ function timestampResponse(): Response {
       ),
     },
   }, { "request-id": "private-elevenlabs-request-001" });
+}
+
+function engineeringCommandResult(
+  stdout = "",
+  stderr = "",
+): AudioEngineeringCommandResult {
+  return Object.freeze({
+    exitCode: 0,
+    stdout,
+    stderr,
+    durationMs: 4,
+  });
+}
+
+class ElevenLabsEngineeringRunner implements AudioEngineeringRunner {
+  readonly commands: AudioEngineeringCommand[] = [];
+
+  async run(command: AudioEngineeringCommand): Promise<AudioEngineeringCommandResult> {
+    this.commands.push(command);
+    switch (command.stage) {
+      case "ffprobe-version":
+        return engineeringCommandResult("ffprobe version 7.1 fixture\n");
+      case "ffmpeg-version":
+        return engineeringCommandResult("ffmpeg version 7.1 fixture\n");
+      case "probe":
+        return engineeringCommandResult(JSON.stringify({
+          streams: [{
+            codec_type: "audio",
+            codec_name: "pcm_s16le",
+            sample_rate: "44100",
+            channels: 1,
+            bit_rate: "192000",
+            duration: "0.750000",
+          }],
+          format: {
+            format_name: "wav",
+            duration: "0.750000",
+            bit_rate: "192000",
+            size: String(wavBytes().byteLength),
+          },
+        }));
+      case "astats":
+        return engineeringCommandResult([
+          "lavfi.astats.Overall.RMS_level=-20.0000",
+          "lavfi.astats.Overall.Peak_level=-4.0000",
+          "lavfi.astats.Overall.Noise_floor=-65.0000",
+          "lavfi.astats.Overall.Peak_count=0",
+        ].join("\n"));
+      case "loudnorm":
+        return engineeringCommandResult("", JSON.stringify({
+          input_i: "-20.10",
+          input_tp: "-4.20",
+          input_lra: "4.10",
+          input_thresh: "-30.00",
+          target_offset: "0.10",
+        }));
+      case "silence":
+        return engineeringCommandResult();
+    }
+  }
 }
 
 function fetchFrom(
@@ -447,6 +520,19 @@ test("queued ElevenLabs production requires approved calibration, reserves budge
     });
     await queue.enqueue(job, { now: t0, maxAttempts: 3 });
 
+    const engineeringRunner = new ElevenLabsEngineeringRunner();
+    const audioEngineering = resolveWorkerAudioEngineeringPolicy({
+      workerEnabled: true,
+      environment: env,
+      temporaryRoot: resolve(
+        dirname(configuration.objectRootDirectory),
+        "audio-engineering-temp",
+      ),
+      runner: engineeringRunner,
+      now: t0,
+    });
+    if (!audioEngineering) throw new Error("worker engineering policy required");
+
     const calls: string[] = [];
     const providers = createWorkerProviderRegistry({
       workerEnabled: true,
@@ -506,6 +592,7 @@ test("queued ElevenLabs production requires approved calibration, reserves budge
     const result = await runConfiguredWorkerRuntime(configuration, {
       providers,
       credentials,
+      audioEngineering,
       now: () => t0,
     });
 
@@ -515,11 +602,12 @@ test("queued ElevenLabs production requires approved calibration, reserves budge
     assert.equal(result.lifecycle.service.completedJobs, 1);
     assert.equal(result.lifecycle.service.blockedJobs, 0);
     assert.equal(calls.length, 3);
+    assert.equal(engineeringRunner.commands.length, 6);
 
     const queueEnvelope = await queue.read(`queue_${job.id}`);
     assert.equal(queueEnvelope?.payload.status, "completed");
     assert.equal(queueEnvelope?.payload.completion?.resultIds.length, 1);
-    assert.equal(queueEnvelope?.payload.completion?.outputArtifactRefs.length, 4);
+    assert.equal(queueEnvelope?.payload.completion?.outputArtifactRefs.length, 5);
     assert.equal(queueEnvelope?.payload.completion?.currency, "AUD");
     assert.equal(queueEnvelope?.payload.completion?.totalEstimatedCost, 0.00168);
 
@@ -533,7 +621,7 @@ test("queued ElevenLabs production requires approved calibration, reserves budge
       new FileProjectStore(configuration.artifactRootDirectory),
     );
     const artifactRows = await registry.list();
-    assert.equal(artifactRows.length, 4);
+    assert.equal(artifactRows.length, 5);
     const artifactKinds: string[] = [];
     for (const row of artifactRows) {
       const artifact = await registry.require(row.entityId);
@@ -545,10 +633,19 @@ test("queued ElevenLabs production requires approved calibration, reserves budge
     }
     assert.deepEqual(artifactKinds.sort(), [
       "audio-analysis",
+      "audio-analysis",
       "audio-candidate",
       "transcript",
       "word-alignment",
     ]);
+    const analysisArtifacts = artifactRows.filter(
+      (row) => row.payload.kind === "audio-analysis",
+    );
+    assert.equal(analysisArtifacts.length, 2);
+    assert.equal(
+      analysisArtifacts.some((row) => row.payload.takeId !== undefined),
+      true,
+    );
 
     const serialised = JSON.stringify(result);
     for (const forbidden of [
@@ -565,6 +662,8 @@ test("queued ElevenLabs production requires approved calibration, reserves budge
       configuration.queueRootDirectory,
       configuration.artifactRootDirectory,
       configuration.objectRootDirectory,
+      "audio-engineering-temp",
+      "acx-audio-submission-requirements-reviewed-2026-07",
     ]) assert.equal(serialised.includes(forbidden), false);
   } finally {
     await rm(root, { recursive: true, force: true });

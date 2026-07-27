@@ -64,6 +64,9 @@ requireTokens("apps/worker/src/elevenlabs-generation.test.ts", [
   "FileArtifactRegistry",
   "createWorkerProviderRegistry",
   "runConfiguredWorkerRuntime",
+  "engineeringRunner.commands.length, 6",
+  "ElevenLabsEngineeringRunner",
+  "resolveWorkerAudioEngineeringPolicy",
   'providerFallbackIds: ["elevenlabs"]',
   'mode: "production"',
   'format: "wav"',
@@ -74,7 +77,7 @@ requireTokens("apps/worker/src/elevenlabs-generation.test.ts", [
   'endpoint.searchParams.get("enable_logging")',
   "assert.equal(body.text, text)",
   'assert.equal(body.model_id, "eleven_multilingual_v2")',
-  "outputArtifactRefs.length, 4",
+  "outputArtifactRefs.length, 5",
   "committedMicros, 1_680",
   'verification.status, "verified"',
   "artifact_calibration_take_elevenlabs_generation_001",
@@ -88,6 +91,8 @@ requireTokens("apps/worker/src/runtime.ts", [
   "createCalibrationBoundProviderRegistry",
   "FileGenerationBudgetController",
   "requireBudget: true",
+  "requireAudioEngineering: true",
+  "WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED",
 ]);
 
 requireTokens("packages/storyteller/src/calibration-admission.ts", [
@@ -259,6 +264,6 @@ console.log("- production synthesis requires an approved calibration session and
 console.log("- calibrated material is resolved before provider credentials, budget reservation or synthesis");
 console.log("- provider, model and capability evidence are rechecked around the exact request");
 console.log("- project budget is reserved before provider work and actual cost is committed before completion");
-console.log("- verified audio, transcript, alignment and execution evidence back queue completion");
+console.log("- verified audio, transcript, alignment, independent engineering and execution evidence back queue completion");
 console.log("- API, browser and operational outputs omit private calibration, credential and storage evidence");
 console.log("- the deterministic fixture proves orchestration, not real narrator quality or release readiness");

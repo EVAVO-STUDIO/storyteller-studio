@@ -77,12 +77,13 @@ The mocked response contains:
 
 The adapter rejects drift before artifact admission. The test therefore exercises the same exact-source and media-signature gates as the production adapter.
 
-The private artifact registry receives four verified artifacts:
+The private artifact registry receives five verified artifacts:
 
 - `audio-candidate`;
 - `transcript`;
 - `word-alignment`;
-- `audio-analysis` containing safe execution evidence.
+- `audio-analysis` containing independent audio-engineering evidence;
+- a separate `audio-analysis` containing safe execution evidence.
 
 Every artifact remains bound to the project, generation job and manuscript segment.
 
@@ -105,7 +106,7 @@ The reservation becomes terminal and committed. It is not silently released, and
 The completed queue record contains:
 
 - one candidate take identifier;
-- four governed output artifact references;
+- five governed output artifact references;
 - execution-report hash;
 - actual estimated cost and currency;
 - completion timestamp and fingerprint.
@@ -168,3 +169,9 @@ Before a real production release, Storyteller Studio still needs:
 10. explicit final release confirmation.
 
 A technically completed provider job is therefore a verified candidate set, not a finished audiobook chapter.
+
+## Independent engineering gate
+
+The worker resolves a reviewed audio-engineering profile before provider preflight. Each generated candidate is measured independently with `ffprobe`, `astats`, `loudnorm` and `silencedetect` before queue completion. The resulting verified `audio-analysis` artifact is distinct from the generation execution report and is bound to the exact candidate take.
+
+Failed engineering evidence remains retained for review, but the candidate cannot complete production or enter calibration selection. Provider metadata cannot self-certify loudness, clipping, noise floor, sample rate, channel count or silence compliance.

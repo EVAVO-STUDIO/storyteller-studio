@@ -81,6 +81,14 @@ A missing, stale, tampered or scope-mismatched binding blocks the job before pro
 
 The calibrated provider wrapper checks again immediately around synthesis. Returned output must retain the approved provider, model and capability fingerprint before it can enter artifact ingestion. Safe `GENERATION_CALIBRATION_*` findings are treated as governance blocks rather than generic retries, and arbitrary provider error messages are not copied into queue findings.
 
+## Required engineering control
+
+Enabled worker startup requires one reviewed independent audio-engineering policy before provider preflight. The process resolves a versioned `acx-audiobook` or `lossless-production` profile, review timestamp, source reference, bounded `ffprobe` and `ffmpeg` controls, and a private temporary directory.
+
+A missing or malformed policy fails with `WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED` or a more specific configuration code before provider credentials or remote model metadata are used. Every successful provider candidate is analysed independently before queue completion. Failed engineering evidence is retained as a verified `audio-analysis` artifact while the queue is blocked with its technical finding codes.
+
+Runtime and process summaries expose only the safe profile identifier, version, review date and fingerprint. Tool paths, temporary directories and source references remain private.
+
 ## Required budget control
 
 The dedicated runtime creates `FileBudgetLedger` and `FileGenerationBudgetController` from the private queue-state store and constructs `GenerationWorkerService` with `requireBudget: true`.

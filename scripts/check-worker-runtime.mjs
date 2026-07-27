@@ -140,6 +140,8 @@ requireTokens("apps/worker/src/runtime.ts", [
   "FileGenerationBudgetController",
   "budgetController",
   "requireBudget: true",
+  "requireAudioEngineering: true",
+  "WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED",
   "FilePrivateObjectStore",
   "GenerationWorkerService",
   "runWorkerLifecycle",
@@ -147,6 +149,7 @@ requireTokens("apps/worker/src/runtime.ts", [
 
 requireTokens("apps/worker/src/runtime.test.ts", [
   "disabled runtime returns without providers, credentials or persistence",
+  "enabled runtime rejects missing engineering policy before provider preflight",
   "enabled runtime fails before queue polling when no provider adapter is registered",
   "enabled runtime requires every registered provider credential before claiming work",
   "once runtime preflights providers and stops cleanly when the durable queue is empty",
@@ -173,6 +176,8 @@ requireTokens("apps/worker/src/main.ts", [
   "startStorytellerWorker",
   "resolveWorkerRuntimeConfiguration",
   "EnvironmentCredentialResolver",
+  "workerAudioEngineeringPolicySummary",
+  "resolveWorkerAudioEngineeringPolicy",
   "createWorkerProviderRegistry",
   "runConfiguredWorkerRuntime",
   'service: "storyteller-studio-worker"',
@@ -224,6 +229,12 @@ requireTokens(".env.example", [
   "STORYTELLER_WORKER_SHUTDOWN_GRACE_MS=30000",
   "STORYTELLER_FILE_WORKER_SINGLE_HOST=false",
   "STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}",
+  "STORYTELLER_AUDIO_ENGINEERING_MAX_OUTPUT_BYTES=8388608",
+  "STORYTELLER_AUDIO_ENGINEERING_TIMEOUT_MS=120000",
+  "STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE=",
+  "STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT=",
+  "STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION=",
+  "STORYTELLER_AUDIO_ENGINEERING_PROFILE=",
   "STORYTELLER_ELEVENLABS_ENABLED=false",
   "STORYTELLER_ELEVENLABS_ADAPTER_VERSION=1.0.0",
   "STORYTELLER_ELEVENLABS_MODEL_POLICIES=[]",
@@ -369,7 +380,7 @@ console.log("- the dedicated worker is disabled by default and opens no HTTP lis
 console.log("- file execution requires explicit queue, artifact and worker one-host posture");
 console.log("- calibrated material and provider wrappers block unapproved production before synthesis");
 console.log("- provider adapters, credentials and capability snapshots pass preflight before claims");
-console.log("- the private runtime requires calibration and transactional budget control before provider work");
+console.log("- the private runtime requires calibration, independent engineering and transactional budget control before provider work");
 console.log("- SIGINT and SIGTERM drain gracefully before a bounded forced abort");
 console.log("- runtime summaries omit identities, paths, provider records, credentials, budgets and generated media");
 console.log("- normal API and browser runtimes expose no worker process controls");
