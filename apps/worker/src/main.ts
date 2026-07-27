@@ -17,10 +17,15 @@ function safeErrorCode(error: unknown): string {
 export async function startStorytellerWorker(): Promise<void> {
   const environment = process.env;
   const configuration = resolveWorkerRuntimeConfiguration(environment);
-  const providers = createWorkerProviderRegistry();
+  const credentialBindings = configuration.enabled ? configuration.credentialBindings : {};
+  const providers = createWorkerProviderRegistry({
+    workerEnabled: configuration.enabled,
+    environment,
+    credentialBindings,
+  });
   const credentials = new EnvironmentCredentialResolver(
     environment,
-    configuration.enabled ? configuration.credentialBindings : {},
+    credentialBindings,
   );
 
   console.info(JSON.stringify({
