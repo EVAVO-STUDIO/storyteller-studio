@@ -1,1 +1,1 @@
-promote calibrated book credit generation with full private script validation and verify every repository gate
+run the line-stable calibrated credit generation promotion and verify every repository gate
