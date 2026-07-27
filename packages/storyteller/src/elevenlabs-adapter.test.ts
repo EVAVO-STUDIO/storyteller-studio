@@ -276,7 +276,12 @@ test("configuration prohibits cloned voices and unapproved v3 production", () =>
     () => new ElevenLabsNarrationAdapter(configuration(fakeFetch, {
       modelPolicies: configuration(fakeFetch).modelPolicies.map((policy) =>
         policy.mode === "production"
-          ? { ...policy, modelId: "eleven_v3", pricing: pricing("eleven_v3") }
+          ? {
+              ...policy,
+              modelId: "eleven_v3",
+              maximumInputCharacters: 3_000,
+              pricing: pricing("eleven_v3"),
+            }
           : policy
       ),
     })),
@@ -471,7 +476,12 @@ test("response validation rejects transcript drift, false media and oversized ou
     /ELEVENLABS_AUDIO_WAV_SIGNATURE_INVALID/u,
   );
 
-  const oversized = createAdapter(timestampResponse(source.text), 8);
+  const oversizedAudio = new Uint8Array(1_100);
+  oversizedAudio.set(wavBytes());
+  const oversized = createAdapter(
+    timestampResponse(source.text, oversizedAudio),
+    1_024,
+  );
   await preflight(oversized);
   await assert.rejects(
     oversized.synthesise(source, {
