@@ -118,22 +118,34 @@ if (publicViewStart < 0 || storeStart <= publicViewStart) {
   problems.push("generation material public view boundary is missing");
 } else {
   const publicView = source.slice(publicViewStart, storeStart);
+  for (const required of [
+    "characterCount: material.text.length",
+    "directionFingerprint: stableHash(material.direction)",
+    "pronunciationCount: material.pronunciations?.length ?? 0",
+    "voiceRevision: material.voiceRevision",
+  ]) {
+    if (!publicView.includes(required)) {
+      problems.push(`generation material public view is missing safe derived field: ${required}`);
+    }
+  }
   for (const forbidden of [
-    "material.text",
-    "voiceProfileId",
-    "writtenForm",
-    "providerPhoneme",
-    "spokenForm",
-    "parentArtifactIds",
-    "emotionalObjective",
-    "subtext",
+    "text:",
+    "voiceProfileId:",
+    "direction:",
+    "pronunciations:",
+    "writtenForm:",
+    "providerPhoneme:",
+    "spokenForm:",
+    "parentArtifactIds:",
+    "emotionalObjective:",
+    "subtext:",
     "notes:",
-    "leaseToken",
-    "objectKey",
-    "providerRequestId",
+    "leaseToken:",
+    "objectKey:",
+    "providerRequestId:",
   ]) {
     if (publicView.includes(forbidden)) {
-      problems.push(`generation material public view exposes forbidden private field: ${forbidden}`);
+      problems.push(`generation material public view returns forbidden private field: ${forbidden}`);
     }
   }
 }
@@ -187,5 +199,6 @@ console.log("- private production text and direction are stored separately from 
 console.log("- material scope is bound to job, project, segment, cache key and candidate count");
 console.log("- equivalent optional defaults produce one canonical fingerprint");
 console.log("- rights, pronunciation, format and cost policy gates fail before persistence");
-console.log("- public views and audits omit text, pronunciation, voice and parent artifact identity");
+console.log("- public views expose safe counts and fingerprints, not executable private content");
+console.log("- audit records omit text, pronunciation, voice and parent artifact identity");
 console.log("- normal API and browser runtime surfaces expose no executable material store");
