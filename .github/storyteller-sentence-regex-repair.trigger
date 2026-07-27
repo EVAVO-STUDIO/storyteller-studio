@@ -1,1 +1,1 @@
-repair invalid Unicode sentence-ending escape now
+repair sentence-ending regex without pre-commit import proof
