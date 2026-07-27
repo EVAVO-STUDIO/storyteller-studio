@@ -1,1 +1,1 @@
-export, verify and retain diagnostics for the governed chapter master evidence chain
+export and verify chapter master after narrowing the public projection checker
