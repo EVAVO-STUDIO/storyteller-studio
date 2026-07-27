@@ -104,6 +104,7 @@ test("health reports a production file queue misconfiguration without exposing i
 test("queue routes fail closed when durable admission is not configured", async () => {
   const handler = createStorytellerApiHandler({
     environment: {
+      NODE_ENV: "test",
       STORYTELLER_API_TOKEN: "test-api-token",
       STORYTELLER_API_ACTOR_ID: "operator_test",
       STORYTELLER_QUEUE_DRIVER: "disabled",
@@ -130,6 +131,7 @@ test("queue admission, inspection and cancellation expose only redacted operator
   let currentTime = new Date("2026-07-27T00:00:00.000Z");
   const handler = createStorytellerApiHandler({
     environment: {
+      NODE_ENV: "test",
       STORYTELLER_API_TOKEN: "test-api-token",
       STORYTELLER_API_ACTOR_ID: "operator_server_configured",
       STORYTELLER_QUEUE_DRIVER: "file",
