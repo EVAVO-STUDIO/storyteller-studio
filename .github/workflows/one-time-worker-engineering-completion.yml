@@ -1,0 +1,426 @@
+name: One-time worker engineering completion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/worker-engineering-completion.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-worker-engineering-completion
+  cancel-in-progress: false
+
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Complete mandatory engineering integration
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .worker-engineering-completion.log
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path: str, content: str) -> None:
+              Path(path).write_text(content, encoding="utf-8", newline="\n")
+
+          def replace_once(path: str, old: str, new: str, label: str) -> None:
+              source = read(path)
+              count = source.count(old)
+              print(f"WORKER_ENGINEERING_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"WORKER_ENGINEERING_MATCH_COUNT_INVALID:{label}:{count}")
+              write(path, source.replace(old, new, 1))
+
+          fixture = "apps/worker/src/elevenlabs-generation.test.ts"
+          replace_once(
+              fixture,
+              'import test from "node:test";\n',
+              '''import test from "node:test";
+          import type {
+            AudioEngineeringCommand,
+            AudioEngineeringCommandResult,
+            AudioEngineeringRunner,
+          } from "@evavo/storyteller-engine/audio-engineering";
+          ''',
+              "fixture-engineering-imports",
+          )
+          replace_once(
+              fixture,
+              'import { FileProjectStore } from "@evavo/storyteller-engine/project-store";\n',
+              '''import { FileProjectStore } from "@evavo/storyteller-engine/project-store";
+          import { resolveWorkerAudioEngineeringPolicy } from "./audio-engineering.js";
+          ''',
+              "fixture-policy-import",
+          )
+          replace_once(
+              fixture,
+              '    ELEVENLABS_API_KEY: "fixture-elevenlabs-generation-secret",\n',
+              '''    STORYTELLER_AUDIO_ENGINEERING_PROFILE: "acx-audiobook",
+              STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION: "acx-2026-07",
+              STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT: "2026-07-01T00:00:00.000Z",
+              STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE:
+                "acx-audio-submission-requirements-reviewed-2026-07",
+              STORYTELLER_AUDIO_ENGINEERING_TIMEOUT_MS: "5000",
+              STORYTELLER_AUDIO_ENGINEERING_MAX_OUTPUT_BYTES: String(1024 * 1024),
+              ELEVENLABS_API_KEY: "fixture-elevenlabs-generation-secret",
+          ''',
+              "fixture-policy-environment",
+          )
+          replace_once(
+              fixture,
+              'function fetchFrom(\n',
+              '''function engineeringCommandResult(
+            stdout = "",
+            stderr = "",
+          ): AudioEngineeringCommandResult {
+            return Object.freeze({
+              exitCode: 0,
+              stdout,
+              stderr,
+              durationMs: 4,
+            });
+          }
+
+          class ElevenLabsEngineeringRunner implements AudioEngineeringRunner {
+            readonly commands: AudioEngineeringCommand[] = [];
+
+            async run(command: AudioEngineeringCommand): Promise<AudioEngineeringCommandResult> {
+              this.commands.push(command);
+              switch (command.stage) {
+                case "ffprobe-version":
+                  return engineeringCommandResult("ffprobe version 7.1 fixture\\n");
+                case "ffmpeg-version":
+                  return engineeringCommandResult("ffmpeg version 7.1 fixture\\n");
+                case "probe":
+                  return engineeringCommandResult(JSON.stringify({
+                    streams: [{
+                      codec_type: "audio",
+                      codec_name: "pcm_s16le",
+                      sample_rate: "44100",
+                      channels: 1,
+                      bit_rate: "192000",
+                      duration: "0.750000",
+                    }],
+                    format: {
+                      format_name: "wav",
+                      duration: "0.750000",
+                      bit_rate: "192000",
+                      size: String(wavBytes().byteLength),
+                    },
+                  }));
+                case "astats":
+                  return engineeringCommandResult([
+                    "lavfi.astats.Overall.RMS_level=-20.0000",
+                    "lavfi.astats.Overall.Peak_level=-4.0000",
+                    "lavfi.astats.Overall.Noise_floor=-65.0000",
+                    "lavfi.astats.Overall.Peak_count=0",
+                  ].join("\\n"));
+                case "loudnorm":
+                  return engineeringCommandResult("", JSON.stringify({
+                    input_i: "-20.10",
+                    input_tp: "-4.20",
+                    input_lra: "4.10",
+                    input_thresh: "-30.00",
+                    target_offset: "0.10",
+                  }));
+                case "silence":
+                  return engineeringCommandResult();
+              }
+            }
+          }
+
+          function fetchFrom(
+          ''',
+              "fixture-engineering-runner",
+          )
+          replace_once(
+              fixture,
+              '    const calls: string[] = [];\n    const providers = createWorkerProviderRegistry({\n',
+              '''    const engineeringRunner = new ElevenLabsEngineeringRunner();
+              const audioEngineering = resolveWorkerAudioEngineeringPolicy({
+                workerEnabled: true,
+                environment: env,
+                temporaryRoot: resolve(
+                  dirname(configuration.objectRootDirectory),
+                  "audio-engineering-temp",
+                ),
+                runner: engineeringRunner,
+                now: t0,
+              });
+              if (!audioEngineering) throw new Error("worker engineering policy required");
+
+              const calls: string[] = [];
+              const providers = createWorkerProviderRegistry({
+          ''',
+              "fixture-policy-resolution",
+          )
+          replace_once(
+              fixture,
+              '''    const result = await runConfiguredWorkerRuntime(configuration, {
+                providers,
+                credentials,
+                now: () => t0,
+              });
+          ''',
+              '''    const result = await runConfiguredWorkerRuntime(configuration, {
+                providers,
+                credentials,
+                audioEngineering,
+                now: () => t0,
+              });
+          ''',
+              "fixture-runtime-policy",
+          )
+          replace_once(
+              fixture,
+              '    assert.equal(calls.length, 3);\n',
+              '    assert.equal(calls.length, 3);\n    assert.equal(engineeringRunner.commands.length, 6);\n',
+              "fixture-engineering-call-count",
+          )
+          replace_once(
+              fixture,
+              '    assert.equal(queueEnvelope?.payload.completion?.outputArtifactRefs.length, 4);\n',
+              '    assert.equal(queueEnvelope?.payload.completion?.outputArtifactRefs.length, 5);\n',
+              "fixture-completion-artifact-count",
+          )
+          replace_once(
+              fixture,
+              '    assert.equal(artifactRows.length, 4);\n',
+              '    assert.equal(artifactRows.length, 5);\n',
+              "fixture-registry-artifact-count",
+          )
+          replace_once(
+              fixture,
+              '''    assert.deepEqual(artifactKinds.sort(), [
+                "audio-analysis",
+                "audio-candidate",
+                "transcript",
+                "word-alignment",
+              ]);
+          ''',
+              '''    assert.deepEqual(artifactKinds.sort(), [
+                "audio-analysis",
+                "audio-analysis",
+                "audio-candidate",
+                "transcript",
+                "word-alignment",
+              ]);
+              const analysisArtifacts = artifactRows.filter((row) => row.payload.kind === "audio-analysis");
+              assert.equal(analysisArtifacts.length, 2);
+              assert.equal(
+                analysisArtifacts.some((row) => row.payload.takeId !== undefined),
+                true,
+              );
+          ''',
+              "fixture-artifact-kinds",
+          )
+          replace_once(
+              fixture,
+              '      configuration.objectRootDirectory,\n',
+              '''      configuration.objectRootDirectory,
+                "audio-engineering-temp",
+                "acx-audio-submission-requirements-reviewed-2026-07",
+          ''',
+              "fixture-engineering-redaction",
+          )
+
+          checker = "scripts/check-elevenlabs-generation.mjs"
+          replace_once(checker, '  "outputArtifactRefs.length, 4",\n', '  "outputArtifactRefs.length, 5",\n', "checker-artifact-count")
+          replace_once(
+              checker,
+              '  "runConfiguredWorkerRuntime",\n',
+              '  "runConfiguredWorkerRuntime",\n  "resolveWorkerAudioEngineeringPolicy",\n  "ElevenLabsEngineeringRunner",\n  "engineeringRunner.commands.length, 6",\n',
+              "checker-engineering-fixture-tokens",
+          )
+          replace_once(
+              checker,
+              '  "requireBudget: true",\n',
+              '  "requireBudget: true",\n  "WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED",\n  "requireAudioEngineering: true",\n',
+              "checker-runtime-engineering-tokens",
+          )
+          replace_once(
+              checker,
+              'console.log("- verified audio, transcript, alignment and execution evidence back queue completion");\n',
+              'console.log("- verified audio, transcript, alignment, independent engineering and execution evidence back queue completion");\n',
+              "checker-engineering-summary",
+          )
+
+          runtime_checker = "scripts/check-worker-runtime.mjs"
+          replace_once(
+              runtime_checker,
+              '  "WORKER_PROVIDER_CAPABILITY_ID_MISMATCH",\n',
+              '  "WORKER_PROVIDER_CAPABILITY_ID_MISMATCH",\n  "WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED",\n',
+              "runtime-checker-policy-error",
+          )
+          replace_once(
+              runtime_checker,
+              '  "requireBudget: true",\n',
+              '  "requireBudget: true",\n  "requireAudioEngineering: true",\n',
+              "runtime-checker-required-policy",
+          )
+          replace_once(
+              runtime_checker,
+              '  "disabled runtime returns without providers, credentials or persistence",\n',
+              '  "disabled runtime returns without providers, credentials or persistence",\n  "enabled runtime rejects missing engineering policy before provider preflight",\n',
+              "runtime-checker-policy-test",
+          )
+          replace_once(
+              runtime_checker,
+              '  "EnvironmentCredentialResolver",\n',
+              '  "EnvironmentCredentialResolver",\n  "resolveWorkerAudioEngineeringPolicy",\n  "workerAudioEngineeringPolicySummary",\n',
+              "runtime-checker-main-policy",
+          )
+          replace_once(
+              runtime_checker,
+              '  "STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}",\n',
+              '''  "STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}",
+              "STORYTELLER_AUDIO_ENGINEERING_PROFILE=",
+              "STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION=",
+              "STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT=",
+              "STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE=",
+              "STORYTELLER_AUDIO_ENGINEERING_TIMEOUT_MS=120000",
+              "STORYTELLER_AUDIO_ENGINEERING_MAX_OUTPUT_BYTES=8388608",
+          ''',
+              "runtime-checker-env-policy",
+          )
+          replace_once(
+              runtime_checker,
+              'console.log("- the private runtime requires calibration and transactional budget control before provider work");\n',
+              'console.log("- the private runtime requires calibration, independent engineering and transactional budget control before provider work");\n',
+              "runtime-checker-engineering-summary",
+          )
+
+          env_path = ".env.example"
+          replace_once(
+              env_path,
+              'STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}\n\n',
+              '''STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}
+
+          # Independent engineering is mandatory whenever the private worker is enabled.
+          # Leave reviewed profile evidence blank while the worker is disabled; enabled startup fails closed without it.
+          STORYTELLER_AUDIO_ENGINEERING_PROFILE=
+          STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION=
+          STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT=
+          STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE=
+          STORYTELLER_AUDIO_ENGINEERING_TIMEOUT_MS=120000
+          STORYTELLER_AUDIO_ENGINEERING_MAX_OUTPUT_BYTES=8388608
+
+          ''',
+              "env-engineering-policy",
+          )
+
+          runtime_doc = "docs/WORKER_RUNTIME.md"
+          runtime_source = read(runtime_doc)
+          marker = "## Required budget control\n"
+          if "## Required engineering control" not in runtime_source:
+              section = '''## Required engineering control
+
+          Enabled worker startup requires one reviewed independent audio-engineering policy before provider preflight. The process resolves a versioned `acx-audiobook` or `lossless-production` profile, review timestamp, source reference, bounded `ffprobe` and `ffmpeg` execution controls, and a private temporary directory.
+
+          A missing or malformed policy fails with `WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED` or a more specific configuration code before provider credentials or remote model metadata are used. Every successful provider candidate is analysed independently before queue completion. Failed engineering evidence is retained as a verified `audio-analysis` artifact while the queue is blocked with its technical finding codes.
+
+          Runtime and process summaries expose only the safe profile identifier, version, review date and fingerprint. Tool paths, temporary directories and source references remain private.
+
+          '''
+              count = runtime_source.count(marker)
+              print(f"WORKER_ENGINEERING_ANCHOR:runtime-doc:{count}")
+              if count != 1:
+                  raise SystemExit(f"WORKER_ENGINEERING_MATCH_COUNT_INVALID:runtime-doc:{count}")
+              write(runtime_doc, runtime_source.replace(marker, section + marker, 1))
+
+          provider_doc = "docs/ELEVENLABS_PRODUCTION_PATH.md"
+          provider_source = read(provider_doc)
+          provider_source = provider_source.replace(
+              "14. ingest private audio, transcript, word-alignment and execution-report artifacts;\n15. settle actual provider cost against the reservation;\n16. complete the queue with governed artifact and take identifiers;\n17. stop the once-mode worker when the queue is empty.",
+              "14. independently inspect the generated audio with versioned `ffprobe`, `astats`, `loudnorm` and `silencedetect` evidence;\n15. ingest private audio, transcript, word-alignment, engineering-analysis and execution-report artifacts;\n16. settle actual provider cost against the reservation;\n17. complete the queue with governed artifact and take identifiers;\n18. stop the once-mode worker when the queue is empty.",
+          )
+          provider_source = provider_source.replace(
+              "The private artifact registry receives four verified artifacts:",
+              "The private artifact registry receives five verified artifacts:",
+          )
+          provider_source = provider_source.replace(
+              "- `audio-analysis` containing safe execution evidence.",
+              "- `audio-analysis` containing independent audio-engineering evidence;\n- a separate `audio-analysis` containing safe execution evidence.",
+          )
+          provider_source = provider_source.replace(
+              "- four governed output artifact references;",
+              "- five governed output artifact references;",
+          )
+          if "independent audio-engineering evidence" not in provider_source:
+              raise SystemExit("WORKER_ENGINEERING_PROVIDER_DOC_UPDATE_FAILED")
+          write(provider_doc, provider_source)
+
+          for path in [
+              Path(".github/workflows/one-time-worker-engineering-completion.yml"),
+              Path(".github/worker-engineering-completion.trigger"),
+          ]:
+              path.unlink(missing_ok=True)
+
+          print("WORKER_ENGINEERING_COMPLETION_WRITTEN")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify complete repository
+        run: |
+          npm run verify
+          npm run build
+
+      - name: Commit completed engineering integration
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Complete mandatory worker engineering integration"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish completion status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          COMPLETION_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.COMPLETION_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".worker-engineering-completion.log")
+              ? fs.readFileSync(".worker-engineering-completion.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "worker engineering completion log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /WORKER_ENGINEERING_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "worker engineering completion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/worker-engineering-completion",
+              description: state === "success"
+                ? "Mandatory engineering startup and five-artifact provider path passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
