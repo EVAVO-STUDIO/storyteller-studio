@@ -34,99 +34,90 @@ jobs:
               count = source.count(old)
               print(f"BOOK_CREDIT_GENERATION_PROMOTION_ANCHOR:{label}:{count}")
               if count != 1:
-                  raise SystemExit(f"BOOK_CREDIT_GENERATION_PROMOTION_ANCHOR_INVALID:{label}:{count}")
+                  raise SystemExit(
+                      f"BOOK_CREDIT_GENERATION_PROMOTION_ANCHOR_INVALID:{label}:{count}"
+                  )
               path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
 
-          source_path = Path("packages/storyteller/src/book-credit-generation.ts")
-          replace_once(
-              source_path,
-              '''export interface BookCreditGenerationScriptSnapshot {
-            id: string;
-            revision: number;
-            fingerprint: string;
-            textHash: string;
-            wordCount: number;
-            approvalFingerprint: string;
-          }
+          def replace_section(
+              path: Path,
+              start_marker: str,
+              end_marker: str,
+              replacement: str,
+              label: str,
+          ) -> None:
+              source = path.read_text(encoding="utf-8")
+              start_count = source.count(start_marker)
+              end_count = source.count(end_marker)
+              print(
+                  f"BOOK_CREDIT_GENERATION_PROMOTION_SECTION:{label}:"
+                  f"{start_count}:{end_count}"
+              )
+              if start_count != 1 or end_count != 1:
+                  raise SystemExit(
+                      f"BOOK_CREDIT_GENERATION_PROMOTION_SECTION_INVALID:"
+                      f"{label}:{start_count}:{end_count}"
+                  )
+              start = source.index(start_marker)
+              end = source.index(end_marker, start)
+              path.write_text(
+                  source[:start] + replacement + source[end:],
+                  encoding="utf-8",
+                  newline="\n",
+              )
 
-          ''',
-              '',
+          source_path = Path("packages/storyteller/src/book-credit-generation.ts")
+          replace_section(
+              source_path,
+              "export interface BookCreditGenerationScriptSnapshot {\n",
+              "export interface BookCreditGenerationPlan {\n",
+              "",
               "remove-script-snapshot",
           )
           replace_once(
               source_path,
-              '  script: BookCreditGenerationScriptSnapshot;\n',
-              '  script: BookCreditScript;\n',
+              "  script: BookCreditGenerationScriptSnapshot;\n",
+              "  script: BookCreditScript;\n",
               "full-script-type",
           )
-          replace_once(
+          replace_section(
               source_path,
-              '''  const scriptSnapshot: BookCreditGenerationScriptSnapshot = Object.freeze({
-            id: input.script.id,
-            revision: input.script.revision,
-            fingerprint: input.script.fingerprint,
-            textHash: input.script.textHash,
-            wordCount: input.script.wordCount,
-            approvalFingerprint: input.script.approval.fingerprint,
-          });
-          ''',
-              '',
+              "  const scriptSnapshot: BookCreditGenerationScriptSnapshot = Object.freeze({\n",
+              '  const partial: Omit<BookCreditGenerationPlan, "fingerprint"> = {\n',
+              "",
               "remove-script-snapshot-creation",
           )
           replace_once(
               source_path,
-              '    script: scriptSnapshot,\n',
-              '    script: input.script,\n',
+              "    script: scriptSnapshot,\n",
+              "    script: input.script,\n",
               "store-full-script",
           )
-          replace_once(
+          replace_section(
               source_path,
-              '''  requireIdentifier(plan.script.id, "BOOK_CREDIT_GENERATION_SCRIPT_ID_INVALID");
-            requireInteger(
-              plan.script.revision,
-              1,
-              Number.MAX_SAFE_INTEGER,
-              "BOOK_CREDIT_GENERATION_SCRIPT_REVISION_INVALID",
-            );
-            requireHash(plan.script.fingerprint, "BOOK_CREDIT_GENERATION_SCRIPT_HASH_INVALID");
-            requireHash(plan.script.textHash, "BOOK_CREDIT_GENERATION_TEXT_HASH_INVALID");
-            requireInteger(
-              plan.script.wordCount,
-              1,
-              500,
-              "BOOK_CREDIT_GENERATION_WORD_COUNT_INVALID",
-            );
-            requireHash(
-              plan.script.approvalFingerprint,
-              "BOOK_CREDIT_GENERATION_APPROVAL_HASH_INVALID",
-            );
-          ''',
+              '  requireIdentifier(plan.script.id, "BOOK_CREDIT_GENERATION_SCRIPT_ID_INVALID");\n',
+              "  assertGenerationMaterialRecord(plan.material);\n",
               '''  assertBookCreditScript(plan.script);
-            if (plan.script.status !== "approved" || !plan.script.approval) {
-              throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_APPROVED_SCRIPT_REQUIRED");
-            }
-            if (
-              plan.script.projectId !== plan.projectId
-              || plan.script.bookId !== plan.bookId
-              || plan.script.kind !== plan.creditKind
-              || plan.script.textHash !== stableHash(plan.script.text)
-            ) {
-              throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_SCRIPT_SCOPE_MISMATCH");
-            }
+          if (plan.script.status !== "approved" || !plan.script.approval) {
+            throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_APPROVED_SCRIPT_REQUIRED");
+          }
+          if (
+            plan.script.projectId !== plan.projectId
+            || plan.script.bookId !== plan.bookId
+            || plan.script.kind !== plan.creditKind
+            || plan.script.textHash !== stableHash(plan.script.text)
+          ) {
+            throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_SCRIPT_SCOPE_MISMATCH");
+          }
           ''',
               "assert-full-script",
           )
           replace_once(
               source_path,
-              '''    || plan.calibration.candidateCount !== plan.job.candidateCount
-              || plan.material.textHash !== plan.script.textHash
-              || plan.material.material.immutableSourceHash !== plan.script.textHash
-          ''',
-              '''    || plan.calibration.candidateCount !== plan.job.candidateCount
-              || plan.job.segmentId !== bookCreditSegmentId(plan.script)
-              || plan.material.textHash !== plan.script.textHash
-              || plan.material.material.text !== plan.script.text
-              || plan.material.material.immutableSourceHash !== plan.script.textHash
+              "    || plan.material.textHash !== plan.script.textHash\n",
+              '''    || plan.job.segmentId !== bookCreditSegmentId(plan.script)
+            || plan.material.textHash !== plan.script.textHash
+            || plan.material.material.text !== plan.script.text
           ''',
               "script-material-scope",
           )
@@ -143,12 +134,18 @@ jobs:
           engine = json.loads(engine_path.read_text(encoding="utf-8"))
           engine["exports"]["./book-credit-generation"] = "./src/book-credit-generation.ts"
           engine["exports"] = dict(sorted(engine["exports"].items()))
-          engine_path.write_text(json.dumps(engine, indent=2) + "\n", encoding="utf-8", newline="\n")
+          engine_path.write_text(
+              json.dumps(engine, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
 
           root_path = Path("package.json")
           root = json.loads(root_path.read_text(encoding="utf-8"))
           scripts = root["scripts"]
-          scripts["verify:book-credit-generation"] = "node scripts/check-book-credit-generation.mjs"
+          scripts["verify:book-credit-generation"] = (
+              "node scripts/check-book-credit-generation.mjs"
+          )
           marker = "npm run verify:book-credits"
           if "npm run verify:book-credit-generation" not in scripts["verify:artifacts"]:
               if marker not in scripts["verify:artifacts"]:
@@ -158,7 +155,11 @@ jobs:
                   f"{marker} && npm run verify:book-credit-generation",
                   1,
               )
-          root_path.write_text(json.dumps(root, indent=2) + "\n", encoding="utf-8", newline="\n")
+          root_path.write_text(
+              json.dumps(root, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
 
           for temporary in [
               Path(".github/workflows/one-time-book-credit-generation-promotion.yml"),
