@@ -395,17 +395,21 @@ export function buildSeriesRegressionSuite(segments: readonly ManuscriptSegment[
 
   for (const segment of substantive) {
     const punctuationPressure = (segment.text.match(/[!?…—]/gu)?.length ?? 0) / Math.max(1, segment.wordCount);
+    const syntaxTurnCount = segment.text.match(/[,;:—]/gu)?.length ?? 0;
     if (segment.kind === "dialogue") {
       candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "dialogue" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "dialogue", reason: "Checks recurring character distinction, intention and dialogue transitions.", priority: 92 + Math.min(7, Math.round(punctuationPressure * 100)) });
     }
-    if (segment.wordCount >= 90) {
-      candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "long-syntax" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "long-syntax", reason: "Checks breath architecture, clarity and sentence-shape continuity.", priority: 82 + Math.min(12, Math.floor(segment.wordCount / 40)) });
+    if (
+      segment.wordCount >= 90
+      || (segment.kind === "narration" && segment.wordCount >= 24 && syntaxTurnCount >= 2)
+    ) {
+      candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "long-syntax" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "long-syntax", reason: "Checks breath architecture, clarity and sentence-shape continuity.", priority: 82 + Math.min(12, Math.floor(segment.wordCount / 40) + syntaxTurnCount) });
     }
     if (segment.kind === "narration" && punctuationPressure < 0.025) {
       candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "quiet-narration" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "quiet-narration", reason: "Checks listener relationship and natural variation without dramatic prompts.", priority: 76 + Math.min(8, Math.floor(segment.wordCount / 35)) });
     }
-    if (punctuationPressure >= 0.035) {
-      candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "high-pressure" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "high-pressure", reason: "Checks urgency, emotional control and avoidance of synthetic overstatement.", priority: 88 + Math.min(10, Math.round(punctuationPressure * 100)) });
+    if (punctuationPressure >= 0.035 || (segment.kind === "dialogue" && segment.wordCount <= 24)) {
+      candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "high-pressure" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "high-pressure", reason: "Checks urgency, emotional control and avoidance of synthetic overstatement.", priority: 88 + Math.min(10, Math.round(punctuationPressure * 100) + (segment.kind === "dialogue" ? 1 : 0)) });
     }
   }
 
