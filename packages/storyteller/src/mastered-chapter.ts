@@ -6,7 +6,6 @@ import {
 import {
   assertAudioEngineeringEvidence,
   type AudioEngineeringEvidence,
-  type AudioMetrics,
 } from "./audio-engineering.js";
 import {
   ingestPrivateArtifact,
@@ -19,9 +18,15 @@ import {
   type ArtifactRightsSnapshot,
 } from "./artifact-registry.js";
 import type { FileArtifactRegistry } from "./artifact-store.js";
-import type { GenerationAudioEngineeringPolicy } from "./generation-audio-engineering.js";
-import type { Finding } from "./index.js";
-import { stableHash } from "./index.js";
+import {
+  assertGenerationAudioEngineeringPolicy,
+  type GenerationAudioEngineeringPolicy,
+} from "./generation-audio-engineering.js";
+import {
+  stableHash,
+  type AudioMetrics,
+  type Finding,
+} from "./index.js";
 import {
   assertMasteringPlan,
   type MasteringPlan,
@@ -34,8 +39,15 @@ import type { FilePrivateObjectStore } from "./private-object-store.js";
 import type { StoredEnvelope } from "./project-store.js";
 
 export const MASTERED_CHAPTER_SCHEMA_VERSION = "storyteller-mastered-chapter-v1" as const;
+export const MASTERED_CHAPTER_COMPARISON_POLICY_SCHEMA_VERSION =
+  "storyteller-mastered-chapter-comparison-policy-v1" as const;
 
 export interface MasteredChapterComparisonPolicy {
+  schemaVersion: typeof MASTERED_CHAPTER_COMPARISON_POLICY_SCHEMA_VERSION;
+  id: string;
+  version: string;
+  reviewedAt: string;
+  sourceReference: string;
   durationToleranceMs: number;
   rmsToleranceDb: number;
   peakToleranceDb: number;
@@ -55,7 +67,7 @@ export interface IngestMasteredChapterInput {
   actorId: string;
   verifierActorId?: string;
   engineering: GenerationAudioEngineeringPolicy;
-  comparisonPolicy?: MasteredChapterComparisonPolicy;
+  comparisonPolicy: MasteredChapterComparisonPolicy;
   now?: Date;
   signal?: AbortSignal;
 }
@@ -102,6 +114,9 @@ export interface MasteredChapterPublicView {
   reviewStatus: ArtifactRecord["review"]["status"];
   engineeringProfileId: string;
   engineeringProfileVersion: string;
+  comparisonPolicyId: string;
+  comparisonPolicyVersion: string;
+  comparisonPolicyReviewedAt: string;
   comparisonPolicyFingerprint: string;
   strictPrediction: boolean;
   expectedDurationMs: number;
@@ -125,7 +140,8 @@ export class MasteredChapterError extends Error {
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
-const CURRENCY_DATE_LIMIT_MS = 10 * 365 * 24 * 60 * 60 * 1_000;
+const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
 
 function hashBytes(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -155,46 +171,67 @@ function requireInteger(value: number, minimum: number, maximum: number, code: s
   return value;
 }
 
+function requireBoundedText(value: string, maximum: number, code: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maximum || CONTROL_CHARACTERS.test(trimmed)) {
+    throw new MasteredChapterError(code);
+  }
+  return trimmed;
+}
+
 function policyFingerprint(
   value: Omit<MasteredChapterComparisonPolicy, "fingerprint">,
 ): string {
   return stableHash(value);
 }
 
-export function createMasteredChapterComparisonPolicy(
-  input: Partial<Omit<MasteredChapterComparisonPolicy, "fingerprint">> = {},
-): MasteredChapterComparisonPolicy {
+export function createMasteredChapterComparisonPolicy(input: Readonly<{
+  id: string;
+  version: string;
+  reviewedAt: string;
+  sourceReference: string;
+  durationToleranceMs?: number;
+  rmsToleranceDb?: number;
+  peakToleranceDb?: number;
+  truePeakToleranceDb?: number;
+  noiseFloorToleranceDb?: number;
+  strictTransparentPrediction?: boolean;
+  now?: Date;
+}>): MasteredChapterComparisonPolicy {
+  const now = input.now ?? new Date();
+  if (Number.isNaN(now.getTime())) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_NOW_INVALID");
+  }
+  requireIdentifier(input.id, "MASTERED_CHAPTER_COMPARISON_POLICY_ID_INVALID");
+  if (!SAFE_VERSION.test(input.version)) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_VERSION_INVALID");
+  }
+  if (Number.isNaN(Date.parse(input.reviewedAt))) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_REVIEW_DATE_INVALID");
+  }
+  if (Date.parse(input.reviewedAt) > now.getTime()) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_REVIEW_IN_FUTURE");
+  }
   const partial: Omit<MasteredChapterComparisonPolicy, "fingerprint"> = {
+    schemaVersion: MASTERED_CHAPTER_COMPARISON_POLICY_SCHEMA_VERSION,
+    id: input.id,
+    version: input.version,
+    reviewedAt: input.reviewedAt,
+    sourceReference: requireBoundedText(
+      input.sourceReference,
+      500,
+      "MASTERED_CHAPTER_COMPARISON_POLICY_SOURCE_INVALID",
+    ),
     durationToleranceMs: requireInteger(
       input.durationToleranceMs ?? 100,
       0,
       5_000,
       "MASTERED_CHAPTER_DURATION_TOLERANCE_INVALID",
     ),
-    rmsToleranceDb: requireFinite(
-      input.rmsToleranceDb ?? 0.75,
-      0,
-      6,
-      "MASTERED_CHAPTER_RMS_TOLERANCE_INVALID",
-    ),
-    peakToleranceDb: requireFinite(
-      input.peakToleranceDb ?? 0.75,
-      0,
-      6,
-      "MASTERED_CHAPTER_PEAK_TOLERANCE_INVALID",
-    ),
-    truePeakToleranceDb: requireFinite(
-      input.truePeakToleranceDb ?? 0.75,
-      0,
-      6,
-      "MASTERED_CHAPTER_TRUE_PEAK_TOLERANCE_INVALID",
-    ),
-    noiseFloorToleranceDb: requireFinite(
-      input.noiseFloorToleranceDb ?? 1.5,
-      0,
-      12,
-      "MASTERED_CHAPTER_NOISE_TOLERANCE_INVALID",
-    ),
+    rmsToleranceDb: requireFinite(input.rmsToleranceDb ?? 0.75, 0, 6, "MASTERED_CHAPTER_RMS_TOLERANCE_INVALID"),
+    peakToleranceDb: requireFinite(input.peakToleranceDb ?? 0.75, 0, 6, "MASTERED_CHAPTER_PEAK_TOLERANCE_INVALID"),
+    truePeakToleranceDb: requireFinite(input.truePeakToleranceDb ?? 0.75, 0, 6, "MASTERED_CHAPTER_TRUE_PEAK_TOLERANCE_INVALID"),
+    noiseFloorToleranceDb: requireFinite(input.noiseFloorToleranceDb ?? 1.5, 0, 12, "MASTERED_CHAPTER_NOISE_TOLERANCE_INVALID"),
     strictTransparentPrediction: input.strictTransparentPrediction ?? true,
   };
   return Object.freeze({ ...partial, fingerprint: policyFingerprint(partial) });
@@ -203,15 +240,24 @@ export function createMasteredChapterComparisonPolicy(
 export function assertMasteredChapterComparisonPolicy(
   policy: MasteredChapterComparisonPolicy,
 ): void {
-  const recreated = createMasteredChapterComparisonPolicy({
-    durationToleranceMs: policy.durationToleranceMs,
-    rmsToleranceDb: policy.rmsToleranceDb,
-    peakToleranceDb: policy.peakToleranceDb,
-    truePeakToleranceDb: policy.truePeakToleranceDb,
-    noiseFloorToleranceDb: policy.noiseFloorToleranceDb,
-    strictTransparentPrediction: policy.strictTransparentPrediction,
-  });
-  if (recreated.fingerprint !== policy.fingerprint) {
+  if (policy.schemaVersion !== MASTERED_CHAPTER_COMPARISON_POLICY_SCHEMA_VERSION) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_SCHEMA_UNSUPPORTED");
+  }
+  requireIdentifier(policy.id, "MASTERED_CHAPTER_COMPARISON_POLICY_ID_INVALID");
+  if (!SAFE_VERSION.test(policy.version)) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_VERSION_INVALID");
+  }
+  if (Number.isNaN(Date.parse(policy.reviewedAt))) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_REVIEW_DATE_INVALID");
+  }
+  requireBoundedText(policy.sourceReference, 500, "MASTERED_CHAPTER_COMPARISON_POLICY_SOURCE_INVALID");
+  requireInteger(policy.durationToleranceMs, 0, 5_000, "MASTERED_CHAPTER_DURATION_TOLERANCE_INVALID");
+  requireFinite(policy.rmsToleranceDb, 0, 6, "MASTERED_CHAPTER_RMS_TOLERANCE_INVALID");
+  requireFinite(policy.peakToleranceDb, 0, 6, "MASTERED_CHAPTER_PEAK_TOLERANCE_INVALID");
+  requireFinite(policy.truePeakToleranceDb, 0, 6, "MASTERED_CHAPTER_TRUE_PEAK_TOLERANCE_INVALID");
+  requireFinite(policy.noiseFloorToleranceDb, 0, 12, "MASTERED_CHAPTER_NOISE_TOLERANCE_INVALID");
+  const { fingerprint, ...partial } = policy;
+  if (policyFingerprint(partial) !== fingerprint) {
     throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_FINGERPRINT_INVALID");
   }
 }
@@ -236,17 +282,18 @@ function requireCurrentRights(
   ) {
     throw new MasteredChapterError("MASTERED_CHAPTER_RIGHTS_SCOPE_MISMATCH");
   }
-  for (const value of [rights.expiresAt, rights.deletionRequiredAt]) {
-    if (value && Date.parse(value) <= now.getTime()) {
-      throw new MasteredChapterError(
-        value === rights.expiresAt
-          ? "MASTERED_CHAPTER_RIGHTS_EXPIRED"
-          : "MASTERED_CHAPTER_RETENTION_EXPIRED",
-      );
-    }
-    if (value && Date.parse(value) > now.getTime() + CURRENCY_DATE_LIMIT_MS) {
-      throw new MasteredChapterError("MASTERED_CHAPTER_RIGHTS_DATE_UNBOUNDED");
-    }
+  for (const [value, invalidCode] of [
+    [rights.expiresAt, "MASTERED_CHAPTER_RIGHTS_EXPIRY_INVALID"],
+    [rights.retainUntil, "MASTERED_CHAPTER_RETAIN_UNTIL_INVALID"],
+    [rights.deletionRequiredAt, "MASTERED_CHAPTER_DELETION_DATE_INVALID"],
+  ] as const) {
+    if (value && Number.isNaN(Date.parse(value))) throw new MasteredChapterError(invalidCode);
+  }
+  if (rights.expiresAt && Date.parse(rights.expiresAt) <= now.getTime()) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_RIGHTS_EXPIRED");
+  }
+  if (rights.deletionRequiredAt && Date.parse(rights.deletionRequiredAt) <= now.getTime()) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_RETENTION_EXPIRED");
   }
 }
 
@@ -258,7 +305,6 @@ function assertArtifactMatchesSnapshot(
   assertArtifactRecord(record);
   if (
     record.id !== snapshot.id
-    || record.revision !== snapshot.revision
     || record.fingerprint !== snapshot.fingerprint
     || record.integrity.contentHash !== snapshot.contentHash
     || record.integrity.byteCount !== snapshot.byteCount
@@ -271,6 +317,8 @@ function assertInputs(input: IngestMasteredChapterInput, now: Date): void {
   assertMasteringPlan(input.plan);
   assertMasteringRenderEvidence(input.render.evidence);
   assertAudioEngineeringEvidence(input.sourceEngineeringEvidence);
+  assertGenerationAudioEngineeringPolicy(input.engineering);
+  assertMasteredChapterComparisonPolicy(input.comparisonPolicy);
   assertArtifactMatchesSnapshot(
     input.sourceMaster,
     input.plan.sourceMaster,
@@ -296,6 +344,20 @@ function assertInputs(input: IngestMasteredChapterInput, now: Date): void {
       !== input.sourceMaster.integrity.contentHash
   ) {
     throw new MasteredChapterError("MASTERED_CHAPTER_SOURCE_ENGINEERING_INVALID");
+  }
+  if (
+  input.engineering.profile.fingerprint !== input.plan.targetProfile.fingerprint
+) {
+  throw new MasteredChapterError("MASTERED_CHAPTER_ENGINEERING_PROFILE_MISMATCH");
+}
+  const sourceDurationMs = requireInteger(
+    Math.round(input.sourceEngineeringEvidence.probe.durationSeconds * 1_000),
+    1,
+    7 * 24 * 60 * 60 * 1_000,
+    "MASTERED_CHAPTER_SOURCE_DURATION_INVALID",
+  );
+  if (input.render.evidence.source.durationMs !== sourceDurationMs) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_SOURCE_DURATION_MISMATCH");
   }
   if (
     input.sourceEngineeringEvidence.fingerprint
@@ -424,23 +486,15 @@ function comparisonFingerprint(
 function compareMastering(
   plan: MasteringPlan,
   observed: AudioEngineeringEvidence,
+  expectedDurationMs: number,
   policy: MasteredChapterComparisonPolicy,
 ): MasteredChapterComparison {
   assertMasteredChapterComparisonPolicy(policy);
+  requireInteger(expectedDurationMs, 1, 7 * 24 * 60 * 60 * 1_000, "MASTERED_CHAPTER_EXPECTED_DURATION_INVALID");
   const strictPrediction = policy.strictTransparentPrediction
     && plan.operations.every((operation) => operation.kind === "gain");
-  const expectedDurationMs = plan.sourceEngineering.metrics.leadingSilenceMs
-    + plan.sourceEngineering.metrics.trailingSilenceMs
-    + Math.max(
-      0,
-      Math.round(observed.probe.durationSeconds * 1_000)
-        - observed.metrics.leadingSilenceMs
-        - observed.metrics.trailingSilenceMs,
-    );
   const observedDurationMs = Math.round(observed.probe.durationSeconds * 1_000);
-  const durationDriftMs = Math.abs(
-    observedDurationMs - inputDurationFromPlan(plan, observedDurationMs),
-  );
+  const durationDriftMs = Math.abs(observedDurationMs - expectedDurationMs);
   const predicted = plan.prediction.metrics;
   const metrics = observed.metrics;
   const metricDeltaDb = Object.freeze({
@@ -452,6 +506,13 @@ function compareMastering(
     noiseFloorDb: delta(predicted.noiseFloorDb, metrics.noiseFloorDb),
   });
   const findings: Finding[] = [];
+  if (predicted.truePeakDb !== undefined && metrics.truePeakDb === undefined) {
+    findings.push({
+      code: "MASTERED_CHAPTER_TRUE_PEAK_OBSERVATION_MISSING",
+      severity: "error",
+      message: "Post-master engineering did not provide required true-peak evidence.",
+    });
+  }
   if (durationDriftMs > policy.durationToleranceMs) {
     findings.push({
       code: "MASTERED_CHAPTER_DURATION_DRIFT",
@@ -460,33 +521,20 @@ function compareMastering(
     });
   }
   if (metrics.sampleRateHz !== plan.output.sampleRateHz) {
-    findings.push({
-      code: "MASTERED_CHAPTER_SAMPLE_RATE_DRIFT",
-      severity: "error",
-      message: "Observed mastered sample rate differs from the approved output profile.",
-    });
+    findings.push({ code: "MASTERED_CHAPTER_SAMPLE_RATE_DRIFT", severity: "error", message: "Observed mastered sample rate differs from the approved output profile." });
   }
   if (metrics.channels !== plan.output.channels) {
-    findings.push({
-      code: "MASTERED_CHAPTER_CHANNEL_DRIFT",
-      severity: "error",
-      message: "Observed mastered channel count differs from the approved output profile.",
-    });
+    findings.push({ code: "MASTERED_CHAPTER_CHANNEL_DRIFT", severity: "error", message: "Observed mastered channel count differs from the approved output profile." });
   }
-  for (const [code, amount, tolerance] of [
+  const checks: Array<readonly [string, number, number]> = [
     ["MASTERED_CHAPTER_RMS_PREDICTION_DRIFT", metricDeltaDb.rmsDb, policy.rmsToleranceDb],
     ["MASTERED_CHAPTER_PEAK_PREDICTION_DRIFT", metricDeltaDb.peakDb, policy.peakToleranceDb],
-    [
-      "MASTERED_CHAPTER_TRUE_PEAK_PREDICTION_DRIFT",
-      metricDeltaDb.truePeakDb ?? 0,
-      policy.truePeakToleranceDb,
-    ],
-    [
-      "MASTERED_CHAPTER_NOISE_PREDICTION_DRIFT",
-      metricDeltaDb.noiseFloorDb,
-      policy.noiseFloorToleranceDb,
-    ],
-  ] as const) {
+    ["MASTERED_CHAPTER_NOISE_PREDICTION_DRIFT", metricDeltaDb.noiseFloorDb, policy.noiseFloorToleranceDb],
+  ];
+  if (metricDeltaDb.truePeakDb !== undefined) {
+    checks.push(["MASTERED_CHAPTER_TRUE_PEAK_PREDICTION_DRIFT", metricDeltaDb.truePeakDb, policy.truePeakToleranceDb]);
+  }
+  for (const [code, amount, tolerance] of checks) {
     if (amount > tolerance) {
       findings.push({
         code,
@@ -506,13 +554,6 @@ function compareMastering(
     findings: Object.freeze(findings),
   };
   return Object.freeze({ ...partial, fingerprint: comparisonFingerprint(partial) });
-}
-
-function inputDurationFromPlan(
-  _plan: MasteringPlan,
-  observedFallbackMs: number,
-): number {
-  return observedFallbackMs;
 }
 
 function chainFingerprint(
@@ -559,7 +600,7 @@ export async function ingestMasteredChapter(
   if (input.signal?.aborted) throw new MasteredChapterError("MASTERED_CHAPTER_ABORTED");
   assertInputs(input, now);
   const verifierActorId = input.verifierActorId ?? input.actorId;
-  const policy = input.comparisonPolicy ?? createMasteredChapterComparisonPolicy();
+  const policy = input.comparisonPolicy;
   assertMasteredChapterComparisonPolicy(policy);
   const scopeHash = stableHash({
     plan: input.plan.fingerprint,
@@ -688,7 +729,12 @@ export async function ingestMasteredChapter(
     },
   );
 
-  const comparison = compareMastering(input.plan, postEngineering.evidence, policy);
+  const comparison = compareMastering(
+  input.plan,
+  postEngineering.evidence,
+  input.render.evidence.source.durationMs,
+  policy,
+);
   const engineeringErrors = postEngineering.evidence.findings
     .filter((finding) => finding.severity === "error");
   const comparisonErrors = comparison.findings
@@ -783,7 +829,10 @@ export function masteredChapterPublicView(
     reviewStatus: artifact.review.status,
     engineeringProfileId: evidence.profile.profile.id,
     engineeringProfileVersion: evidence.profile.externalVersion,
-    comparisonPolicyFingerprint: chain.comparisonPolicy.fingerprint,
+    comparisonPolicyId: chain.comparisonPolicy.id,
+  comparisonPolicyVersion: chain.comparisonPolicy.version,
+  comparisonPolicyReviewedAt: chain.comparisonPolicy.reviewedAt,
+  comparisonPolicyFingerprint: chain.comparisonPolicy.fingerprint,
     strictPrediction: chain.comparison.strictPrediction,
     expectedDurationMs: chain.comparison.expectedDurationMs,
     observedDurationMs: chain.comparison.observedDurationMs,
