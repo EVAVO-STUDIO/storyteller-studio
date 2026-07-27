@@ -184,7 +184,6 @@ export async function ingestAudioEngineeringArtifact(
         createdByActorId: input.actorId,
         sourceContentHash: evidence.inputContentHash,
         generationRequestHash: input.generationRequestHash,
-        adapterVersion: AUDIO_ENGINEERING_SCHEMA_VERSION,
         parentArtifactIds: [input.candidateArtifactId],
       },
       rights: input.rights,
