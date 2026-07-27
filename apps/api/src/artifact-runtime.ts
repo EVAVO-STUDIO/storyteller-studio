@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
 import { FileProjectStore } from "@evavo/storyteller-engine/project-store";
 
+export type ArtifactEnvironment = Readonly<Record<string, string | undefined>>;
 export type ArtifactRegistryDriver = "disabled" | "file";
 
 export type ArtifactRegistryRuntimeConfiguration =
@@ -24,7 +25,7 @@ export type ArtifactRegistryRuntimeConfiguration =
 
 const DRIVER_PATTERN = /^(?:disabled|file)$/u;
 
-function isProduction(environment: NodeJS.ProcessEnv): boolean {
+function isProduction(environment: ArtifactEnvironment): boolean {
   return environment.NODE_ENV === "production" || environment.VERCEL_ENV === "production";
 }
 
@@ -33,7 +34,7 @@ function enabled(value: string | undefined): boolean {
 }
 
 export function resolveArtifactRegistryRuntimeConfiguration(
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: ArtifactEnvironment = process.env,
   workingDirectory = process.cwd(),
 ): ArtifactRegistryRuntimeConfiguration {
   const rawDriver = environment.STORYTELLER_ARTIFACT_DRIVER?.trim().toLocaleLowerCase("en-AU") ?? "disabled";
