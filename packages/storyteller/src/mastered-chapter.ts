@@ -93,6 +93,7 @@ export interface MasteredChapterArtifactChain {
   schemaVersion: typeof MASTERED_CHAPTER_SCHEMA_VERSION;
   planId: string;
   planFingerprint: string;
+  sourceDurationMs: number;
   masteringPlanArtifact: StoredEnvelope<ArtifactRecord>;
   masteringRenderArtifact: StoredEnvelope<ArtifactRecord>;
   masteredChapter: StoredEnvelope<ArtifactRecord>;
@@ -563,6 +564,7 @@ function chainFingerprint(
     schemaVersion: value.schemaVersion,
     planId: value.planId,
     planFingerprint: value.planFingerprint,
+    sourceDurationMs: value.sourceDurationMs,
     masteringPlanArtifact: {
       id: value.masteringPlanArtifact.payload.id,
       revision: value.masteringPlanArtifact.revision,
@@ -770,6 +772,7 @@ export async function ingestMasteredChapter(
     schemaVersion: MASTERED_CHAPTER_SCHEMA_VERSION,
     planId: input.plan.id,
     planFingerprint: input.plan.fingerprint,
+    sourceDurationMs: input.render.evidence.source.durationMs,
     masteringPlanArtifact: planArtifact.envelope,
     masteringRenderArtifact: renderArtifact.envelope,
     masteredChapter: masteredEnvelope,
@@ -782,41 +785,187 @@ export async function ingestMasteredChapter(
   return Object.freeze({ ...partial, fingerprint: chainFingerprint(partial) });
 }
 
-export function masteredChapterPublicView(
+function assertMetrics(metrics: AudioMetrics, code: string): void {
+  for (const value of [metrics.rmsDb, metrics.peakDb, metrics.noiseFloorDb]) {
+    if (!Number.isFinite(value)) throw new MasteredChapterError(code);
+  }
+  if (metrics.truePeakDb !== undefined && !Number.isFinite(metrics.truePeakDb)) {
+    throw new MasteredChapterError(code);
+  }
+  requireInteger(metrics.sampleRateHz, 8_000, 384_000, code);
+  requireInteger(metrics.channels, 1, 32, code);
+  requireInteger(metrics.clippedSampleCount, 0, Number.MAX_SAFE_INTEGER, code);
+  requireInteger(metrics.leadingSilenceMs, 0, 86_400_000, code);
+  requireInteger(metrics.trailingSilenceMs, 0, 86_400_000, code);
+}
+
+function assertComparison(comparison: MasteredChapterComparison): void {
+  requireInteger(comparison.expectedDurationMs, 1, 7 * 24 * 60 * 60 * 1_000, "MASTERED_CHAPTER_COMPARISON_DURATION_INVALID");
+  requireInteger(comparison.observedDurationMs, 1, 7 * 24 * 60 * 60 * 1_000, "MASTERED_CHAPTER_COMPARISON_DURATION_INVALID");
+  if (comparison.durationDriftMs !== Math.abs(comparison.observedDurationMs - comparison.expectedDurationMs)) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_DURATION_MISMATCH");
+  }
+  assertMetrics(comparison.predictedMetrics, "MASTERED_CHAPTER_PREDICTED_METRICS_INVALID");
+  assertMetrics(comparison.observedMetrics, "MASTERED_CHAPTER_OBSERVED_METRICS_INVALID");
+  const expectedDelta = {
+    rmsDb: delta(comparison.predictedMetrics.rmsDb, comparison.observedMetrics.rmsDb),
+    peakDb: delta(comparison.predictedMetrics.peakDb, comparison.observedMetrics.peakDb),
+    ...(comparison.predictedMetrics.truePeakDb !== undefined
+      && comparison.observedMetrics.truePeakDb !== undefined
+      ? { truePeakDb: delta(comparison.predictedMetrics.truePeakDb, comparison.observedMetrics.truePeakDb) }
+      : {}),
+    noiseFloorDb: delta(
+      comparison.predictedMetrics.noiseFloorDb,
+      comparison.observedMetrics.noiseFloorDb,
+    ),
+  };
+  if (stableHash(expectedDelta) !== stableHash(comparison.metricDeltaDb)) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_DELTA_MISMATCH");
+  }
+  if (!Array.isArray(comparison.findings) || comparison.findings.some((finding) =>
+    !finding.code?.trim()
+    || !["info", "warning", "error"].includes(finding.severity)
+    || !finding.message?.trim()
+  )) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_FINDINGS_INVALID");
+  }
+  const { fingerprint, ...partial } = comparison;
+  if (comparisonFingerprint(partial) !== fingerprint) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID");
+  }
+}
+
+function envelopeHash(envelope: StoredEnvelope<ArtifactRecord>): string {
+  return stableHash({
+    schemaVersion: envelope.schemaVersion,
+    entityType: envelope.entityType,
+    entityId: envelope.entityId,
+    revision: envelope.revision,
+    createdAt: envelope.createdAt,
+    savedAt: envelope.savedAt,
+    contentHash: envelope.contentHash,
+    previousEnvelopeHash: envelope.previousEnvelopeHash ?? null,
+    payload: envelope.payload,
+  });
+}
+
+function assertArtifactEnvelope(
+  envelope: StoredEnvelope<ArtifactRecord>,
+  kind: ArtifactRecord["kind"],
+): void {
+  assertArtifactRecord(envelope.payload);
+  if (
+    envelope.schemaVersion !== "storyteller-store-v1"
+    || envelope.entityType !== "artifact"
+    || envelope.entityId !== envelope.payload.id
+    || envelope.revision !== envelope.payload.revision
+    || envelope.payload.kind !== kind
+    || envelope.contentHash !== stableHash(envelope.payload)
+    || envelope.envelopeHash !== envelopeHash(envelope)
+  ) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_ARTIFACT_ENVELOPE_INVALID");
+  }
+}
+
+export function assertMasteredChapterArtifactChain(
   chain: MasteredChapterArtifactChain,
-): MasteredChapterPublicView {
+): void {
   if (chain.schemaVersion !== MASTERED_CHAPTER_SCHEMA_VERSION) {
     throw new MasteredChapterError("MASTERED_CHAPTER_SCHEMA_UNSUPPORTED");
   }
+  requireIdentifier(chain.planId, "MASTERED_CHAPTER_PLAN_ID_INVALID");
   requireHash(chain.planFingerprint, "MASTERED_CHAPTER_PLAN_HASH_INVALID");
+  requireInteger(chain.sourceDurationMs, 1, 7 * 24 * 60 * 60 * 1_000, "MASTERED_CHAPTER_SOURCE_DURATION_INVALID");
   assertMasteredChapterComparisonPolicy(chain.comparisonPolicy);
-  if (comparisonFingerprint({
-    strictPrediction: chain.comparison.strictPrediction,
-    expectedDurationMs: chain.comparison.expectedDurationMs,
-    observedDurationMs: chain.comparison.observedDurationMs,
-    durationDriftMs: chain.comparison.durationDriftMs,
-    predictedMetrics: chain.comparison.predictedMetrics,
-    observedMetrics: chain.comparison.observedMetrics,
-    metricDeltaDb: chain.comparison.metricDeltaDb,
-    findings: chain.comparison.findings,
-  }) !== chain.comparison.fingerprint) {
-    throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID");
+  assertComparison(chain.comparison);
+  assertArtifactEnvelope(chain.masteringPlanArtifact, "audio-analysis");
+  assertArtifactEnvelope(chain.masteringRenderArtifact, "audio-analysis");
+  assertArtifactEnvelope(chain.masteredChapter, "mastered-chapter");
+  assertArtifactEnvelope(chain.postMasterEngineering.ingest.envelope, "audio-analysis");
+  assertAudioEngineeringEvidence(chain.postMasterEngineering.evidence);
+
+  const planArtifact = chain.masteringPlanArtifact.payload;
+  const renderArtifact = chain.masteringRenderArtifact.payload;
+  const mastered = chain.masteredChapter.payload;
+  const postArtifact = chain.postMasterEngineering.ingest.envelope.payload;
+  for (const record of [planArtifact, renderArtifact, mastered, postArtifact]) {
+    if (
+      record.projectId !== mastered.projectId
+      || record.jobId !== mastered.jobId
+      || record.segmentId !== mastered.segmentId
+      || record.takeId !== mastered.takeId
+    ) {
+      throw new MasteredChapterError("MASTERED_CHAPTER_ARTIFACT_SCOPE_MISMATCH");
+    }
   }
-  if (chainFingerprint({
-    schemaVersion: chain.schemaVersion,
-    planId: chain.planId,
-    planFingerprint: chain.planFingerprint,
-    masteringPlanArtifact: chain.masteringPlanArtifact,
-    masteringRenderArtifact: chain.masteringRenderArtifact,
-    masteredChapter: chain.masteredChapter,
-    postMasterEngineering: chain.postMasterEngineering,
-    comparisonPolicy: chain.comparisonPolicy,
-    comparison: chain.comparison,
-    eligibleForReview: chain.eligibleForReview,
-    findingCodes: chain.findingCodes,
-  }) !== chain.fingerprint) {
+  if (
+    planArtifact.provenance.generationRequestHash !== chain.planFingerprint
+    || renderArtifact.provenance.parentArtifactIds.length !== 1
+    || renderArtifact.provenance.parentArtifactIds[0] !== planArtifact.id
+    || mastered.provenance.parentArtifactIds.length !== 3
+    || !mastered.provenance.parentArtifactIds.includes(planArtifact.id)
+    || !mastered.provenance.parentArtifactIds.includes(renderArtifact.id)
+    || postArtifact.provenance.parentArtifactIds.length !== 1
+    || postArtifact.provenance.parentArtifactIds[0] !== mastered.id
+  ) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_ARTIFACT_PARENT_MISMATCH");
+  }
+  if (
+    chain.postMasterEngineering.evidence.inputContentHash !== mastered.integrity.contentHash
+    || chain.postMasterEngineering.evidence.inputByteCount !== mastered.integrity.byteCount
+    || postArtifact.provenance.sourceContentHash !== mastered.integrity.contentHash
+    || stableHash(chain.comparison.observedMetrics)
+      !== stableHash(chain.postMasterEngineering.evidence.metrics)
+    || chain.comparison.observedDurationMs
+      !== Math.round(chain.postMasterEngineering.evidence.probe.durationSeconds * 1_000)
+    || chain.comparison.expectedDurationMs !== chain.sourceDurationMs
+  ) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_DURATION_CHAIN_MISMATCH");
+  }
+
+  const engineeringErrors = chain.postMasterEngineering.evidence.findings
+    .filter((finding) => finding.severity === "error");
+  const comparisonErrors = chain.comparison.findings
+    .filter((finding) => finding.severity === "error");
+  const expectedEligible = chain.postMasterEngineering.candidateEligible
+    && comparisonErrors.length === 0;
+  if (chain.eligibleForReview !== expectedEligible) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_ELIGIBILITY_MISMATCH");
+  }
+  if (
+    chain.postMasterEngineering.candidateEligible
+      !== (chain.postMasterEngineering.evidence.eligible
+        && chain.postMasterEngineering.ingest.accepted)
+  ) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_ENGINEERING_ELIGIBILITY_MISMATCH");
+  }
+  const expectedFindingCodes = [
+    ...new Set([
+      ...engineeringErrors.map((finding) => finding.code),
+      ...chain.comparison.findings.map((finding) => finding.code),
+    ]),
+  ].sort((left, right) => left.localeCompare(right, "en-AU"));
+  if (stableHash(expectedFindingCodes) !== stableHash(chain.findingCodes)) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_FINDING_CODES_MISMATCH");
+  }
+  if (
+    (chain.eligibleForReview && mastered.verification.status !== "verified")
+    || (!chain.eligibleForReview && mastered.verification.status !== "quarantined")
+    || mastered.review.required !== true
+    || postArtifact.verification.status !== "verified"
+  ) {
+    throw new MasteredChapterError("MASTERED_CHAPTER_ARTIFACT_STATE_MISMATCH");
+  }
+  const { fingerprint, ...partial } = chain;
+  if (chainFingerprint(partial) !== fingerprint) {
     throw new MasteredChapterError("MASTERED_CHAPTER_CHAIN_FINGERPRINT_INVALID");
   }
+}
+
+export function masteredChapterPublicView(
+  chain: MasteredChapterArtifactChain,
+): MasteredChapterPublicView {
+  assertMasteredChapterArtifactChain(chain);
   const artifact = chain.masteredChapter.payload;
   const evidence = chain.postMasterEngineering.evidence;
   return Object.freeze({

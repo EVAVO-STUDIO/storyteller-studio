@@ -29,10 +29,12 @@ import {
   masteredChapterPublicView,
 } from "./mastered-chapter.js";
 import { createMasteringPlan, type MasteringOperation } from "./mastering-plan.js";
+import type {
+  ChapterRenderRequest,
+  ChapterRenderRunner,
+} from "./chapter-render.js";
 import {
   renderMasteringPlan,
-  type MasteringRenderRequest,
-  type MasteringRenderRunner,
   type MasteringSourceResolver,
   type ResolvedMasteringSource,
 } from "./mastering-render.js";
@@ -209,12 +211,12 @@ class SourceResolver implements MasteringSourceResolver {
   }
 }
 
-class RenderRunner implements MasteringRenderRunner {
+class RenderRunner implements ChapterRenderRunner {
   constructor(readonly bytes: Uint8Array = wavBytes(9)) {}
   async inspectVersion(): Promise<string> {
     return "ffmpeg version 7.1 fixture";
   }
-  async render(_request: MasteringRenderRequest): Promise<Uint8Array> {
+  async render(_request: ChapterRenderRequest): Promise<Uint8Array> {
     return this.bytes;
   }
 }
@@ -375,7 +377,7 @@ async function ingestFixture(input: Readonly<{
   objectStore: FilePrivateObjectStore;
   registry: FileArtifactRegistry;
   source?: Awaited<ReturnType<typeof sourceFixture>>;
-  post?: Parameters<typeof postEngineeringPolicy>[0];
+  post?: Omit<Parameters<typeof postEngineeringPolicy>[0], "byteCount" | "temporaryRoot">;
   rights?: ArtifactRightsSnapshot;
   comparison?: ReturnType<typeof comparisonPolicy>;
   signal?: AbortSignal;
@@ -643,7 +645,7 @@ test("comparison policy and artifact-chain tampering fail closed", async () => {
     };
     assert.throws(
       () => masteredChapterPublicView(comparisonTampered),
-      /MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID/u,
+      /MASTERED_CHAPTER_COMPARISON_DURATION_MISMATCH|MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID/u,
     );
 
     const sourceDurationTampered = {

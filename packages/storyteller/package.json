@@ -29,6 +29,7 @@
     "./generation-worker": "./src/generation-worker.ts",
     "./heartbeat-worker": "./src/heartbeat-worker.ts",
     "./lease-heartbeat": "./src/lease-heartbeat.ts",
+    "./mastered-chapter": "./src/mastered-chapter.ts",
     "./mastering-plan": "./src/mastering-plan.ts",
     "./mastering-render": "./src/mastering-render.ts",
     "./private-object-store": "./src/private-object-store.ts",
