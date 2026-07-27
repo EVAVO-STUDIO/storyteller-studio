@@ -1,0 +1,46 @@
+name: One-time mastered chapter documentation selector correction
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastered-chapter-doc-selector.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Match the artifact registry document structure
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path(".github/workflows/one-time-mastered-chapter-kind.yml")
+          source = path.read_text(encoding="utf-8")
+          old = '              marker = "## Production artifact\\n"\n'
+          new = '              marker = "## Artifact kinds\\n"\n'
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"MASTERED_CHAPTER_DOC_SELECTOR_INVALID:{count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          Path(".github/workflows/one-time-mastered-chapter-doc-selector.yml").unlink(missing_ok=True)
+          Path(".github/mastered-chapter-doc-selector.trigger").unlink(missing_ok=True)
+          PY
+      - name: Commit documentation selector
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Match mastered chapter documentation structure"
+          git pull --rebase origin main
+          git push origin HEAD:main
