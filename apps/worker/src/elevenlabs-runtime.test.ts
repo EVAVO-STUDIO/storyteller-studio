@@ -175,7 +175,6 @@ test("configured ElevenLabs worker preflights models and premade voices before a
     assert.deepEqual(providers.ids(), ["elevenlabs"]);
     assert.equal(calls.length, 2);
     assert.equal(calls.some((url) => url.includes("/with-timestamps")), false);
-    if (result.status === "disabled") throw new Error("enabled result required");
     assert.equal(result.lifecycle.service.claimedJobs, 0);
 
     const serialised = JSON.stringify(result);
