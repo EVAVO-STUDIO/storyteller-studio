@@ -455,6 +455,7 @@ export async function renderChapterAssembly(
   try {
     for (const segment of input.plan.segments) {
       const source = await input.sources.resolve(segment.audio, input.signal);
+      resolved.push(source);
       if (
         source.artifactId !== segment.audio.id
         || source.contentHash !== segment.audio.contentHash
@@ -465,7 +466,6 @@ export async function renderChapterAssembly(
       if (!source.privatePath.trim() || source.privatePath.includes("\0")) {
         throw new ChapterRenderError("CHAPTER_RENDER_PRIVATE_PATH_INVALID");
       }
-      resolved.push(source);
     }
     const filterScript = buildChapterFilterScript(input.plan);
     const runner = input.runner ?? new NodeChapterRenderRunner({
