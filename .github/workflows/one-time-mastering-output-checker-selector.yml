@@ -1,0 +1,51 @@
+name: One-time mastering output checker selector correction
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastering-output-checker-selector.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Correct checker selector and remove diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path(".github/workflows/one-time-mastering-output-contract.yml")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          matches = [index for index, line in enumerate(lines) if '"checker-output-contract",' in line]
+          if len(matches) != 1:
+              raise SystemExit(f"MASTERING_OUTPUT_CHECKER_SELECTOR_LABEL_INVALID:{len(matches)}")
+          index = matches[0]
+          lines[index - 2] = '              \'  "MasteringOperation",\\n  "MasteringPlan",\\n\','
+          lines[index - 1] = '              \'  "MasteringOperation",\\n  "MasteringPlan",\\n  "MasteringOutputProfile",\\n  "MASTERING_PLAN_OUTPUT_SAMPLE_RATE_CONVERSION_UNMODELLED",\\n  "MASTERING_PLAN_OUTPUT_CHANNEL_CONVERSION_UNMODELLED",\\n\','
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+          for temporary in [
+              Path(".github/mastering-output-anchor-report.txt"),
+              Path(".github/workflows/one-time-mastering-output-checker-selector.yml"),
+              Path(".github/mastering-output-checker-selector.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          PY
+      - name: Commit selector correction
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Correct mastering output checker selector"
+          git pull --rebase origin main
+          git push origin HEAD:main
