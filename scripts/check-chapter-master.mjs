@@ -104,22 +104,28 @@ const source = existsSync(fromRoot("packages/storyteller/src/chapter-master.ts")
 const publicStart = source.indexOf("export function chapterMasterPublicView");
 if (publicStart < 0) problems.push("chapter master public view is missing");
 else {
-  const publicSource = source.slice(publicStart);
-  for (const forbidden of [
-    "assemblyManifest:",
-    "renderEvidence:",
-    "postRenderEngineering:",
-    "rightsEvidenceId:",
-    "rightsFingerprint:",
-    "sourceContentHash:",
-    "generationRequestHash:",
-    "createdByActorId:",
-    "objectKey:",
-    "temporaryRoot:",
-    "sourceReference:",
-  ]) {
-    if (publicSource.includes(forbidden)) {
-      problems.push(`chapter master public view exposes private evidence: ${forbidden}`);
+  const returnStart = source.indexOf("  return Object.freeze({", publicStart);
+  const returnEnd = returnStart < 0 ? -1 : source.indexOf("  });", returnStart);
+  if (returnStart < 0 || returnEnd < 0) {
+    problems.push("chapter master public return projection is missing");
+  } else {
+    const publicProjection = source.slice(returnStart, returnEnd + 5);
+    for (const forbidden of [
+      "assemblyManifest:",
+      "renderEvidence:",
+      "postRenderEngineering:",
+      "rightsEvidenceId:",
+      "rightsFingerprint:",
+      "sourceContentHash:",
+      "generationRequestHash:",
+      "createdByActorId:",
+      "objectKey:",
+      "temporaryRoot:",
+      "sourceReference:",
+    ]) {
+      if (publicProjection.includes(forbidden)) {
+        problems.push(`chapter master public view exposes private evidence: ${forbidden}`);
+      }
     }
   }
 }
