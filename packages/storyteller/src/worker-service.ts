@@ -1,4 +1,5 @@
 import type { FileArtifactRegistry } from "./artifact-store.js";
+import type { GenerationAudioEngineeringPolicy } from "./generation-audio-engineering.js";
 import {
   isGenerationBudgetAdmissionError,
   type FileGenerationBudgetController,
@@ -54,6 +55,7 @@ export interface GenerationWorkerServiceDependencies {
   credentials: CredentialResolver;
   objectStore: FilePrivateObjectStore;
   artifactRegistry: FileArtifactRegistry;
+  audioEngineering?: GenerationAudioEngineeringPolicy;
   budgetController?: FileGenerationBudgetController;
 }
 
@@ -69,6 +71,7 @@ export interface GenerationWorkerServiceOptions {
   providerTimeoutMs?: number;
   outcomeHistoryLimit?: number;
   requireBudget?: boolean;
+  requireAudioEngineering?: boolean;
   now?: () => Date;
   waiter?: WorkerServiceWaiter;
 }
@@ -181,6 +184,7 @@ export class GenerationWorkerService {
   readonly #providerTimeoutMs: number;
   readonly #outcomeHistoryLimit: number;
   readonly #requireBudget: boolean;
+  readonly #requireAudioEngineering: boolean;
   readonly #now: () => Date;
   readonly #waiter: WorkerServiceWaiter;
   readonly #abortController = new AbortController();
@@ -255,6 +259,10 @@ export class GenerationWorkerService {
     this.#requireBudget = options.requireBudget ?? false;
     if (this.#requireBudget && !dependencies.budgetController) {
       throw new Error("GENERATION_WORKER_SERVICE_BUDGET_CONTROLLER_REQUIRED");
+    }
+    this.#requireAudioEngineering = options.requireAudioEngineering ?? false;
+    if (this.#requireAudioEngineering && !dependencies.audioEngineering) {
+      throw new Error("GENERATION_WORKER_SERVICE_AUDIO_ENGINEERING_REQUIRED");
     }
     this.#now = options.now ?? (() => new Date());
     this.#waiter = options.waiter ?? defaultWaiter();
@@ -488,6 +496,9 @@ export class GenerationWorkerService {
         credentials: this.#dependencies.credentials,
         objectStore: this.#dependencies.objectStore,
         artifactRegistry: this.#dependencies.artifactRegistry,
+        ...(this.#dependencies.audioEngineering
+          ? { audioEngineering: this.#dependencies.audioEngineering }
+          : {}),
         material,
         workerActorId: this.#workerId,
         ...(this.#verifierActorId ? { verifierActorId: this.#verifierActorId } : {}),
