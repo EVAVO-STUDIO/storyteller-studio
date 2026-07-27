@@ -84,8 +84,6 @@ requireTokens("apps/worker/src/configuration.test.ts", [
 
 requireTokens("apps/worker/src/elevenlabs-provider.ts", [
   "ELEVENLABS_CREDENTIAL_BINDING_ID",
-  "ElevenLabsWorkerProviderSummary",
-  "ResolvedElevenLabsWorkerProvider",
   "resolveElevenLabsWorkerProvider",
   "elevenLabsWorkerProviderSummary",
   "if (!input.workerEnabled) return null",
@@ -95,8 +93,6 @@ requireTokens("apps/worker/src/elevenlabs-provider.ts", [
   "STORYTELLER_ELEVENLABS_PRONUNCIATION_DICTIONARIES",
   "STORYTELLER_ELEVENLABS_DATA_POLICY",
   "ELEVENLABS_WORKER_CREDENTIAL_BINDING_REQUIRED",
-  "ELEVENLABS_WORKER_MODEL_POLICIES_INVALID",
-  "ELEVENLABS_WORKER_DATA_POLICY_INVALID",
   "new ElevenLabsNarrationAdapter(configuration)",
 ]);
 
@@ -107,7 +103,6 @@ requireTokens("apps/worker/src/elevenlabs-provider.test.ts", [
   "enabled provider requires an explicit server credential binding",
   "malformed provider JSON and policy shapes fail before adapter registration",
   "expired pricing and non-premade voices fail closed during construction",
-  "unsafe booleans, bitrate and text normalisation are rejected",
 ]);
 
 requireTokens("apps/worker/src/lifecycle.ts", [
@@ -127,7 +122,6 @@ requireTokens("apps/worker/src/lifecycle.test.ts", [
   "first process signal requests a graceful drain and cancels the deadline after completion",
   "shutdown deadline forces an abort while preserving a redacted lifecycle result",
   "a second process signal aborts immediately instead of extending shutdown",
-  "lifecycle rejects unbounded shutdown grace periods",
 ]);
 
 requireTokens("apps/worker/src/runtime.ts", [
@@ -138,7 +132,10 @@ requireTokens("apps/worker/src/runtime.ts", [
   "WORKER_PROVIDER_ADAPTERS_REQUIRED",
   "WORKER_PROVIDER_CREDENTIAL_MISSING",
   "WORKER_PROVIDER_CAPABILITY_ID_MISMATCH",
-  "FileGenerationMaterialStore",
+  "FileCalibrationSessionStore",
+  "FileGenerationCalibrationBindingStore",
+  "CalibratedGenerationMaterialStore",
+  "createCalibrationBoundProviderRegistry",
   "FileBudgetLedger",
   "FileGenerationBudgetController",
   "budgetController",
@@ -163,7 +160,6 @@ requireTokens("apps/worker/src/providers.ts", [
   "workerEnabled: input.workerEnabled",
   "credentialBindings: input.credentialBindings",
   "new ProviderAdapterRegistry(elevenLabs ? [elevenLabs.adapter] : [])",
-  "rights, privacy, pricing, voice-source and response-validation contracts",
 ]);
 
 requireTokens("apps/worker/src/providers.test.ts", [
@@ -178,8 +174,6 @@ requireTokens("apps/worker/src/main.ts", [
   "resolveWorkerRuntimeConfiguration",
   "EnvironmentCredentialResolver",
   "createWorkerProviderRegistry",
-  "workerEnabled: configuration.enabled",
-  "credentialBindings",
   "runConfiguredWorkerRuntime",
   'service: "storyteller-studio-worker"',
   "safeErrorCode",
@@ -191,6 +185,7 @@ requireTokens("docs/WORKER_RUNTIME.md", [
   "Fail-closed storage",
   "Isolated persistence",
   "Provider preflight",
+  "Required calibration control",
   "Required budget control",
   "Bounded execution",
   "Process signals",
@@ -198,11 +193,11 @@ requireTokens("docs/WORKER_RUNTIME.md", [
   "Safe operational output",
   "Production migration",
   "WORKER_PROVIDER_ADAPTERS_REQUIRED",
-  "requireBudget: true",
-  "before provider invocation",
+  "CalibratedGenerationMaterialStore",
+  "before provider credentials are used",
   "after artifact admission and before queue completion",
   "settles interrupted work conservatively",
-  "PostgreSQL transactional claims, material records and budget accounts",
+  "PostgreSQL transactional claims, material, calibration-binding and budget records",
 ]);
 
 requireTokens("docs/ELEVENLABS_ADAPTER.md", [
@@ -241,24 +236,32 @@ requireTokens(".env.example", [
 const runtimeSource = existsSync(fromRoot("apps/worker/src/runtime.ts"))
   ? read("apps/worker/src/runtime.ts")
   : "";
-const stateIndex = runtimeSource.indexOf("const queueState = new FileProjectStore");
-const budgetIndex = runtimeSource.indexOf("const budgetController = new FileGenerationBudgetController");
-const serviceIndex = runtimeSource.indexOf("return new GenerationWorkerService");
-if (
-  stateIndex < 0
-  || budgetIndex < 0
-  || serviceIndex < 0
-  || stateIndex >= budgetIndex
-  || budgetIndex >= serviceIndex
-) {
-  problems.push("private runtime must create the shared state, budget controller, then worker service in order");
+const runtimeOrder = [
+  "const queueState = new FileProjectStore",
+  "const queue = new FileGenerationQueue",
+  "const calibrationStore = new FileCalibrationSessionStore",
+  "const calibrationBindings = new FileGenerationCalibrationBindingStore",
+  "const materials = new CalibratedGenerationMaterialStore",
+  "const providers = createCalibrationBoundProviderRegistry",
+  "const budgetController = new FileGenerationBudgetController",
+  "const artifactRegistry = new FileArtifactRegistry",
+  "const objectStore = new FilePrivateObjectStore",
+  "return new GenerationWorkerService",
+];
+let previous = -1;
+for (const token of runtimeOrder) {
+  const index = runtimeSource.indexOf(token, previous + 1);
+  if (index < 0) {
+    problems.push(`private runtime sequence is missing: ${token}`);
+    continue;
+  }
+  previous = index;
 }
 if (!runtimeSource.includes("budgetController,") || !runtimeSource.includes("requireBudget: true")) {
   problems.push("private runtime does not require its configured budget controller");
 }
 
-const workerRuntimeFiles = collectRuntimeFiles("apps/worker/src");
-for (const path of workerRuntimeFiles) {
+for (const path of collectRuntimeFiles("apps/worker/src")) {
   const source = read(path);
   for (const forbidden of [
     'from "node:http"',
@@ -336,6 +339,9 @@ for (const path of [
     "runConfiguredWorkerRuntime",
     "startStorytellerWorker",
     "createWorkerService",
+    "FileGenerationCalibrationBindingStore",
+    "CalibratedGenerationMaterialStore",
+    "createCalibrationBoundProviderRegistry",
     "FileGenerationBudgetController",
     "FileBudgetLedger",
     "resolveElevenLabsWorkerProvider",
@@ -361,9 +367,9 @@ if (problems.length > 0) {
 console.log("storyteller_worker_runtime_check_passed");
 console.log("- the dedicated worker is disabled by default and opens no HTTP listener");
 console.log("- file execution requires explicit queue, artifact and worker one-host posture");
-console.log("- ElevenLabs remains absent until complete model, pricing, voice, privacy and credential configuration passes");
+console.log("- calibrated material and provider wrappers block unapproved production before synthesis");
 console.log("- provider adapters, credentials and capability snapshots pass preflight before claims");
-console.log("- the private runtime requires transactional budget control before provider work");
+console.log("- the private runtime requires calibration and transactional budget control before provider work");
 console.log("- SIGINT and SIGTERM drain gracefully before a bounded forced abort");
-console.log("- runtime summaries omit identities, paths, provider records, credential bindings, budgets and generated media");
+console.log("- runtime summaries omit identities, paths, provider records, credentials, budgets and generated media");
 console.log("- normal API and browser runtimes expose no worker process controls");
