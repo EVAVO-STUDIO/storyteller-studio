@@ -10,6 +10,7 @@
     "./artifact-queue": "./src/artifact-queue.ts",
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
+    "./generation-material": "./src/generation-material.ts",
     "./generation-queue": "./src/generation-queue.ts",
     "./generation-worker": "./src/generation-worker.ts",
     "./heartbeat-worker": "./src/heartbeat-worker.ts",
