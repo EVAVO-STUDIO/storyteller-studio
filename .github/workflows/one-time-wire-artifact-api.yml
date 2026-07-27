@@ -31,224 +31,143 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          from textwrap import dedent
 
           path = Path("apps/api/src/server.ts")
           source = path.read_text(encoding="utf-8")
 
-          replacements = [
-              (
-                  dedent('''\
-                  import {
-                    GenerationQueueConflictError,
-                    type FileGenerationQueue,
-                    type GenerationQueueStatus,
-                  } from "@evavo/storyteller-engine/generation-queue";
-                  import {
-                    createGenerationQueueRuntime,
-                  '''),
-                  dedent('''\
-                  import {
-                    GenerationQueueConflictError,
-                    type FileGenerationQueue,
-                    type GenerationQueueStatus,
-                  } from "@evavo/storyteller-engine/generation-queue";
-                  import type { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
-                  import {
-                    artifactRegistryRuntimeSummary,
-                    createArtifactRegistryRuntime,
-                    resolveArtifactRegistryRuntimeConfiguration,
-                    type ArtifactRegistryRuntimeConfiguration,
-                  } from "./artifact-runtime.js";
-                  import { handleArtifactReadRoute } from "./artifact-routes.js";
-                  import {
-                    createGenerationQueueRuntime,
-                  '''),
-                  "imports",
-              ),
-              (
-                  dedent('''\
-                    code === "GENERATION_QUEUE_NOT_CONFIGURED"
-                      || code === "GENERATION_QUEUE_DATA_DIR_REQUIRED"
-                      || code === "GENERATION_QUEUE_DRIVER_INVALID"
-                      || code === "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"
-                      || code === "API_ACTOR_CONFIGURATION_MISSING"
-                  '''),
-                  dedent('''\
-                    code === "GENERATION_QUEUE_NOT_CONFIGURED"
-                      || code === "GENERATION_QUEUE_DATA_DIR_REQUIRED"
-                      || code === "GENERATION_QUEUE_DRIVER_INVALID"
-                      || code === "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"
-                      || code === "ARTIFACT_REGISTRY_NOT_CONFIGURED"
-                      || code === "ARTIFACT_REGISTRY_DATA_DIR_REQUIRED"
-                      || code === "ARTIFACT_REGISTRY_DRIVER_INVALID"
-                      || code === "ARTIFACT_REGISTRY_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"
-                      || code === "API_ACTOR_CONFIGURATION_MISSING"
-                  '''),
-                  "error-status",
-              ),
-              (
-                  dedent('''\
-                    let queueConfiguration: GenerationQueueRuntimeConfiguration | undefined;
-                    let queueRuntime: FileGenerationQueue | null | undefined;
-                  '''),
-                  dedent('''\
-                    let queueConfiguration: GenerationQueueRuntimeConfiguration | undefined;
-                    let queueRuntime: FileGenerationQueue | null | undefined;
-                    let artifactConfiguration: ArtifactRegistryRuntimeConfiguration | undefined;
-                    let artifactRuntime: FileArtifactRegistry | null | undefined;
-                  '''),
-                  "runtime-state",
-              ),
-              (
-                  dedent('''\
-                    const queueHealth = (): Readonly<Record<string, unknown>> => {
-                      try {
-                        const summary = generationQueueRuntimeSummary(resolveQueueConfiguration());
-                        return { status: summary.enabled ? "ready" : "disabled", ...summary };
-                      } catch (error) {
-                        const code = error instanceof Error ? error.message : "GENERATION_QUEUE_CONFIGURATION_INVALID";
-                        return { status: "misconfigured", enabled: false, workerApiExposed: false, code };
-                      }
-                    };
-
-                    return async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
-                  '''),
-                  dedent('''\
-                    const queueHealth = (): Readonly<Record<string, unknown>> => {
-                      try {
-                        const summary = generationQueueRuntimeSummary(resolveQueueConfiguration());
-                        return { status: summary.enabled ? "ready" : "disabled", ...summary };
-                      } catch (error) {
-                        const code = error instanceof Error ? error.message : "GENERATION_QUEUE_CONFIGURATION_INVALID";
-                        return { status: "misconfigured", enabled: false, workerApiExposed: false, code };
-                      }
-                    };
-
-                    const resolveArtifactConfiguration = (): ArtifactRegistryRuntimeConfiguration => {
-                      artifactConfiguration ??= resolveArtifactRegistryRuntimeConfiguration(environment, workingDirectory);
-                      return artifactConfiguration;
-                    };
-
-                    const requireArtifactRuntime = (): FileArtifactRegistry => {
-                      if (artifactRuntime === undefined) {
-                        artifactRuntime = createArtifactRegistryRuntime(resolveArtifactConfiguration());
-                      }
-                      if (!artifactRuntime) throw new Error("ARTIFACT_REGISTRY_NOT_CONFIGURED");
-                      return artifactRuntime;
-                    };
-
-                    const artifactHealth = (): Readonly<Record<string, unknown>> => {
-                      try {
-                        const summary = artifactRegistryRuntimeSummary(resolveArtifactConfiguration());
-                        return { status: summary.enabled ? "ready" : "disabled", ...summary };
-                      } catch (error) {
-                        const code = error instanceof Error ? error.message : "ARTIFACT_REGISTRY_CONFIGURATION_INVALID";
-                        return {
-                          status: "misconfigured",
-                          enabled: false,
-                          workerWriteApiExposed: false,
-                          releaseApiExposed: false,
-                          code,
-                        };
-                      }
-                    };
-
-                    return async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
-                  '''),
-                  "artifact-runtime",
-              ),
-              (
-                  dedent('''\
-                        if (request.method === "GET" && url.pathname === "/health") {
-                          const generationQueue = queueHealth();
-                          status = generationQueue.status === "misconfigured" ? 503 : 200;
-                          sendJson(response, id, status, {
-                            service: "storyteller-studio-api",
-                            status: status === 200 ? "ok" : "degraded",
-                            engineVersion: STORYTELLER_ENGINE_VERSION,
-                            providerExecutionEnabled: false,
-                            generationQueue,
-                          });
-                  '''),
-                  dedent('''\
-                        if (request.method === "GET" && url.pathname === "/health") {
-                          const generationQueue = queueHealth();
-                          const artifactRegistry = artifactHealth();
-                          status = generationQueue.status === "misconfigured" || artifactRegistry.status === "misconfigured"
-                            ? 503
-                            : 200;
-                          sendJson(response, id, status, {
-                            service: "storyteller-studio-api",
-                            status: status === 200 ? "ok" : "degraded",
-                            engineVersion: STORYTELLER_ENGINE_VERSION,
-                            providerExecutionEnabled: false,
-                            generationQueue,
-                            artifactRegistry,
-                          });
-                  '''),
-                  "health",
-              ),
-              (
-                  dedent('''\
-                            orchestration: ["idempotent queue admission", "exclusive worker leases", "bounded retry", "operator cancellation"],
-                            visuals: ["scene-level beat grouping", "continuity keys", "restrained motion policies"],
-                            workerApiExposed: false,
-                  '''),
-                  dedent('''\
-                            orchestration: ["idempotent queue admission", "exclusive worker leases", "bounded retry", "operator cancellation"],
-                            artifacts: ["immutable integrity records", "private storage references", "quarantine", "review and release gates"],
-                            visuals: ["scene-level beat grouping", "continuity keys", "restrained motion policies"],
-                            workerApiExposed: false,
-                            artifactWriteApiExposed: false,
-                            releaseApiExposed: false,
-                  '''),
-                  "capabilities",
-              ),
-              (
-                  dedent('''\
-                        const auth = authorise(request, environment);
-                        if (!auth.ok) {
-                          status = auth.status;
-                          sendJson(response, id, status, { error: { code: auth.code, requestId: id } });
-                          return;
-                        }
-
-                        if (request.method === "POST" && url.pathname === "/v1/projects/plan") {
-                  '''),
-                  dedent('''\
-                        const auth = authorise(request, environment);
-                        if (!auth.ok) {
-                          status = auth.status;
-                          sendJson(response, id, status, { error: { code: auth.code, requestId: id } });
-                          return;
-                        }
-
-                        if (url.pathname.startsWith("/v1/artifacts")) {
-                          const artifactRoute = await handleArtifactReadRoute({
-                            method: request.method,
-                            url,
-                            registry: request.method === "GET" ? requireArtifactRuntime() : null,
-                            requestId: id,
-                          });
-                          if (artifactRoute) {
-                            status = artifactRoute.status;
-                            sendJson(response, id, status, artifactRoute.body);
-                            return;
-                          }
-                        }
-
-                        if (request.method === "POST" && url.pathname === "/v1/projects/plan") {
-                  '''),
-                  "route-wiring",
-              ),
-          ]
-
-          for old, new, label in replacements:
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
               count = source.count(old)
               if count != 1:
                   raise SystemExit(f"ARTIFACT_API_WIRING_MATCH_COUNT_INVALID:{label}:{count}")
-              source = source.replace(old, new)
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '} from "@evavo/storyteller-engine/generation-queue";\nimport {\n  createGenerationQueueRuntime,\n',
+              '} from "@evavo/storyteller-engine/generation-queue";\n'
+              'import type { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";\n'
+              'import {\n'
+              '  artifactRegistryRuntimeSummary,\n'
+              '  createArtifactRegistryRuntime,\n'
+              '  resolveArtifactRegistryRuntimeConfiguration,\n'
+              '  type ArtifactRegistryRuntimeConfiguration,\n'
+              '} from "./artifact-runtime.js";\n'
+              'import { handleArtifactReadRoute } from "./artifact-routes.js";\n'
+              'import {\n'
+              '  createGenerationQueueRuntime,\n',
+              "imports",
+          )
+
+          replace_once(
+              '    || code === "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"\n',
+              '    || code === "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"\n'
+              '    || code === "ARTIFACT_REGISTRY_NOT_CONFIGURED"\n'
+              '    || code === "ARTIFACT_REGISTRY_DATA_DIR_REQUIRED"\n'
+              '    || code === "ARTIFACT_REGISTRY_DRIVER_INVALID"\n'
+              '    || code === "ARTIFACT_REGISTRY_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"\n',
+              "error-status",
+          )
+
+          replace_once(
+              '  let queueRuntime: FileGenerationQueue | null | undefined;\n',
+              '  let queueRuntime: FileGenerationQueue | null | undefined;\n'
+              '  let artifactConfiguration: ArtifactRegistryRuntimeConfiguration | undefined;\n'
+              '  let artifactRuntime: FileArtifactRegistry | null | undefined;\n',
+              "runtime-state",
+          )
+
+          artifact_runtime = '''
+          const resolveArtifactConfiguration = (): ArtifactRegistryRuntimeConfiguration => {
+            artifactConfiguration ??= resolveArtifactRegistryRuntimeConfiguration(environment, workingDirectory);
+            return artifactConfiguration;
+          };
+
+          const requireArtifactRuntime = (): FileArtifactRegistry => {
+            if (artifactRuntime === undefined) {
+              artifactRuntime = createArtifactRegistryRuntime(resolveArtifactConfiguration());
+            }
+            if (!artifactRuntime) throw new Error("ARTIFACT_REGISTRY_NOT_CONFIGURED");
+            return artifactRuntime;
+          };
+
+          const artifactHealth = (): Readonly<Record<string, unknown>> => {
+            try {
+              const summary = artifactRegistryRuntimeSummary(resolveArtifactConfiguration());
+              return { status: summary.enabled ? "ready" : "disabled", ...summary };
+            } catch (error) {
+              const code = error instanceof Error ? error.message : "ARTIFACT_REGISTRY_CONFIGURATION_INVALID";
+              return {
+                status: "misconfigured",
+                enabled: false,
+                workerWriteApiExposed: false,
+                releaseApiExposed: false,
+                code,
+              };
+            }
+          };
+          '''.strip("\n")
+          replace_once(
+              '\n  return async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {\n',
+              f'\n{artifact_runtime}\n\n  return async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {{\n',
+              "artifact-runtime",
+          )
+
+          replace_once(
+              '      const generationQueue = queueHealth();\n'
+              '      status = generationQueue.status === "misconfigured" ? 503 : 200;\n',
+              '      const generationQueue = queueHealth();\n'
+              '      const artifactRegistry = artifactHealth();\n'
+              '      status = generationQueue.status === "misconfigured" || artifactRegistry.status === "misconfigured"\n'
+              '        ? 503\n'
+              '        : 200;\n',
+              "health-status",
+          )
+
+          replace_once(
+              '          generationQueue,\n        });\n',
+              '          generationQueue,\n'
+              '          artifactRegistry,\n'
+              '        });\n',
+              "health-body",
+          )
+
+          replace_once(
+              '          orchestration: ["idempotent queue admission", "exclusive worker leases", "bounded retry", "operator cancellation"],\n',
+              '          orchestration: ["idempotent queue admission", "exclusive worker leases", "bounded retry", "operator cancellation"],\n'
+              '          artifacts: ["immutable integrity records", "private storage references", "quarantine", "review and release gates"],\n',
+              "capability-artifacts",
+          )
+
+          replace_once(
+              '          visuals: ["scene-level beat grouping", "continuity keys", "restrained motion policies"],\n'
+              '          workerApiExposed: false,\n',
+              '          visuals: ["scene-level beat grouping", "continuity keys", "restrained motion policies"],\n'
+              '          workerApiExposed: false,\n'
+              '          artifactWriteApiExposed: false,\n'
+              '          releaseApiExposed: false,\n',
+              "capability-boundary",
+          )
+
+          artifact_route = '''
+              if (url.pathname.startsWith("/v1/artifacts")) {
+                const artifactRoute = await handleArtifactReadRoute({
+                  method: request.method,
+                  url,
+                  registry: request.method === "GET" ? requireArtifactRuntime() : null,
+                  requestId: id,
+                });
+                if (artifactRoute) {
+                  status = artifactRoute.status;
+                  sendJson(response, id, status, artifactRoute.body);
+                  return;
+                }
+              }
+          '''.strip("\n")
+          replace_once(
+              '\n      if (request.method === "POST" && url.pathname === "/v1/projects/plan") {\n',
+              f'\n{artifact_route}\n\n      if (request.method === "POST" && url.pathname === "/v1/projects/plan") {{\n',
+              "artifact-route",
+          )
 
           path.write_text(source, encoding="utf-8", newline="\n")
           PY
