@@ -73,6 +73,7 @@ export interface ClaimedGenerationWorkerInput {
   verifierActorId?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
+  beforeTerminalTransition?: () => Promise<void>;
   now?: Date;
 }
 
@@ -452,6 +453,7 @@ async function blockClaim(input: Readonly<{
   reportHash?: string;
   now: Date;
 }>): Promise<GenerationWorkerResult> {
+  await input.worker.beforeTerminalTransition?.();
   const queueEnvelope = await input.worker.queue.block(
     input.worker.claim.item.id,
     input.worker.claim.leaseToken,
@@ -579,6 +581,7 @@ export async function runClaimedGenerationWorker(
 
   if (report.status !== "completed") {
     if (providerExecutionIsRetryable(report)) {
+      await input.beforeTerminalTransition?.();
       const queueEnvelope = await input.queue.fail(
         input.claim.item.id,
         input.claim.leaseToken,
@@ -612,6 +615,7 @@ export async function runClaimedGenerationWorker(
   }
 
   try {
+    await input.beforeTerminalTransition?.();
     const completion = await completeGenerationWithArtifacts({
       queue: input.queue,
       claim: input.claim,
