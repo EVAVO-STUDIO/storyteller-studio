@@ -1,0 +1,113 @@
+name: One-time empty-result cost policy fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/empty-result-cost-policy-fix.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-empty-result-cost-policy-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Preserve provider outcome when no cost-bearing result exists
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .empty-result-cost-policy-fix.log
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/generation-worker.ts")
+          source = path.read_text(encoding="utf-8")
+          old = '''  if (policy) {
+            if (observedCosts !== report.results.length) {
+              return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_EVIDENCE_MISSING" };
+            }
+            if (currency !== policy.currency) {
+              return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_POLICY_CURRENCY_MISMATCH" };
+            }
+            if (total > policy.maximumTotalEstimatedCost) {
+          '''
+          new = '''  if (policy) {
+            if (report.results.length > 0 && observedCosts !== report.results.length) {
+              return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_EVIDENCE_MISSING" };
+            }
+            if (observedCosts > 0 && currency !== policy.currency) {
+              return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_POLICY_CURRENCY_MISMATCH" };
+            }
+            if (total > policy.maximumTotalEstimatedCost) {
+          '''
+          count = source.count(old)
+          print(f"EMPTY_RESULT_COST_POLICY_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"EMPTY_RESULT_COST_POLICY_MATCH_COUNT_INVALID:{count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          PY
+
+      - name: Remove fix machinery
+        shell: bash
+        run: |
+          git rm -f \
+            .github/workflows/one-time-empty-result-cost-policy-fix.yml \
+            .github/empty-result-cost-policy-fix.trigger
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify provider outcome and budget settlement
+        run: npm run typecheck && npm run test:engine
+
+      - name: Commit empty-result cost policy correction
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/generation-worker.ts
+          git diff --cached --check
+          git commit -m "Preserve provider outcome without cost-bearing results"
+          git push origin HEAD:main
+
+      - name: Publish fix status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          FIX_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.FIX_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".empty-result-cost-policy-fix.log")
+              ? fs.readFileSync(".empty-result-cost-policy-fix.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "empty-result cost policy log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /EMPTY_RESULT_COST_POLICY_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "empty-result cost policy fix failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/empty-result-cost-policy",
+              description: state === "success"
+                ? "No-result provider outcomes retain their correct state"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
