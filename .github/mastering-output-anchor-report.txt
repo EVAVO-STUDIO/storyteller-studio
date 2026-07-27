@@ -1,0 +1,16 @@
+source:output-interface=1
+source:plan-output=1
+source:input-output=1
+source:public-output=1
+source:output-helper=1
+source:create-output-validation=1
+source:create-output-snapshot=1
+source:persisted-output-validation=1
+source:public-output-projection=1
+test:output-input=1
+test:public-output=1
+test:output-conversion=1
+checker:output-contract=2
+checker:output-test=1
+docs:output-contract=1
+docs:output-conversion=1
