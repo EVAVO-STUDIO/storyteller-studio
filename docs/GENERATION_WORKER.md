@@ -112,6 +112,10 @@ A promoted object that fails final integrity verification becomes a quarantine r
 
 Missing, inconsistent or excessive cost evidence blocks completion after the sanitised execution report is persisted.
 
+### Ownership lost
+
+The heartbeat signal aborts provider work when the queue claim is no longer authoritative. Abort checkpoints run before candidate ingestion, execution-report persistence and terminal queue transitions. A stale worker therefore cannot continue writing artifacts or change queue state after another worker has recovered the job.
+
 ## Queue completion
 
 Queue completion is attempted only when:
@@ -123,7 +127,8 @@ Queue completion is attempted only when:
 5. rights remain valid for the intended use;
 6. candidate count exactly matches the generation job;
 7. cost policy passes;
-8. the exclusive lease is still valid.
+8. the exclusive lease is still valid;
+9. heartbeat scheduling has stopped before the terminal transition.
 
 The queue stores only governed artifact identifiers, candidate take identifiers, the execution-report hash and bounded cost accounting. It does not store audio bytes or private object locators.
 
@@ -135,16 +140,35 @@ A future deployment will expose this coordinator only through an isolated worker
 
 ## Lease heartbeat
 
-The current coordinator requires an already-active lease and fails if the worker identity does not match. The queue independently rejects completion after expiry.
+`runGenerationWorkerWithHeartbeat()` composes the governed worker with `GenerationLeaseHeartbeatController`.
 
-A production worker runtime still needs a Lease heartbeat controller around long provider calls. That controller must:
+The runtime:
 
-- renew before a bounded fraction of lease duration;
-- abort provider work when heartbeat ownership is lost;
-- serialise overlapping heartbeat attempts;
-- stop cleanly before terminal queue transition;
-- never log or persist the opaque lease token outside queue control;
-- distinguish process cancellation from provider failure;
-- leave expired work reclaimable through the queue reaper.
+- starts bounded lease renewal before provider execution;
+- combines heartbeat ownership loss with an optional process cancellation signal;
+- serialises overlapping heartbeat operations;
+- aborts the provider when ownership is lost;
+- checks abort state before post-provider artifact writes;
+- stops renewal before `complete`, `fail` or `block`;
+- disposes temporary abort listeners;
+- leaves expired or interrupted work recoverable by the queue reaper;
+- returns only redacted worker and heartbeat summaries.
 
-Heartbeat orchestration is the next runtime slice. It is intentionally not simulated by the normal HTTP application.
+The heartbeat snapshot contains queue and job identifiers, safe timestamps, revision and renewal count. It does not contain the opaque lease token, token hash, worker identity, provider credentials or private object locators.
+
+Detailed renewal semantics and failure states are documented in `LEASE_HEARTBEAT.md`.
+
+## Remaining production runtime work
+
+The internal coordinator now proves provider execution, evidence persistence, bounded retry, cost gates, lease renewal and stale-worker protection. A deployed worker service still requires:
+
+- process-level claim polling and concurrency limits;
+- transactional budget reservations before provider calls;
+- graceful host shutdown across multiple active claims;
+- provider-specific adapter packages and credential rotation;
+- operational metrics without manuscript or credential leakage;
+- PostgreSQL queue claims for multi-instance execution;
+- production private object storage and retention reconciliation;
+- dead-letter and operator recovery workflows.
+
+These capabilities remain internal service concerns and must not be added to the normal web application or public operator API.
