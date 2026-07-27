@@ -141,6 +141,12 @@ function requireWorkerInput(input: ClaimedGenerationWorkerInput): void {
   }
 }
 
+function throwIfWorkerAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error("GENERATION_WORKER_ABORTED");
+}
+
 function buildRequests(
   claim: GenerationQueueClaim,
   material: GenerationWorkerMaterial,
@@ -487,6 +493,7 @@ export async function runClaimedGenerationWorker(
   input: ClaimedGenerationWorkerInput,
 ): Promise<GenerationWorkerResult> {
   requireWorkerInput(input);
+  throwIfWorkerAborted(input.signal);
   const now = input.now ?? new Date();
   const requests = buildRequests(input.claim, input.material);
   const report = await executeGenerationJob({
@@ -497,11 +504,13 @@ export async function runClaimedGenerationWorker(
     ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
   });
+  throwIfWorkerAborted(input.signal);
 
   const requestsById = new Map(requests.map((request) => [request.requestId, request]));
   const ingested: ArtifactIngestResult[] = [];
   try {
     for (const result of report.results) {
+      throwIfWorkerAborted(input.signal);
       const request = requestsById.get(result.requestId);
       if (!request) throw new Error("GENERATION_WORKER_RESULT_REQUEST_MISSING");
       ingested.push(...await ingestResultArtifacts({
@@ -512,6 +521,7 @@ export async function runClaimedGenerationWorker(
       }));
     }
   } catch {
+    throwIfWorkerAborted(input.signal);
     return blockClaim({
       worker: input,
       executionStatus: report.status,
@@ -525,6 +535,7 @@ export async function runClaimedGenerationWorker(
     });
   }
 
+  throwIfWorkerAborted(input.signal);
   const artifacts = ingested.map((item) => item.envelope.payload);
   const candidateArtifactIds = artifacts
     .filter((artifact) => artifact.kind === "audio-candidate")
@@ -541,6 +552,7 @@ export async function runClaimedGenerationWorker(
     });
   }
 
+  throwIfWorkerAborted(input.signal);
   const reportArtifact = await ingestExecutionReport({
     worker: input,
     report,
@@ -550,6 +562,7 @@ export async function runClaimedGenerationWorker(
     now,
   });
   artifacts.push(reportArtifact.ingest.envelope.payload);
+  throwIfWorkerAborted(input.signal);
   if (!reportArtifact.ingest.accepted) {
     return blockClaim({
       worker: input,
