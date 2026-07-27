@@ -67,6 +67,34 @@ jobs:
           '''
           test_path.write_text(source[:start] + replacement + source[end:], encoding="utf-8", newline="\n")
 
+          credit_path = Path("packages/storyteller/src/book-credit-script.ts")
+          replace_once(
+              credit_path,
+              '''const REQUIRED_TEMPLATE_TOKENS: Readonly<
+            Record<BookCreditKind, readonly BookCreditToken[]>
+          > = Object.freeze({
+            opening: Object.freeze(["title", "authorCredit", "narratorCredit"]),
+            closing: Object.freeze([
+              "title",
+              "authorCredit",
+              "narratorCredit",
+              "copyrightNotice",
+            ]),
+          });
+          ''',
+              '''const REQUIRED_TEMPLATE_TOKENS = Object.freeze({
+            opening: Object.freeze(["title", "authorCredit", "narratorCredit"] as const),
+            closing: Object.freeze([
+              "title",
+              "authorCredit",
+              "narratorCredit",
+              "copyrightNotice",
+            ] as const),
+          }) satisfies Readonly<Record<BookCreditKind, readonly BookCreditToken[]>>;
+          ''',
+              "template-token-tuples",
+          )
+
           store_path = Path("packages/storyteller/src/project-store.ts")
           replace_once(
               store_path,
