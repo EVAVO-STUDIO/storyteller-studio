@@ -36,21 +36,24 @@ jobs:
 
           path = Path("packages/storyteller/src/audio-engineering.ts")
           source = path.read_text(encoding="utf-8")
-          old = '''  const eventPattern = /silence_(start|end):\\s*([0-9]+(?:\\.[0-9]+)?)(?:\\s*\\|\\s*silence_duration:\\s*([0-9]+(?:\\.[0-9]+)?))?/gu;
-          for (const match of source.matchAll(eventPattern)) {
-          '''
-          new = '''  const eventPattern = /silence_(start|end):\\s*([0-9]+(?:\\.[0-9]+)?)(?:\\s*\\|\\s*silence_duration:\\s*([0-9]+(?:\\.[0-9]+)?))?/gu;
-          const events = [...source.matchAll(eventPattern)];
+          pattern_line = '  const eventPattern = /silence_(start|end):\\s*([0-9]+(?:\\.[0-9]+)?)(?:\\s*\\|\\s*silence_duration:\\s*([0-9]+(?:\\.[0-9]+)?))?/gu;\n'
+          loop_line = '  for (const match of source.matchAll(eventPattern)) {\n'
+          insertion = '''  const events = [...source.matchAll(eventPattern)];
           if (events.length === 0 && /silence_(?:start|end)\\s*:/u.test(source)) {
             throw new AudioEngineeringError("AUDIO_ENGINEERING_SILENCE_EVENT_INVALID");
           }
-          for (const match of events) {
           '''
-          count = source.count(old)
-          print(f"AUDIO_SILENCE_PARSER_ANCHOR:{count}")
-          if count != 1:
-              raise SystemExit(f"AUDIO_SILENCE_PARSER_MATCH_COUNT_INVALID:{count}")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          pattern_count = source.count(pattern_line)
+          loop_count = source.count(loop_line)
+          print(f"AUDIO_SILENCE_PARSER_PATTERN_ANCHOR:{pattern_count}")
+          print(f"AUDIO_SILENCE_PARSER_LOOP_ANCHOR:{loop_count}")
+          if pattern_count != 1 or loop_count != 1:
+              raise SystemExit(
+                  f"AUDIO_SILENCE_PARSER_MATCH_COUNT_INVALID:{pattern_count}:{loop_count}"
+              )
+          source = source.replace(pattern_line, pattern_line + insertion, 1)
+          source = source.replace(loop_line, '  for (const match of events) {\n', 1)
+          path.write_text(source, encoding="utf-8", newline="\n")
           print("AUDIO_SILENCE_PARSER_FIXED")
           PY
 
