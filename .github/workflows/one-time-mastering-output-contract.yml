@@ -1,0 +1,257 @@
+name: One-time mastering output contract
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastering-output-contract.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Add immutable mastering output contract
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .mastering-output-contract.log
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(f"MASTERING_OUTPUT_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"MASTERING_OUTPUT_ANCHOR_INVALID:{label}:{count}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          source_path = Path("packages/storyteller/src/mastering-plan.ts")
+          replace_once(
+              source_path,
+              "export interface MasteringPrediction {\n",
+              '''export interface MasteringOutputProfile {
+            format: "wav";
+            sampleRateHz: number;
+            channels: 1 | 2;
+            bitDepth: 16 | 24 | 32;
+          }
+
+          export interface MasteringPrediction {
+          ''',
+              "output-interface",
+          )
+          replace_once(
+              source_path,
+              "  chapterId: string;\n  sourceMaster: MasteringArtifactSnapshot;\n",
+              "  chapterId: string;\n  output: MasteringOutputProfile;\n  sourceMaster: MasteringArtifactSnapshot;\n",
+              "plan-output",
+          )
+          replace_once(
+              source_path,
+              "  targetProfile: AudioEngineeringProfileSnapshot;\n  operations: readonly MasteringOperation[];\n",
+              "  targetProfile: AudioEngineeringProfileSnapshot;\n  output: MasteringOutputProfile;\n  operations: readonly MasteringOperation[];\n",
+              "input-output",
+          )
+          replace_once(
+              source_path,
+              "  targetProfileVersion: string;\n  operationKinds: readonly MasteringOperation[\"kind\"][];\n",
+              "  targetProfileVersion: string;\n  output: MasteringOutputProfile;\n  operationKinds: readonly MasteringOperation[\"kind\"][];\n",
+              "public-output",
+          )
+          output_helper = '''function assertOutput(
+            output: MasteringOutputProfile,
+            sourceMetrics: AudioMetrics,
+          ): void {
+            if (output.format !== "wav") {
+              throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_FORMAT_INVALID");
+            }
+            if (!Number.isSafeInteger(output.sampleRateHz) || output.sampleRateHz < 8_000 || output.sampleRateHz > 384_000) {
+              throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_SAMPLE_RATE_INVALID");
+            }
+            if (output.channels !== 1 && output.channels !== 2) {
+              throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_CHANNELS_INVALID");
+            }
+            if (![16, 24, 32].includes(output.bitDepth)) {
+              throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_BIT_DEPTH_INVALID");
+            }
+            if (output.sampleRateHz !== sourceMetrics.sampleRateHz) {
+              throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_SAMPLE_RATE_CONVERSION_UNMODELLED");
+            }
+            if (output.channels !== sourceMetrics.channels) {
+              throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_CHANNEL_CONVERSION_UNMODELLED");
+            }
+          }
+
+          '''
+          replace_once(
+              source_path,
+              "function assertOperation(operation: MasteringOperation): void {\n",
+              output_helper + "function assertOperation(operation: MasteringOperation): void {\n",
+              "output-helper",
+          )
+          replace_once(
+              source_path,
+              "  assertProfile(input.targetProfile);\n  if (Date.parse(input.targetProfile.reviewedAt) > createdAt.getTime()) {\n",
+              "  assertProfile(input.targetProfile);\n  assertOutput(input.output, input.engineeringEvidence.metrics);\n  if (Date.parse(input.targetProfile.reviewedAt) > createdAt.getTime()) {\n",
+              "create-output-validation",
+          )
+          replace_once(
+              source_path,
+              "    chapterId: input.chapterId,\n    sourceMaster: snapshot(input.chapterMaster),\n",
+              "    chapterId: input.chapterId,\n    output: Object.freeze({ ...input.output }),\n    sourceMaster: snapshot(input.chapterMaster),\n",
+              "create-output-snapshot",
+          )
+          replace_once(
+              source_path,
+              "  assertProfile(plan.targetProfile);\n  assertOperationOrder(plan.operations);\n",
+              "  assertProfile(plan.targetProfile);\n  assertOutput(plan.output, plan.sourceEngineering.metrics);\n  assertOperationOrder(plan.operations);\n",
+              "persisted-output-validation",
+          )
+          replace_once(
+              source_path,
+              "    targetProfileVersion: plan.targetProfile.externalVersion,\n    operationKinds: Object.freeze(plan.operations.map((operation) => operation.kind)),\n",
+              "    targetProfileVersion: plan.targetProfile.externalVersion,\n    output: plan.output,\n    operationKinds: Object.freeze(plan.operations.map((operation) => operation.kind)),\n",
+              "public-output-projection",
+          )
+
+          test_path = Path("packages/storyteller/src/mastering-plan.test.ts")
+          replace_once(
+              test_path,
+              "    targetProfile: data.evidence.profile,\n    operations,\n",
+              '''    targetProfile: data.evidence.profile,
+              output: {
+                format: "wav" as const,
+                sampleRateHz: 44_100,
+                channels: 1 as const,
+                bitDepth: 24 as const,
+              },
+              operations,
+          ''',
+              "test-output-input",
+          )
+          replace_once(
+              test_path,
+              "  assert.deepEqual(publicView.operationKinds, [\"gain\"]);\n",
+              "  assert.deepEqual(publicView.operationKinds, [\"gain\"]);\n  assert.deepEqual(publicView.output, plan.output);\n",
+              "test-public-output",
+          )
+          output_test = '''test("output profile forbids unmodelled sample-rate and channel conversion", async () => {
+            const data = await fixture();
+            assert.throws(
+              () => createMasteringPlan({
+                ...planInput(data, []),
+                output: {
+                  format: "wav",
+                  sampleRateHz: 48_000,
+                  channels: 1,
+                  bitDepth: 24,
+                },
+              }),
+              /MASTERING_PLAN_OUTPUT_SAMPLE_RATE_CONVERSION_UNMODELLED/u,
+            );
+            assert.throws(
+              () => createMasteringPlan({
+                ...planInput(data, []),
+                output: {
+                  format: "wav",
+                  sampleRateHz: 44_100,
+                  channels: 2,
+                  bitDepth: 24,
+                },
+              }),
+              /MASTERING_PLAN_OUTPUT_CHANNEL_CONVERSION_UNMODELLED/u,
+            );
+          });
+
+          '''
+          replace_once(
+              test_path,
+              'test("operation bounds, duplicates and ordering are fail-closed", async () => {\n',
+              output_test + 'test("operation bounds, duplicates and ordering are fail-closed", async () => {\n',
+              "test-output-conversion",
+          )
+
+          checker_path = Path("scripts/check-mastering-plan.mjs")
+          replace_once(
+              checker_path,
+              '  "MasteringPlan",\n',
+              '  "MasteringPlan",\n  "MasteringOutputProfile",\n  "MASTERING_PLAN_OUTPUT_SAMPLE_RATE_CONVERSION_UNMODELLED",\n  "MASTERING_PLAN_OUTPUT_CHANNEL_CONVERSION_UNMODELLED",\n',
+              "checker-output-contract",
+          )
+          replace_once(
+              checker_path,
+              '  "operation bounds, duplicates and ordering are fail-closed",\n',
+              '  "output profile forbids unmodelled sample-rate and channel conversion",\n  "operation bounds, duplicates and ordering are fail-closed",\n',
+              "checker-output-test",
+          )
+
+          docs_path = Path("docs/MASTERING_PLAN.md")
+          replace_once(
+              docs_path,
+              "- target profile;\n- ordered operations;\n",
+              "- target profile;\n- explicit lossless WAV sample rate, channel layout and bit depth;\n- ordered operations;\n",
+              "docs-output-contract",
+          )
+          replace_once(
+              docs_path,
+              "Operations must appear in that order and each operation kind may appear at most once.\n",
+              "Operations must appear in that order and each operation kind may appear at most once. The initial contract preserves the measured source sample rate and channel layout; resampling and channel conversion require separate governed operations before they may be executed.\n",
+              "docs-output-conversion",
+          )
+
+          for temporary in [
+              Path(".github/workflows/one-time-mastering-output-contract.yml"),
+              Path(".github/mastering-output-contract.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("MASTERING_OUTPUT_CONTRACT_PROMOTED")
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .mastering-output-verify.log
+          npm run build 2>&1 | tee .mastering-output-build.log
+      - name: Commit output contract
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Govern mastering output profiles"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/mastering-output-contract",
+              description: state === "success"
+                ? "Mastering output contract, tests and builds passed"
+                : "Mastering output contract failed verification",
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
