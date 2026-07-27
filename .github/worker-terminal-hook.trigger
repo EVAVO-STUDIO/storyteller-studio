@@ -1,1 +1,1 @@
-stop lease renewal before every governed worker terminal transition and publish each source anchor
+stop lease renewal before every governed worker terminal transition with the corrected generic anchor
