@@ -1,1 +1,1 @@
-correct the async mastering fixture and verify every repository gate
+correct the async mastering fixture, retain exact diagnostics and verify every gate
