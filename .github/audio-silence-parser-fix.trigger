@@ -1,1 +1,1 @@
-reject malformed silencedetect output and verify the full repository
+reject malformed silencedetect output using stable single-line anchors
