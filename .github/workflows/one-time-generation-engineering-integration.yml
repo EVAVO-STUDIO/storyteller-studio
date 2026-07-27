@@ -39,35 +39,30 @@ jobs:
           replacements = [
               (
                   'import { createHash } from "node:crypto";\n',
-                  '''import { createHash } from "node:crypto";
-          import {
-            ingestAudioEngineeringArtifact,
-            type AudioEngineeringArtifactResult,
-          } from "./audio-engineering-artifact.js";
-          import type { GenerationAudioEngineeringPolicy } from "./generation-audio-engineering.js";
-          ''',
+                  'import { createHash } from "node:crypto";\n'
+                  'import {\n'
+                  '  ingestAudioEngineeringArtifact,\n'
+                  '  type AudioEngineeringArtifactResult,\n'
+                  '} from "./audio-engineering-artifact.js";\n'
+                  'import type { GenerationAudioEngineeringPolicy } from "./generation-audio-engineering.js";\n',
                   "imports",
               ),
               (
-                  '''  artifactRegistry: FileArtifactRegistry;
-            material: GenerationWorkerMaterial;
-          ''',
-                  '''  artifactRegistry: FileArtifactRegistry;
-            audioEngineering?: GenerationAudioEngineeringPolicy;
-            material: GenerationWorkerMaterial;
-          ''',
+                  '  artifactRegistry: FileArtifactRegistry;\n'
+                  '  material: GenerationWorkerMaterial;\n',
+                  '  artifactRegistry: FileArtifactRegistry;\n'
+                  '  audioEngineering?: GenerationAudioEngineeringPolicy;\n'
+                  '  material: GenerationWorkerMaterial;\n',
                   "worker-input",
               ),
               (
-                  '''}>): Promise<readonly ArtifactIngestResult[]> {
-            const { worker, request, result, now } = input;
-          ''',
-                  '''}>): Promise<Readonly<{
-            ingested: readonly ArtifactIngestResult[];
-            engineering?: AudioEngineeringArtifactResult;
-          }>> {
-            const { worker, request, result, now } = input;
-          ''',
+                  '}>): Promise<readonly ArtifactIngestResult[]> {\n'
+                  '  const { worker, request, result, now } = input;\n',
+                  '}>): Promise<Readonly<{\n'
+                  '  ingested: readonly ArtifactIngestResult[];\n'
+                  '  engineering?: AudioEngineeringArtifactResult;\n'
+                  '}>> {\n'
+                  '  const { worker, request, result, now } = input;\n',
                   "ingest-return-type",
               ),
               (
@@ -76,126 +71,116 @@ jobs:
                   "early-return",
               ),
               (
-                  '''  return ingested;
-          }
-
-          async function ingestExecutionReport''',
-                  '''  let engineering: AudioEngineeringArtifactResult | undefined;
-            if (worker.audioEngineering) {
-              if (request.format === "pcm") {
-                throw new Error("GENERATION_AUDIO_ENGINEERING_FORMAT_UNSUPPORTED");
-              }
-              engineering = await ingestAudioEngineeringArtifact(
-                worker.objectStore,
-                worker.artifactRegistry,
-                {
-                  candidateArtifactId: identity.artifactId,
-                  projectId: worker.claim.item.projectId,
-                  jobId: worker.claim.item.jobId,
-                  segmentId: worker.claim.item.segmentId,
-                  takeId: identity.takeId,
-                  generationRequestHash: request.idempotencyKey,
-                  bytes: result.audio,
-                  format: request.format,
-                  rights: worker.material.rights,
-                  actorId: worker.workerActorId,
-                  verifierActorId,
-                  profile: worker.audioEngineering.profile.profile,
-                  profileVersion: worker.audioEngineering.profile.externalVersion,
-                  profileReviewedAt: worker.audioEngineering.profile.reviewedAt,
-                  profileSourceReference: worker.audioEngineering.profile.sourceReference,
-                  ...(worker.audioEngineering.runner
-                    ? { runner: worker.audioEngineering.runner }
-                    : {}),
-                  ...(worker.audioEngineering.ffprobePath
-                    ? { ffprobePath: worker.audioEngineering.ffprobePath }
-                    : {}),
-                  ...(worker.audioEngineering.ffmpegPath
-                    ? { ffmpegPath: worker.audioEngineering.ffmpegPath }
-                    : {}),
-                  ...(worker.audioEngineering.timeoutMs !== undefined
-                    ? { timeoutMs: worker.audioEngineering.timeoutMs }
-                    : {}),
-                  ...(worker.audioEngineering.maximumOutputBytes !== undefined
-                    ? { maximumOutputBytes: worker.audioEngineering.maximumOutputBytes }
-                    : {}),
-                  ...(worker.audioEngineering.temporaryRoot
-                    ? { temporaryRoot: worker.audioEngineering.temporaryRoot }
-                    : {}),
-                  now,
-                  ...(worker.signal ? { signal: worker.signal } : {}),
-                },
-              );
-              ingested.push(engineering.ingest);
-            }
-
-            return Object.freeze({
-              ingested: Object.freeze(ingested),
-              ...(engineering ? { engineering } : {}),
-            });
-          }
-
-          async function ingestExecutionReport''',
+                  '  return ingested;\n'
+                  '}\n\n'
+                  'async function ingestExecutionReport',
+                  '  let engineering: AudioEngineeringArtifactResult | undefined;\n'
+                  '  if (worker.audioEngineering) {\n'
+                  '    if (request.format === "pcm") {\n'
+                  '      throw new Error("GENERATION_AUDIO_ENGINEERING_FORMAT_UNSUPPORTED");\n'
+                  '    }\n'
+                  '    engineering = await ingestAudioEngineeringArtifact(\n'
+                  '      worker.objectStore,\n'
+                  '      worker.artifactRegistry,\n'
+                  '      {\n'
+                  '        candidateArtifactId: identity.artifactId,\n'
+                  '        projectId: worker.claim.item.projectId,\n'
+                  '        jobId: worker.claim.item.jobId,\n'
+                  '        segmentId: worker.claim.item.segmentId,\n'
+                  '        takeId: identity.takeId,\n'
+                  '        generationRequestHash: request.idempotencyKey,\n'
+                  '        bytes: result.audio,\n'
+                  '        format: request.format,\n'
+                  '        rights: worker.material.rights,\n'
+                  '        actorId: worker.workerActorId,\n'
+                  '        verifierActorId,\n'
+                  '        profile: worker.audioEngineering.profile.profile,\n'
+                  '        profileVersion: worker.audioEngineering.profile.externalVersion,\n'
+                  '        profileReviewedAt: worker.audioEngineering.profile.reviewedAt,\n'
+                  '        profileSourceReference: worker.audioEngineering.profile.sourceReference,\n'
+                  '        ...(worker.audioEngineering.runner\n'
+                  '          ? { runner: worker.audioEngineering.runner }\n'
+                  '          : {}),\n'
+                  '        ...(worker.audioEngineering.ffprobePath\n'
+                  '          ? { ffprobePath: worker.audioEngineering.ffprobePath }\n'
+                  '          : {}),\n'
+                  '        ...(worker.audioEngineering.ffmpegPath\n'
+                  '          ? { ffmpegPath: worker.audioEngineering.ffmpegPath }\n'
+                  '          : {}),\n'
+                  '        ...(worker.audioEngineering.timeoutMs !== undefined\n'
+                  '          ? { timeoutMs: worker.audioEngineering.timeoutMs }\n'
+                  '          : {}),\n'
+                  '        ...(worker.audioEngineering.maximumOutputBytes !== undefined\n'
+                  '          ? { maximumOutputBytes: worker.audioEngineering.maximumOutputBytes }\n'
+                  '          : {}),\n'
+                  '        ...(worker.audioEngineering.temporaryRoot\n'
+                  '          ? { temporaryRoot: worker.audioEngineering.temporaryRoot }\n'
+                  '          : {}),\n'
+                  '        now,\n'
+                  '        ...(worker.signal ? { signal: worker.signal } : {}),\n'
+                  '      },\n'
+                  '    );\n'
+                  '    ingested.push(engineering.ingest);\n'
+                  '  }\n\n'
+                  '  return Object.freeze({\n'
+                  '    ingested: Object.freeze(ingested),\n'
+                  '    ...(engineering ? { engineering } : {}),\n'
+                  '  });\n'
+                  '}\n\n'
+                  'async function ingestExecutionReport',
                   "engineering-ingest",
               ),
               (
-                  '''  const requestsById = new Map(requests.map((request) => [request.requestId, request]));
-            const ingested: ArtifactIngestResult[] = [];
-            try {
-          ''',
-                  '''  const requestsById = new Map(requests.map((request) => [request.requestId, request]));
-            const ingested: ArtifactIngestResult[] = [];
-            const engineeringBlockedCodes: string[] = [];
-            try {
-          ''',
+                  '  const requestsById = new Map(requests.map((request) => [request.requestId, request]));\n'
+                  '  const ingested: ArtifactIngestResult[] = [];\n'
+                  '  try {\n',
+                  '  const requestsById = new Map(requests.map((request) => [request.requestId, request]));\n'
+                  '  const ingested: ArtifactIngestResult[] = [];\n'
+                  '  const engineeringBlockedCodes: string[] = [];\n'
+                  '  try {\n',
                   "engineering-code-ledger",
               ),
               (
-                  '''      ingested.push(...await ingestResultArtifacts({
-                worker: input,
-                request,
-                result,
-                now: currentTime(),
-              }));
-          ''',
-                  '''      const resultArtifacts = await ingestResultArtifacts({
-                worker: input,
-                request,
-                result,
-                now: currentTime(),
-              });
-              ingested.push(...resultArtifacts.ingested);
-              if (resultArtifacts.engineering && !resultArtifacts.engineering.candidateEligible) {
-                const codes = resultArtifacts.engineering.evidence.findings
-                  .filter((finding) => finding.severity === "error")
-                  .map((finding) => finding.code);
-                engineeringBlockedCodes.push(
-                  ...(codes.length > 0 ? codes : ["GENERATION_AUDIO_ENGINEERING_INELIGIBLE"]),
-                );
-              }
-          ''',
+                  '      ingested.push(...await ingestResultArtifacts({\n'
+                  '        worker: input,\n'
+                  '        request,\n'
+                  '        result,\n'
+                  '        now: currentTime(),\n'
+                  '      }));\n',
+                  '      const resultArtifacts = await ingestResultArtifacts({\n'
+                  '        worker: input,\n'
+                  '        request,\n'
+                  '        result,\n'
+                  '        now: currentTime(),\n'
+                  '      });\n'
+                  '      ingested.push(...resultArtifacts.ingested);\n'
+                  '      if (resultArtifacts.engineering && !resultArtifacts.engineering.candidateEligible) {\n'
+                  '        const codes = resultArtifacts.engineering.evidence.findings\n'
+                  '          .filter((finding) => finding.severity === "error")\n'
+                  '          .map((finding) => finding.code);\n'
+                  '        engineeringBlockedCodes.push(\n'
+                  '          ...(codes.length > 0 ? codes : ["GENERATION_AUDIO_ENGINEERING_INELIGIBLE"]),\n'
+                  '        );\n'
+                  '      }\n',
                   "result-ingest",
               ),
               (
-                  '''  if (report.status !== "completed") {
-          ''',
-                  '''  if (engineeringBlockedCodes.length > 0) {
-              return blockClaim({
-                worker: input,
-                executionStatus: report.status,
-                accounting,
-                codes: Object.freeze([...new Set(engineeringBlockedCodes)].sort()),
-                message: "Independent engineering evidence did not satisfy the configured delivery profile.",
-                artifacts,
-                candidateArtifactIds,
-                reportArtifactId: reportArtifact.ingest.envelope.payload.id,
-                reportHash: reportArtifact.reportHash,
-                now: currentTime(),
-              });
-            }
-
-            if (report.status !== "completed") {
-          ''',
+                  '  if (report.status !== "completed") {\n',
+                  '  if (engineeringBlockedCodes.length > 0) {\n'
+                  '    return blockClaim({\n'
+                  '      worker: input,\n'
+                  '      executionStatus: report.status,\n'
+                  '      accounting,\n'
+                  '      codes: Object.freeze([...new Set(engineeringBlockedCodes)].sort()),\n'
+                  '      message: "Independent engineering evidence did not satisfy the configured delivery profile.",\n'
+                  '      artifacts,\n'
+                  '      candidateArtifactIds,\n'
+                  '      reportArtifactId: reportArtifact.ingest.envelope.payload.id,\n'
+                  '      reportHash: reportArtifact.reportHash,\n'
+                  '      now: currentTime(),\n'
+                  '    });\n'
+                  '  }\n\n'
+                  '  if (report.status !== "completed") {\n',
                   "engineering-block",
               ),
           ]
