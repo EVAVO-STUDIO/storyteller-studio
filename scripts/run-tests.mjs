@@ -50,9 +50,13 @@ const result = spawnSync(
   {
     cwd: repositoryRoot,
     env: process.env,
-    stdio: "inherit",
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
   },
 );
+
+if (result.stdout) process.stdout.write(result.stdout);
+if (result.stderr) process.stderr.write(result.stderr);
 
 if (result.error) {
   console.error(`TEST_RUNNER_SPAWN_FAILED:${result.error.message}`);
@@ -65,5 +69,16 @@ if (result.signal) {
 }
 
 const exitCode = result.status ?? 1;
-if (exitCode !== 0) console.error(`TEST_SCOPE_FAILED:${scope}:exit-${exitCode}`);
+if (exitCode !== 0) {
+  const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`
+    .replace(/\u001b\[[0-9;]*m/g, "");
+  const lines = combined
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const primary = lines.find((line) => /^(?:not ok \d+ - |[✖✘]\s+)/u.test(line))
+    ?? lines.find((line) => /AssertionError|ERR_[A-Z_]+|failureType:|Could not find|(?:^|\s)Error:/u.test(line))
+    ?? `exit-${exitCode}`;
+  console.error(`TEST_FAILURE_DIAGNOSTIC:${scope}:${primary}`);
+}
 process.exit(exitCode);
