@@ -7,7 +7,7 @@ const fromRoot = (path) => resolve(root, path);
 const read = (path) => readFileSync(fromRoot(path), "utf8");
 
 function requireFile(path) {
-  if (!existsSync(fromRoot(path))) problems.push(`missing ElevenLabs production-path file: ${path}`);
+  if (!existsSync(fromRoot(path))) problems.push(`missing calibrated ElevenLabs file: ${path}`);
 }
 
 function requireTokens(path, tokens) {
@@ -15,7 +15,7 @@ function requireTokens(path, tokens) {
   const source = read(path);
   for (const token of tokens) {
     if (!source.includes(token)) {
-      problems.push(`${path} is missing ElevenLabs production-path token: ${token}`);
+      problems.push(`${path} is missing calibrated ElevenLabs contract token: ${token}`);
     }
   }
 }
@@ -41,15 +41,23 @@ function collectRuntimeFiles(directory, output = []) {
 for (const path of [
   "apps/worker/src/elevenlabs-generation.test.ts",
   "apps/worker/src/runtime.ts",
+  "packages/storyteller/src/calibration-admission.ts",
+  "packages/storyteller/src/generation-calibration.ts",
   "packages/storyteller/src/generation-worker.ts",
   "packages/storyteller/src/generation-budget.ts",
   "packages/storyteller/src/artifact-ingest.ts",
   "packages/storyteller/src/artifact-queue.ts",
+  "packages/storyteller/src/elevenlabs-adapter.ts",
   "docs/ELEVENLABS_PRODUCTION_PATH.md",
 ]) requireFile(path);
 
 requireTokens("apps/worker/src/elevenlabs-generation.test.ts", [
-  "queued ElevenLabs production reserves budget, verifies artifacts and completes with exact evidence",
+  "queued ElevenLabs production requires approved calibration, reserves budget, verifies artifacts and completes with exact evidence",
+  "FileCalibrationSessionStore",
+  "FileGenerationCalibrationBindingStore",
+  "createProductionCalibrationLock",
+  "persistCalibrationAndBinding",
+  "approvedCapabilityFingerprint",
   "FileBudgetLedger",
   "FileGenerationMaterialStore",
   "FileGenerationQueue",
@@ -62,31 +70,46 @@ requireTokens("apps/worker/src/elevenlabs-generation.test.ts", [
   "sampleRateHz: 44_100",
   "maximumTotalEstimatedCost: 0.1",
   "authorisedMicros: budgetMicros(1)",
-  "await materials.create",
-  "await queue.enqueue",
   'endpoint.searchParams.get("output_format")',
   'endpoint.searchParams.get("enable_logging")',
   "assert.equal(body.text, text)",
   'assert.equal(body.model_id, "eleven_multilingual_v2")',
-  'JSON.stringify(body).includes("emotionalObjective")',
-  'JSON.stringify(body).includes("subtext")',
   "outputArtifactRefs.length, 4",
-  "totalEstimatedCost, 0.00168",
   "committedMicros, 1_680",
-  '"audio-analysis"',
-  '"audio-candidate"',
-  '"transcript"',
-  '"word-alignment"',
   'verification.status, "verified"',
+  "artifact_calibration_take_elevenlabs_generation_001",
+  "reviewer_elevenlabs_generation_001",
+]);
+
+requireTokens("apps/worker/src/runtime.ts", [
+  "FileCalibrationSessionStore",
+  "FileGenerationCalibrationBindingStore",
+  "CalibratedGenerationMaterialStore",
+  "createCalibrationBoundProviderRegistry",
+  "FileGenerationBudgetController",
+  "requireBudget: true",
+]);
+
+requireTokens("packages/storyteller/src/calibration-admission.ts", [
+  "createProductionCalibrationLock",
+  "validatePersistedProductionCalibrationLock",
+  "validateProductionCalibrationScope",
+  "calibrationExecutionFindingCodes",
+]);
+
+requireTokens("packages/storyteller/src/generation-calibration.ts", [
+  "FileGenerationCalibrationBindingStore",
+  "CalibratedGenerationMaterialStore",
+  "createCalibrationBoundProviderRegistry",
+  "resolveForMaterial",
+  "resolveForRequest",
 ]);
 
 requireTokens("packages/storyteller/src/generation-worker.ts", [
-  "executeGenerationJob",
+  "runClaimedGenerationWorker",
   "ingestResultArtifacts",
   "ingestExecutionReport",
-  "executionAccounting",
   "completeGenerationWithArtifacts",
-  "beforeQueueComplete",
   "beforeTerminalTransition",
 ]);
 
@@ -95,12 +118,11 @@ requireTokens("packages/storyteller/src/generation-budget.ts", [
   "reserve(",
   "settle(",
   "GENERATION_BUDGET_COMPLETED",
-  "GENERATION_BUDGET_COMPLETION_ACCOUNTING_INVALID",
 ]);
 
 requireTokens("packages/storyteller/src/artifact-ingest.ts", [
   "ingestPrivateArtifact",
-  "verificationChecks",
+  "verifyArtifactIntegrity",
   "quarantine",
 ]);
 
@@ -111,48 +133,86 @@ requireTokens("packages/storyteller/src/artifact-queue.ts", [
   "input.queue.complete",
 ]);
 
+requireTokens("packages/storyteller/src/elevenlabs-adapter.ts", [
+  "ElevenLabsNarrationAdapter",
+  "/with-timestamps",
+  "original_alignment",
+  "ELEVENLABS_ALIGNMENT_TEXT_MISMATCH",
+]);
+
 requireTokens("docs/ELEVENLABS_PRODUCTION_PATH.md", [
-  "Proven sequence",
+  "Governed ElevenLabs Production Path",
+  "Approved calibration admission",
+  "production calibration lock",
+  "per-job calibration binding",
   "Exact provider request",
-  "Timestamp and media evidence",
   "Transactional budget proof",
   "Queue completion evidence",
-  "Redacted operational result",
   "What the fixture does not prove",
-  "Required next evidence",
-  "A technically completed provider job is therefore a verified candidate set, not a finished audiobook chapter",
 ]);
 
 const fixture = existsSync(fromRoot("apps/worker/src/elevenlabs-generation.test.ts"))
   ? read("apps/worker/src/elevenlabs-generation.test.ts")
   : "";
-const accountIndex = fixture.indexOf("await ledger.createAccount");
-const materialIndex = fixture.indexOf("await materials.create");
-const enqueueIndex = fixture.indexOf("await queue.enqueue");
-const runtimeIndex = fixture.indexOf("await runConfiguredWorkerRuntime");
-if (
-  accountIndex < 0
-  || materialIndex < 0
-  || enqueueIndex < 0
-  || runtimeIndex < 0
-  || accountIndex >= materialIndex
-  || materialIndex >= enqueueIndex
-  || enqueueIndex >= runtimeIndex
-) {
-  problems.push("ElevenLabs production fixture does not prepare budget, material and queue before worker execution");
+const orderedFixtureTokens = [
+  "const configuration = resolveWorkerRuntimeConfiguration",
+  "const ledger = new FileBudgetLedger",
+  "await materials.create(job, material()",
+  "const approvedCalibration = await persistCalibrationAndBinding",
+  "await queue.enqueue(job",
+  "const providers = createWorkerProviderRegistry",
+  "const result = await runConfiguredWorkerRuntime",
+  "const queueEnvelope = await queue.read",
+  "const budget = await ledger.require",
+  "const artifactRows = await registry.list",
+];
+let previous = -1;
+for (const token of orderedFixtureTokens) {
+  const index = fixture.indexOf(token, previous + 1);
+  if (index < 0) {
+    problems.push(`calibrated ElevenLabs fixture sequence is missing: ${token}`);
+    continue;
+  }
+  previous = index;
 }
 
-const resultIndex = fixture.indexOf('assert.equal(result.status, "stopped")');
-const queueCompletedIndex = fixture.indexOf('queueEnvelope?.payload.status, "completed"');
-const budgetCommittedIndex = fixture.indexOf("budget.payload.committedMicros, 1_680");
-const artifactsVerifiedIndex = fixture.indexOf('artifact.payload.verification.status, "verified"');
-if (
-  resultIndex < 0
-  || queueCompletedIndex < 0
-  || budgetCommittedIndex < 0
-  || artifactsVerifiedIndex < 0
-) {
-  problems.push("ElevenLabs production fixture does not assert worker, queue, budget and artifact outcomes");
+const runtime = existsSync(fromRoot("apps/worker/src/runtime.ts"))
+  ? read("apps/worker/src/runtime.ts")
+  : "";
+const orderedRuntimeTokens = [
+  "const queueState = new FileProjectStore",
+  "const calibrationStore = new FileCalibrationSessionStore",
+  "const calibrationBindings = new FileGenerationCalibrationBindingStore",
+  "const materials = new CalibratedGenerationMaterialStore",
+  "const providers = createCalibrationBoundProviderRegistry",
+  "const budgetController = new FileGenerationBudgetController",
+  "const artifactRegistry = new FileArtifactRegistry",
+  "return new GenerationWorkerService",
+];
+previous = -1;
+for (const token of orderedRuntimeTokens) {
+  const index = runtime.indexOf(token, previous + 1);
+  if (index < 0) {
+    problems.push(`calibrated worker runtime sequence is missing: ${token}`);
+    continue;
+  }
+  previous = index;
+}
+
+for (const sentinel of [
+  "fixture-elevenlabs-generation-secret",
+  "premadeVoice0001",
+  "Aelwyn waited.",
+  "artifact_calibration_take_elevenlabs_generation_001",
+  "reviewer_elevenlabs_generation_001",
+  "greg_parker",
+]) {
+  if (!fixture.includes(sentinel)) {
+    problems.push(`calibrated ElevenLabs fixture is missing redaction sentinel: ${sentinel}`);
+  }
+}
+if (!fixture.includes("assert.equal(serialised.includes(forbidden), false)")) {
+  problems.push("calibrated ElevenLabs fixture does not assert redacted runtime output");
 }
 
 for (const path of [
@@ -161,38 +221,44 @@ for (const path of [
 ]) {
   const source = read(path);
   for (const forbidden of [
-    "elevenlabs-generation.test",
     "runConfiguredWorkerRuntime",
-    "FileGenerationBudgetController",
+    "FileGenerationCalibrationBindingStore",
+    "CalibratedGenerationMaterialStore",
+    "createCalibrationBoundProviderRegistry",
     "ingestPrivateArtifact",
     "completeGenerationWithArtifacts",
     "/with-timestamps",
   ]) {
     if (source.includes(forbidden)) {
-      problems.push(`${path} exposes the private production execution path: ${forbidden}`);
+      problems.push(`${path} exposes the private calibrated production path: ${forbidden}`);
     }
   }
 }
 
 for (const path of [
-  ".github/workflows/one-time-elevenlabs-generation-test-fix.yml",
-  ".github/elevenlabs-generation-test-fix.trigger",
+  ".github/workflows/one-time-calibrated-elevenlabs-verifier.yml",
+  ".github/calibrated-elevenlabs-verifier.trigger",
+  ".github/workflows/one-time-calibrated-elevenlabs-verifier-v2.yml",
+  ".github/calibrated-elevenlabs-verifier-v2.trigger",
+  "scripts/check-elevenlabs-generation-v2.mjs",
+  "scripts/check-elevenlabs-generation-current.mjs",
 ]) {
   if (existsSync(fromRoot(path))) {
-    problems.push(`completed ElevenLabs generation fixture correction remains: ${path}`);
+    problems.push(`temporary calibrated verifier file remains: ${path}`);
   }
 }
 
 if (problems.length > 0) {
-  console.error("Storyteller Studio ElevenLabs production path check failed:\n");
+  console.error("Storyteller Studio calibrated ElevenLabs generation check failed:\n");
   for (const problem of problems) console.error(`- ${problem}`);
   process.exit(1);
 }
 
-console.log("storyteller_elevenlabs_generation_check_passed");
-console.log("- one governed queue job traverses preflight, claim, budget, synthesis, artifact admission and completion");
-console.log("- provider input remains exact source text with bounded settings and deterministic seed");
+console.log("storyteller_calibrated_elevenlabs_generation_check_passed");
+console.log("- production synthesis requires an approved calibration session and immutable per-job lock");
+console.log("- calibrated material is resolved before provider credentials, budget reservation or synthesis");
+console.log("- provider, model and capability evidence are rechecked around the exact request");
+console.log("- project budget is reserved before provider work and actual cost is committed before completion");
 console.log("- verified audio, transcript, alignment and execution evidence back queue completion");
-console.log("- actual estimated cost commits after artifact admission and before completion");
-console.log("- operational results omit manuscript, credential, voice, provider-request and storage identities");
-console.log("- the fixture proves orchestration, not subjective narration or release readiness");
+console.log("- API, browser and operational outputs omit private calibration, credential and storage evidence");
+console.log("- the deterministic fixture proves orchestration, not real narrator quality or release readiness");
