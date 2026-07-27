@@ -329,6 +329,40 @@ test("release remains blocked until every dependency is verified, reviewed and r
   }, t1);
   const chapter = approve(verify(chapterPending, t2), t3);
 
+  const masteredPending = createArtifactRecord({
+    id: "artifact_mastered_release_001",
+    kind: "mastered-chapter",
+    projectId: job.projectId,
+    segmentId: "chapter_001",
+    takeId: "mastered_release_take_001",
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/chapters/chapter_001/mastered-release.wav`,
+      versionId: "mastered-version-001",
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "c".repeat(64),
+      byteCount: 960_000,
+      mimeType: "audio/wav",
+      format: "wav",
+    },
+    provenance: {
+      createdByActorId: "mastering_release_001",
+      sourceContentHash: chapter.integrity.contentHash,
+      generationRequestHash: "4".repeat(64),
+      parentArtifactIds: [chapter.id],
+    },
+    rights: rights(),
+  }, new Date(t3.getTime() + 100));
+  const mastered = approve(
+    verify(masteredPending, new Date(t3.getTime() + 200)),
+    new Date(t3.getTime() + 300),
+  );
+
   const releasePending = createArtifactRecord({
     id: "artifact_release_001",
     kind: "release-package",
@@ -351,14 +385,14 @@ test("release remains blocked until every dependency is verified, reviewed and r
     provenance: {
       createdByActorId: "release_artifact_001",
       sourceContentHash: "d".repeat(64),
-      parentArtifactIds: [chapter.id],
+      parentArtifactIds: [mastered.id],
     },
     rights: rights(),
   }, t2);
   const releaseVerified = verify(releasePending, t3);
 
   const blocked = assessArtifactRelease(
-    [first, second, chapter, releaseVerified],
+    [first, second, chapter, mastered, releaseVerified],
     releaseVerified.id,
     { finalConfirmationId: "confirmation_release_001", now: t3 },
   );
@@ -368,19 +402,20 @@ test("release remains blocked until every dependency is verified, reviewed and r
   const releaseApproved = recordArtifactReview(releaseVerified, {
     decision: "approved",
     reviewerId: "reviewer_release_001",
-    notes: "Package order, metadata, checksums and approved chapter masters were reviewed.",
+    notes: "Package order, metadata, checksums and approved mastered chapters were reviewed.",
     decidedAt: new Date(t3.getTime() + 1_000),
   });
   const assessment = assessArtifactRelease(
-    [first, second, chapter, releaseApproved],
+    [first, second, chapter, mastered, releaseApproved],
     releaseApproved.id,
     { finalConfirmationId: "confirmation_release_001", now: new Date(t3.getTime() + 2_000) },
   );
   assert.equal(assessment.ok, true);
   assert.equal(assessment.artifactIds.includes(chapter.id), true);
+  assert.equal(assessment.artifactIds.includes(mastered.id), true);
 
   const released = confirmArtifactRelease(
-    [first, second, chapter, releaseApproved],
+    [first, second, chapter, mastered, releaseApproved],
     releaseApproved.id,
     {
       finalConfirmationId: "confirmation_release_001",
@@ -391,6 +426,72 @@ test("release remains blocked until every dependency is verified, reviewed and r
   assert.equal(released.release.status, "released");
   assert.equal(released.release.finalConfirmationId, "confirmation_release_001");
   assert.equal(released.revision, releaseApproved.revision + 1);
+});
+
+test("a pre-master chapter alone cannot satisfy audiobook release", () => {
+  const candidate = approve(verify(createCandidate("artifact_take_pre_master_only", "take_pre_master_only", "5")));
+  const chapter = approve(verify(createArtifactRecord({
+    id: "artifact_pre_master_only_001",
+    kind: "chapter-master",
+    projectId: job.projectId,
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/chapters/chapter_pre_master_only/master.wav`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "6".repeat(64),
+      byteCount: 960_000,
+      mimeType: "audio/wav",
+      format: "wav",
+    },
+    provenance: {
+      createdByActorId: "assembler_pre_master_only_001",
+      sourceContentHash: "d".repeat(64),
+      parentArtifactIds: [candidate.id],
+    },
+    rights: rights(),
+  }, t1), t2), t3);
+  const release = approve(verify(createArtifactRecord({
+    id: "artifact_release_pre_master_only_001",
+    kind: "release-package",
+    projectId: job.projectId,
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/releases/pre-master-only.zip`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "7".repeat(64),
+      byteCount: 1_200_000,
+      mimeType: "application/zip",
+      format: "zip",
+    },
+    provenance: {
+      createdByActorId: "release_pre_master_only_001",
+      sourceContentHash: chapter.integrity.contentHash,
+      parentArtifactIds: [chapter.id],
+    },
+    rights: rights(),
+  }, t1), t2), t3);
+  const assessment = assessArtifactRelease(
+    [candidate, chapter, release],
+    release.id,
+    { finalConfirmationId: "confirmation_pre_master_only_001", now: t3 },
+  );
+  assert.equal(assessment.ok, false);
+  assert.equal(
+    assessment.findings.some((finding) =>
+      finding.code === "ARTIFACT_RELEASE_MASTERED_CHAPTER_REQUIRED"
+    ),
+    true,
+  );
 });
 
 test("expired rights block queue completion and final release", () => {

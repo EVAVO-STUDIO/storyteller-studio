@@ -971,11 +971,11 @@ export function assessArtifactRelease(
   };
   walk(release);
 
-  if (![...visited].some((id) => byId.get(id)?.kind === "chapter-master")) {
+  if (![...visited].some((id) => byId.get(id)?.kind === "mastered-chapter")) {
     findings.push({
-      code: "ARTIFACT_RELEASE_CHAPTER_MASTER_REQUIRED",
+      code: "ARTIFACT_RELEASE_MASTERED_CHAPTER_REQUIRED",
       severity: "error",
-      message: "Audiobook release package must depend on at least one verified chapter master.",
+      message: "Audiobook release package must depend on at least one verified and approved mastered chapter.",
     });
   }
 
