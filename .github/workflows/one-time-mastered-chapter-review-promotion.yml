@@ -1,0 +1,138 @@
+name: One-time mastered chapter review promotion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastered-chapter-review-promotion.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Promote mastered chapter review contracts
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .mastered-review-promotion.log
+          import json
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(f"MASTERED_REVIEW_PROMOTION_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"MASTERED_REVIEW_PROMOTION_ANCHOR_INVALID:{label}:{count}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          store_path = Path("packages/storyteller/src/project-store.ts")
+          replace_once(
+              store_path,
+              '  | "take-assessment"\n  | "chapter-assembly"\n',
+              '  | "take-assessment"\n  | "mastered-chapter-review"\n  | "chapter-assembly"\n',
+              "store-entity",
+          )
+
+          engine_path = Path("packages/storyteller/package.json")
+          engine = json.loads(engine_path.read_text(encoding="utf-8"))
+          engine["exports"]["./mastered-chapter-review"] = "./src/mastered-chapter-review.ts"
+          engine["exports"] = dict(sorted(engine["exports"].items()))
+          engine_path.write_text(json.dumps(engine, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+          root_path = Path("package.json")
+          root = json.loads(root_path.read_text(encoding="utf-8"))
+          scripts = root["scripts"]
+          scripts["verify:mastered-review"] = "node scripts/check-mastered-chapter-review.mjs"
+          marker = "npm run verify:mastered"
+          if "npm run verify:mastered-review" not in scripts["verify:artifacts"]:
+              if marker not in scripts["verify:artifacts"]:
+                  raise SystemExit("MASTERED_REVIEW_VERIFY_MARKER_MISSING")
+              scripts["verify:artifacts"] = scripts["verify:artifacts"].replace(
+                  marker,
+                  f"{marker} && npm run verify:mastered-review",
+                  1,
+              )
+          root_path.write_text(json.dumps(root, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+          for temporary in [
+              Path(".github/workflows/one-time-mastered-chapter-review-promotion.yml"),
+              Path(".github/mastered-chapter-review-promotion.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("MASTERED_CHAPTER_REVIEW_PROMOTED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .mastered-review-promotion-verify.log
+          npm run build 2>&1 | tee .mastered-review-promotion-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastered-chapter-review-promotion-${{ github.sha }}
+          path: |
+            .mastered-review-promotion.log
+            .mastered-review-promotion-verify.log
+            .mastered-review-promotion-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f .mastered-review-promotion.log .mastered-review-promotion-verify.log .mastered-review-promotion-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify mastered chapter human review"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".mastered-review-promotion.log",
+              ".mastered-review-promotion-verify.log",
+              ".mastered-review-promotion-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /MASTERED_REVIEW_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "mastered chapter review promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/mastered-chapter-review-promotion",
+              description: state === "success" ? "Mastered review, complete tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
