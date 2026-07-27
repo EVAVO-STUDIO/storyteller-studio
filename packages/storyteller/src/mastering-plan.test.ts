@@ -293,6 +293,8 @@ test("transparent gain proposal blocks impossible windows and source repair requ
   );
 
   const damaged = await engineeringEvidence({
+    peakDb: 0,
+    truePeakDb: 0.5,
     clippedSampleCount: 4,
     sampleRateHz: 22_050,
     channels: 2,
