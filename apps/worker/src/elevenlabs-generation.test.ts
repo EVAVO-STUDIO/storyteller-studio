@@ -1,15 +1,49 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
-import { FileBudgetLedger, budgetMicros } from "@evavo/storyteller-engine/budget-ledger";
-import { createElevenLabsPricingSnapshot } from "@evavo/storyteller-engine/elevenlabs-adapter";
+import {
+  FileBudgetLedger,
+  budgetMicros,
+} from "@evavo/storyteller-engine/budget-ledger";
+import {
+  createProductionCalibrationLock,
+} from "@evavo/storyteller-engine/calibration-admission";
+import { FileCalibrationSessionStore } from "@evavo/storyteller-engine/calibration-store";
+import {
+  addCalibrationCandidate,
+  approveCalibrationSession,
+  createCalibrationPolicy,
+  createCalibrationSession,
+  proposeCalibrationPassages,
+  recordCalibrationReview,
+  selectCalibrationCandidate,
+  type CalibrationCandidate,
+  type CalibrationPassage,
+  type CalibrationReview,
+  type CalibrationSession,
+} from "@evavo/storyteller-engine/calibration-workflow";
+import {
+  createElevenLabsPricingSnapshot,
+} from "@evavo/storyteller-engine/elevenlabs-adapter";
+import {
+  FileGenerationCalibrationBindingStore,
+} from "@evavo/storyteller-engine/generation-calibration";
 import { FileGenerationMaterialStore } from "@evavo/storyteller-engine/generation-material";
 import { FileGenerationQueue } from "@evavo/storyteller-engine/generation-queue";
 import type { GenerationWorkerMaterial } from "@evavo/storyteller-engine/generation-worker";
-import type { GenerationJob } from "@evavo/storyteller-engine";
+import {
+  createCapabilitySnapshot,
+} from "@evavo/storyteller-engine/provider-adapter";
+import type {
+  GenerationJob,
+  ManuscriptSegment,
+  PerformanceDirection,
+  PerformancePlan,
+  SegmentedManuscript,
+} from "@evavo/storyteller-engine";
 import { FileProjectStore } from "@evavo/storyteller-engine/project-store";
 import {
   EnvironmentCredentialResolver,
@@ -20,7 +54,9 @@ import { createWorkerProviderRegistry } from "./providers.js";
 import { runConfiguredWorkerRuntime } from "./runtime.js";
 
 const t0 = new Date("2026-07-27T00:00:00.000Z");
+const calibrationStart = new Date(t0.getTime() - 10_000);
 const text = "Aelwyn waited.";
+const sourceHash = "b".repeat(64);
 
 const job: GenerationJob = {
   id: "job_elevenlabs_generation_001",
@@ -35,7 +71,7 @@ const job: GenerationJob = {
 function material(): GenerationWorkerMaterial {
   return {
     text,
-    immutableSourceHash: "b".repeat(64),
+    immutableSourceHash: sourceHash,
     voiceProfileId: "voice_elevenlabs_generation_001",
     voiceRevision: 1,
     direction: {
@@ -72,7 +108,10 @@ function material(): GenerationWorkerMaterial {
   };
 }
 
-function pricing(modelId: "eleven_v3" | "eleven_multilingual_v2", rate: number) {
+function pricing(
+  modelId: "eleven_v3" | "eleven_multilingual_v2",
+  rate: number,
+) {
   return createElevenLabsPricingSnapshot({
     modelId,
     currency: "AUD",
@@ -146,7 +185,10 @@ function environment(dataDirectory: string): WorkerEnvironment {
   };
 }
 
-function jsonResponse(value: unknown, headers: Record<string, string> = {}): Response {
+function jsonResponse(
+  value: unknown,
+  headers: Record<string, string> = {},
+): Response {
   const body = JSON.stringify(value);
   return new Response(body, {
     status: 200,
@@ -174,7 +216,9 @@ function timestampResponse(): Response {
     alignment: {
       characters,
       character_start_times_seconds: characters.map((_, index) => index * 0.05),
-      character_end_times_seconds: characters.map((_, index) => (index + 1) * 0.05),
+      character_end_times_seconds: characters.map((_, index) =>
+        (index + 1) * 0.05
+      ),
     },
   }, { "request-id": "private-elevenlabs-request-001" });
 }
@@ -192,12 +236,195 @@ function fetchFrom(
   }) as typeof fetch;
 }
 
-test("queued ElevenLabs production reserves budget, verifies artifacts and completes with exact evidence", async () => {
+function approvedCapabilityFingerprint(): string {
+  return createCapabilitySnapshot({
+    providerId: "elevenlabs",
+    adapterVersion: "1.0.0",
+    capturedAt: t0.toISOString(),
+    features: [
+      "pronunciation-dictionary",
+      "word-timestamps",
+      "deterministic-seed",
+      "style-instructions",
+    ],
+    maximumInputCharacters: 3_000,
+    supportedFormats: ["wav", "mp3"],
+    supportedSampleRatesHz: [44_100],
+    regions: ["global"],
+    storesInputs: false,
+    trainsOnCustomerData: false,
+    customVoiceRequiresConsent: true,
+    rawPolicyVersion: "elevenlabs-enterprise-zero-retention-2026-07",
+  }).fingerprint;
+}
+
+function calibrationRevisions(): readonly CalibrationSession[] {
+  const segment: ManuscriptSegment = {
+    id: job.segmentId,
+    sourceHash,
+    chapterId: "chapter_elevenlabs_generation_001",
+    chapterOrdinal: 1,
+    chapterTitle: "Chapter One",
+    ordinal: 1,
+    kind: "narration",
+    sourceStart: 0,
+    sourceEnd: text.length,
+    text,
+    wordCount: 2,
+    estimatedSpeechSeconds: 0.8,
+  };
+  const direction: PerformanceDirection = material().direction;
+  const manuscript: SegmentedManuscript = {
+    sourceHash,
+    characterCount: text.length,
+    wordCount: 2,
+    chapters: [{
+      id: segment.chapterId,
+      ordinal: 1,
+      title: segment.chapterTitle,
+      sourceStart: 0,
+    }],
+    segments: [segment],
+    findings: [],
+  };
+  const performance: PerformancePlan = {
+    manuscriptHash: sourceHash,
+    directions: [direction],
+    calibrationSegmentIds: [segment.id],
+  };
+  const proposal = proposeCalibrationPassages(manuscript, performance);
+  const passage = proposal.passages[0];
+  if (!passage) throw new Error("ElevenLabs calibration passage required");
+  const initial = createCalibrationSession({
+    id: "calibration_elevenlabs_generation_001",
+    projectId: job.projectId,
+    seriesId: "series_elevenlabs_generation_001",
+    voiceProfileId: material().voiceProfileId,
+    voiceRevision: material().voiceRevision,
+    policy: createCalibrationPolicy({
+      requiredCategories: [passage.category],
+      minimumPassageCount: 1,
+      minimumDistinctReviewers: 1,
+      minimumMeanScore: 4,
+      minimumDimensionScore: 3.5,
+      minimumContinuityScore: 0.8,
+      requireBlindReview: true,
+      requireApprovedDecision: true,
+    }),
+    passages: [passage],
+    now: calibrationStart,
+  });
+  const candidateInput: Omit<CalibrationCandidate, "fingerprint"> = {
+    id: "candidate_elevenlabs_generation_001",
+    passageId: passage.id,
+    takeArtifactId: "artifact_calibration_take_elevenlabs_generation_001",
+    transcriptAssessmentArtifactId: "artifact_calibration_transcript_elevenlabs_generation_001",
+    technicalAssessmentArtifactId: "artifact_calibration_technical_elevenlabs_generation_001",
+    voiceProfileId: initial.voiceProfileId,
+    voiceRevision: initial.voiceRevision,
+    providerId: "elevenlabs",
+    modelId: "eleven_multilingual_v2",
+    capabilityFingerprint: approvedCapabilityFingerprint(),
+    generationRequestHash: "d".repeat(64),
+    continuityScore: 0.95,
+    eligible: true,
+    findingCodes: [],
+    createdAt: new Date(calibrationStart.getTime() + 1_000).toISOString(),
+  };
+  const collecting = addCalibrationCandidate(
+    initial,
+    candidateInput,
+    new Date(calibrationStart.getTime() + 1_000),
+  );
+  const candidate = collecting.candidates[0];
+  if (!candidate) throw new Error("ElevenLabs calibration candidate required");
+  const reviewInput: Omit<CalibrationReview, "fingerprint"> = {
+    id: "review_elevenlabs_generation_001",
+    candidateId: candidate.id,
+    reviewerId: "reviewer_elevenlabs_generation_001",
+    blind: true,
+    decision: "approve",
+    scores: {
+      listenerRelationship: 4.7,
+      textualTruth: 4.9,
+      clarity: 4.8,
+      rhythm: 4.6,
+      emotionalTruth: 4.5,
+      restraint: 4.7,
+      sustainedListenability: 4.8,
+      differentiation: 4.4,
+      pronunciation: 4.9,
+    },
+    notes: "The take remains controlled and exact through the complete passage.",
+    createdAt: new Date(calibrationStart.getTime() + 2_000).toISOString(),
+  };
+  const reviewed = recordCalibrationReview(
+    collecting,
+    reviewInput,
+    new Date(calibrationStart.getTime() + 2_000),
+  );
+  const selected = selectCalibrationCandidate(
+    reviewed,
+    {
+      passageId: passage.id,
+      candidateId: candidate.id,
+      selectedBy: "director_elevenlabs_generation_001",
+      selectedAt: new Date(calibrationStart.getTime() + 3_000).toISOString(),
+    },
+    new Date(calibrationStart.getTime() + 3_000),
+  );
+  const approved = approveCalibrationSession(selected, {
+    approvedBy: "greg_parker",
+    humanConfirmation: true,
+    now: new Date(calibrationStart.getTime() + 4_000),
+  });
+  return [initial, collecting, reviewed, selected, approved];
+}
+
+async function persistCalibrationAndBinding(input: Readonly<{
+  configuration: Extract<ReturnType<typeof resolveWorkerRuntimeConfiguration>, { enabled: true }>;
+  queueState: FileProjectStore;
+}>): Promise<CalibrationSession> {
+  const calibrationStore = new FileCalibrationSessionStore(
+    new FileProjectStore(resolve(
+      dirname(input.configuration.queueRootDirectory),
+      "calibration-sessions",
+    )),
+  );
+  const [initial, ...rest] = calibrationRevisions();
+  if (!initial) throw new Error("initial ElevenLabs calibration required");
+  let envelope = await calibrationStore.create(initial, {
+    actorId: "director_elevenlabs_generation_001",
+    now: new Date(initial.updatedAt),
+  });
+  for (const session of rest) {
+    envelope = await calibrationStore.save(session, envelope.revision, {
+      actorId: session.status === "approved"
+        ? "greg_parker"
+        : "director_elevenlabs_generation_001",
+      now: new Date(session.updatedAt),
+    });
+  }
+  const approved = envelope.payload;
+  await new FileGenerationCalibrationBindingStore(input.queueState).create(
+    job,
+    createProductionCalibrationLock(approved),
+    {
+      actorId: "director_elevenlabs_generation_001",
+      now: t0,
+    },
+  );
+  return approved;
+}
+
+test("queued ElevenLabs production requires approved calibration, reserves budget, verifies artifacts and completes with exact evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "storyteller-elevenlabs-generation-"));
   try {
     const env = environment("./private-data");
     const configuration = resolveWorkerRuntimeConfiguration(env, root);
-    if (!configuration.enabled) throw new Error("enabled worker configuration required");
+    if (!configuration.enabled) {
+      throw new Error("enabled worker configuration required");
+    }
 
     const queueState = new FileProjectStore(configuration.queueRootDirectory);
     const queue = new FileGenerationQueue(queueState);
@@ -213,6 +440,10 @@ test("queued ElevenLabs production reserves budget, verifies artifacts and compl
     await materials.create(job, material(), {
       actorId: "operator_elevenlabs_generation_001",
       now: t0,
+    });
+    const approvedCalibration = await persistCalibrationAndBinding({
+      configuration,
+      queueState,
     });
     await queue.enqueue(job, { now: t0, maxAttempts: 3 });
 
@@ -248,7 +479,11 @@ test("queued ElevenLabs production reserves budget, verifies artifacts and compl
             category: "premade",
           });
         }
-        if (url.includes("/v1/text-to-speech/premadeVoice0001/with-timestamps")) {
+        if (
+          url.includes(
+            "/v1/text-to-speech/premadeVoice0001/with-timestamps",
+          )
+        ) {
           const endpoint = new URL(url);
           assert.equal(endpoint.searchParams.get("output_format"), "wav_44100");
           assert.equal(endpoint.searchParams.get("enable_logging"), "false");
@@ -322,6 +557,11 @@ test("queued ElevenLabs production reserves budget, verifies artifacts and compl
       "premadeVoice0001",
       "voice_elevenlabs_generation_001",
       "private-elevenlabs-request-001",
+      approvedCalibration.id,
+      approvedCalibration.seriesId!,
+      "artifact_calibration_take_elevenlabs_generation_001",
+      "reviewer_elevenlabs_generation_001",
+      "greg_parker",
       configuration.queueRootDirectory,
       configuration.artifactRootDirectory,
       configuration.objectRootDirectory,
