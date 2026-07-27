@@ -1,6 +1,10 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  resolveWorkerAudioEngineeringPolicy,
+  workerAudioEngineeringPolicySummary,
+} from "./audio-engineering.js";
+import {
   EnvironmentCredentialResolver,
   resolveWorkerRuntimeConfiguration,
   workerRuntimeConfigurationSummary,
@@ -18,6 +22,19 @@ export async function startStorytellerWorker(): Promise<void> {
   const environment = process.env;
   const configuration = resolveWorkerRuntimeConfiguration(environment);
   const credentialBindings = configuration.enabled ? configuration.credentialBindings : {};
+  const audioEngineering = resolveWorkerAudioEngineeringPolicy({
+    workerEnabled: configuration.enabled,
+    environment,
+    ...(configuration.enabled
+      ? {
+          temporaryRoot: resolve(
+            configuration.objectRootDirectory,
+            "..",
+            "audio-engineering-temp",
+          ),
+        }
+      : {}),
+  });
   const providers = createWorkerProviderRegistry({
     workerEnabled: configuration.enabled,
     environment,
@@ -32,12 +49,14 @@ export async function startStorytellerWorker(): Promise<void> {
     service: "storyteller-studio-worker",
     event: "configuration",
     configuration: workerRuntimeConfigurationSummary(configuration),
+    audioEngineering: workerAudioEngineeringPolicySummary(audioEngineering),
     providerCount: providers.ids().length,
   }));
 
   const result = await runConfiguredWorkerRuntime(configuration, {
     providers,
     credentials,
+    ...(audioEngineering ? { audioEngineering } : {}),
   });
   console.info(JSON.stringify({
     service: "storyteller-studio-worker",
