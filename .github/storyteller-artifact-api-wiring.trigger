@@ -1,1 +1,1 @@
-wire authenticated redacted artifact reads into the API and prove them
+wire authenticated redacted artifact reads with dedented exact matches
