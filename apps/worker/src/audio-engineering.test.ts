@@ -178,5 +178,5 @@ test("lossless production profile is an explicit alternative rather than an impl
     temporaryRoot: "/private/temp",
     now: t0,
   });
-  assert.equal(policy?.profile.profile.id, "lossless-production");
+  assert.equal(policy?.profile.profile.id, "lossless-production-master");
 });
