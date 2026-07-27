@@ -45,6 +45,12 @@ for (const path of [
   "packages/storyteller/src/calibration-store.test.ts",
   "packages/storyteller/src/project-store.ts",
   "packages/storyteller/package.json",
+  "apps/api/src/calibration-runtime.ts",
+  "apps/api/src/calibration-runtime.test.ts",
+  "apps/api/src/calibration-routes.ts",
+  "apps/api/src/calibration-routes.test.ts",
+  "apps/api/src/server.ts",
+  ".env.example",
   "docs/CALIBRATION_WORKFLOW.md",
 ]) requireFile(path);
 
@@ -113,6 +119,64 @@ requireTokens("packages/storyteller/src/calibration-store.test.ts", [
 
 requireTokens("packages/storyteller/src/project-store.ts", [
   '| "calibration-session"',
+]);
+
+requireTokens("apps/api/src/calibration-runtime.ts", [
+  "CalibrationStoreRuntimeConfiguration",
+  "resolveCalibrationStoreRuntimeConfiguration",
+  "calibrationStoreRuntimeSummary",
+  "createCalibrationStoreRuntime",
+  "STORYTELLER_CALIBRATION_DRIVER",
+  "STORYTELLER_FILE_CALIBRATION_STORE_SINGLE_HOST",
+  "CALIBRATION_STORE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED",
+  'resolve(workingDirectory, dataDirectory, "calibration-sessions")',
+  "mutationApiExposed: false",
+  "privateEvidenceApiExposed: false",
+]);
+
+requireTokens("apps/api/src/calibration-runtime.test.ts", [
+  "calibration runtime is disabled unless a driver is explicitly configured",
+  "production file calibration reads require an explicit single-host acknowledgement",
+  "calibration runtime rejects unknown drivers and missing data directories",
+  "file calibration runtime opens an isolated empty redacted store",
+]);
+
+requireTokens("apps/api/src/calibration-routes.ts", [
+  "handleCalibrationReadRoute",
+  'input.method !== "GET"',
+  "CALIBRATION_MUTATION_API_NOT_EXPOSED",
+  "CALIBRATION_STORE_NOT_CONFIGURED",
+  'input.url.pathname === "/v1/calibrations"',
+  "input.store.listPublic",
+  "storedCalibrationSessionPublicView",
+  "CALIBRATION_SESSION_NOT_FOUND",
+  "mutationApiExposed: false",
+  "privateEvidenceApiExposed: false",
+]);
+
+requireTokens("apps/api/src/calibration-routes.test.ts", [
+  "calibration list route applies bounded filters and returns only redacted state",
+  "calibration item route returns one redacted session and a stable not-found response",
+  "calibration routes expose no review, selection, approval or rejection mutation",
+  "calibration route filters reject invalid identifiers, states and limits",
+  "calibration route helper ignores unrelated API paths",
+]);
+
+requireTokens("apps/api/src/server.ts", [
+  "FileCalibrationSessionStore",
+  "resolveCalibrationStoreRuntimeConfiguration",
+  "createCalibrationStoreRuntime",
+  "calibrationStoreRuntimeSummary",
+  "handleCalibrationReadRoute",
+  'url.pathname.startsWith("/v1/calibrations")',
+  "calibrationStore",
+  "calibrationMutationApiExposed: false",
+  "calibrationPrivateEvidenceApiExposed: false",
+]);
+
+requireTokens(".env.example", [
+  "STORYTELLER_CALIBRATION_DRIVER=disabled",
+  "STORYTELLER_FILE_CALIBRATION_STORE_SINGLE_HOST=false",
 ]);
 
 requireTokens("docs/CALIBRATION_WORKFLOW.md", [
@@ -197,23 +261,66 @@ if (metadataStart < 0 || metadataEnd <= metadataStart) {
   }
 }
 
-for (const path of [
-  ...collectRuntimeFiles("apps/api/src"),
-  ...collectRuntimeFiles("apps/web/src"),
-]) {
+const mutationTokens = [
+  "addCalibrationCandidate",
+  "recordCalibrationReview",
+  "selectCalibrationCandidate",
+  "approveCalibrationSession",
+  "rejectCalibrationSession",
+];
+
+for (const path of collectRuntimeFiles("apps/api/src")) {
+  const source = read(path);
+  for (const forbidden of mutationTokens) {
+    if (source.includes(forbidden)) {
+      problems.push(`${path} exposes calibration mutation capability: ${forbidden}`);
+    }
+  }
+  const approvedReadFiles = new Set([
+    "apps/api/src/calibration-runtime.ts",
+    "apps/api/src/calibration-routes.ts",
+    "apps/api/src/server.ts",
+  ]);
+  if (
+    !approvedReadFiles.has(path)
+    && (
+      source.includes("FileCalibrationSessionStore")
+      || source.includes("calibration-store")
+    )
+  ) {
+    problems.push(`${path} imports calibration persistence outside the approved read-only API boundary`);
+  }
+}
+
+for (const path of collectRuntimeFiles("apps/web/src")) {
   const source = read(path);
   for (const forbidden of [
     "FileCalibrationSessionStore",
     "calibration-store",
-    "addCalibrationCandidate",
-    "recordCalibrationReview",
-    "selectCalibrationCandidate",
-    "approveCalibrationSession",
-    "rejectCalibrationSession",
+    ...mutationTokens,
   ]) {
     if (source.includes(forbidden)) {
-      problems.push(`${path} exposes calibration mutation capability: ${forbidden}`);
+      problems.push(`${path} exposes private calibration capability: ${forbidden}`);
     }
+  }
+}
+
+const routeSource = existsSync(fromRoot("apps/api/src/calibration-routes.ts"))
+  ? read("apps/api/src/calibration-routes.ts")
+  : "";
+for (const forbidden of [
+  ".create(",
+  ".save(",
+  "appendAuditEvent(",
+  "takeArtifactId",
+  "transcriptAssessmentArtifactId",
+  "technicalAssessmentArtifactId",
+  "reviewerId",
+  "approvedBy",
+  "selectedBy",
+]) {
+  if (routeSource.includes(forbidden)) {
+    problems.push(`calibration read route contains private or mutating token: ${forbidden}`);
   }
 }
 
@@ -238,5 +345,6 @@ console.log("- varied passages evaluate long-form performance risks without reta
 console.log("- blind independent reviews score textual truth, restraint and sustained listenability");
 console.log("- explicit human approval locks one voice revision and provider capability snapshot");
 console.log("- calibration sessions preserve linked domain and store-envelope revision chains");
+console.log("- authenticated API routes expose only bounded redacted session reads");
 console.log("- public views and audit metadata omit reviewers, artifacts, providers, voices and notes");
 console.log("- normal API and browser runtimes expose no calibration mutation capability");
