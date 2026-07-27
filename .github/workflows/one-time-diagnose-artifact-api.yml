@@ -22,15 +22,14 @@ jobs:
         with:
           ref: main
 
-      - name: Print artifact API anchor counts
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          source = Path("apps/api/src/server.ts").read_text(encoding="utf-8")
-          anchors = {
-              "imports": '} from "@evavo/storyteller-engine/generation-queue";\nimport {\n  createGenerationQueueRuntime,\n',
+      - name: Publish exact artifact API anchor counts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const source = fs.readFileSync("apps/api/src/server.ts", "utf8");
+            const anchors = {
+              imports: '} from "@evavo/storyteller-engine/generation-queue";\nimport {\n  createGenerationQueueRuntime,\n',
               "error-status": '    || code === "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"\n',
               "runtime-state": '  let queueRuntime: FileGenerationQueue | null | undefined;\n',
               "artifact-runtime": '\n  return async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {\n',
@@ -39,32 +38,31 @@ jobs:
               "capability-artifacts": '          orchestration: ["idempotent queue admission", "exclusive worker leases", "bounded retry", "operator cancellation"],\n',
               "capability-boundary": '          visuals: ["scene-level beat grouping", "continuity keys", "restrained motion policies"],\n          workerApiExposed: false,\n',
               "artifact-route": '\n      if (request.method === "POST" && url.pathname === "/v1/projects/plan") {\n',
-          }
-          failed = False
-          for label, anchor in anchors.items():
-              count = source.count(anchor)
-              print(f"ARTIFACT_API_ANCHOR:{label}:{count}")
-              failed = failed or count != 1
-          if failed:
-              raise SystemExit("ARTIFACT_API_ANCHOR_DIAGNOSTIC_FAILED")
-          print("ARTIFACT_API_ANCHOR_DIAGNOSTIC_PASSED")
-          PY
-
-      - name: Publish anchor status
-        if: always()
-        uses: actions/github-script@v7
-        env:
-          ANCHOR_JOB_STATUS: ${{ job.status }}
-        with:
-          script: |
+            };
+            let failed = false;
+            for (const [label, anchor] of Object.entries(anchors)) {
+              const count = source.split(anchor).length - 1;
+              const ok = count === 1;
+              failed ||= !ok;
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: ok ? "success" : "failure",
+                context: `storyteller/anchor/${label}/${count}`.slice(0, 100),
+                description: ok ? `${label} matched exactly once` : `${label} matched ${count} times`,
+                target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              });
+            }
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
-              state: process.env.ANCHOR_JOB_STATUS === "success" ? "success" : "failure",
+              state: failed ? "failure" : "success",
               context: "storyteller/artifact-api-anchors",
-              description: process.env.ANCHOR_JOB_STATUS === "success"
-                ? "All artifact API source anchors matched once"
-                : "One or more artifact API source anchors did not match",
+              description: failed
+                ? "One or more artifact API source anchors did not match"
+                : "All artifact API source anchors matched once",
               target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
+            if (failed) core.setFailed("ARTIFACT_API_ANCHOR_DIAGNOSTIC_FAILED");
