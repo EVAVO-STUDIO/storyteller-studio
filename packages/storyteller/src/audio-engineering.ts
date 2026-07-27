@@ -548,7 +548,11 @@ export function parseSilenceDetect(
   const intervals: Array<{ start: number; end: number }> = [];
   let openStart: number | undefined;
   const eventPattern = /silence_(start|end):\s*([0-9]+(?:\.[0-9]+)?)(?:\s*\|\s*silence_duration:\s*([0-9]+(?:\.[0-9]+)?))?/gu;
-  for (const match of source.matchAll(eventPattern)) {
+  const events = [...source.matchAll(eventPattern)];
+if (events.length === 0 && /silence_(?:start|end)\s*:/u.test(source)) {
+  throw new AudioEngineeringError("AUDIO_ENGINEERING_SILENCE_EVENT_INVALID");
+}
+  for (const match of events) {
     const kind = match[1];
     const value = Number(match[2]);
     if (!Number.isFinite(value) || value < 0) {
