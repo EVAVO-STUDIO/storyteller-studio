@@ -34,13 +34,8 @@ jobs:
 
           path = Path("packages/storyteller/src/project-store.ts")
           source = path.read_text(encoding="utf-8")
-          old = '''export type StoredEntityType =
-            | "project"
-'''
-          new = '''export type StoredEntityType =
-            | "artifact"
-            | "project"
-'''
+          old = 'export type StoredEntityType =\n  | "project"\n'
+          new = 'export type StoredEntityType =\n  | "artifact"\n  | "project"\n'
           count = source.count(old)
           if count != 1:
               raise SystemExit(f"ARTIFACT_STORE_ENTITY_MATCH_COUNT_INVALID:{count}")
