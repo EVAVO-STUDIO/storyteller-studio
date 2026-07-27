@@ -21,6 +21,7 @@ const requiredFiles = [
   "packages/storyteller/src/generation-queue.ts",
   "packages/storyteller/src/generation-queue.test.ts",
   "packages/cli/src/main.ts",
+  "packages/cli/src/main.test.ts",
   "apps/api/src/queue-runtime.ts",
   "apps/api/src/queue-runtime.test.ts",
   "apps/api/src/server.ts",
@@ -62,7 +63,7 @@ if (existsSync(fromRoot("package.json"))) {
   for (const workspace of ["apps/*", "packages/*"]) {
     if (!workspaces.has(workspace)) problems.push(`package.json is missing workspace: ${workspace}`);
   }
-  for (const script of ["dev:web", "dev:api", "storyteller", "typecheck", "test:engine", "test:api", "test", "verify", "build"]) {
+  for (const script of ["dev:web", "dev:api", "storyteller", "typecheck", "test:engine", "test:api", "test:cli", "test", "verify", "build"]) {
     if (typeof packageJson.scripts?.[script] !== "string") problems.push(`package.json is missing script: ${script}`);
   }
 }
@@ -213,8 +214,23 @@ requireTokens("packages/cli/src/main.ts", [
   'case "take-check"',
   'case "visual-plan"',
   'case "jobs"',
+  'case "queue-enqueue"',
+  'case "queue-list"',
+  'case "queue-show"',
+  'case "queue-cancel"',
+  'case "queue-reap"',
   'case "verify"',
+  "queueCliView",
+  "tokenHash",
+  "fileURLToPath(import.meta.url)",
   "PROVIDER_EXECUTION_NOT_CONFIGURED",
+]);
+
+requireTokens("packages/cli/src/main.test.ts", [
+  "local queue CLI can enqueue, list, inspect and cancel without exposing lease hashes",
+  "queue commands require an explicit data root when the environment is unset",
+  "operator_cli_test",
+  "tokenHash",
 ]);
 
 requireTokens("apps/web/src/app/page.tsx", [
@@ -289,5 +305,6 @@ console.log("- exact-source manuscript and performance contracts are present");
 console.log("- rights, provider, continuity, transcript and technical QA gates are present");
 console.log("- durable queue leases, retries, cancellation and artifact references are verified");
 console.log("- queue API admission and operator views remain redacted and fail closed");
-console.log("- API and CLI remain provider-neutral and fail closed before execution");
+console.log("- local queue CLI workflows remain deterministic and do not expose lease secrets");
+console.log("- provider execution remains disabled until its rights, budget and artifact boundaries are configured");
 console.log("- private web and EVAVO hub contracts remain source-ready but unreleased");
