@@ -380,7 +380,7 @@ function segmentKind(text: string): SegmentKind {
   const trimmed = text.trim();
   if (CHAPTER_HEADING.test(trimmed)) return "heading";
   if (SCENE_BREAK.test(trimmed)) return "scene-break";
-  const dialogueLines = trimmed.split(/\r?\n/u).filter((line) => /^[\t ]*(?:[“\"‘']|—)/u.test(line));
+  const dialogueLines = trimmed.split(/\r?\n/u).filter((line) => /^[\t ]*(?:[“"‘']|—)/u.test(line));
   if (dialogueLines.length > 0 || /^[“\"‘']/u.test(trimmed)) return "dialogue";
   return "narration";
 }
