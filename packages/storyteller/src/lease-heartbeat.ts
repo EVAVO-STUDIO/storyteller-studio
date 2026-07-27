@@ -147,7 +147,7 @@ export class GenerationLeaseHeartbeatController {
   }
 
   async beat(): Promise<StoredEnvelope<GenerationQueueItem>> {
-    if (this.#state === "lost") throw this.#loss;
+    this.#throwIfLost();
     if (this.#state !== "running") {
       throw new Error("GENERATION_HEARTBEAT_NOT_RUNNING");
     }
@@ -181,7 +181,7 @@ export class GenerationLeaseHeartbeatController {
         throw error;
       }
       this.#markLost(errorCode(error));
-      throw this.#loss;
+      throw this.#requireLoss();
     }).finally(() => {
       this.#inFlight = undefined;
     });
@@ -191,7 +191,7 @@ export class GenerationLeaseHeartbeatController {
   }
 
   async stopForTerminalTransition(): Promise<void> {
-    if (this.#state === "lost") throw this.#loss;
+    this.#throwIfLost();
     if (this.#state === "idle") {
       this.#state = "stopped";
       return;
@@ -204,10 +204,10 @@ export class GenerationLeaseHeartbeatController {
       try {
         await inFlight;
       } catch {
-        if (this.#state === "lost") throw this.#loss;
+        this.#throwIfLost();
       }
     }
-    if (this.#state === "lost") throw this.#loss;
+    this.#throwIfLost();
     this.#state = "stopped";
   }
 
@@ -217,7 +217,7 @@ export class GenerationLeaseHeartbeatController {
       this.#state = "stopped";
       return;
     }
-    if (this.#state !== "lost") this.#state = "stopping";
+    if (!this.#hasLostOwnership()) this.#state = "stopping";
     this.#cancelTimer();
     const inFlight = this.#inFlight;
     if (inFlight) {
@@ -227,11 +227,11 @@ export class GenerationLeaseHeartbeatController {
         // The controller retains ownership-loss state and abort reason.
       }
     }
-    if (this.#state !== "lost") this.#state = "stopped";
+    if (!this.#hasLostOwnership()) this.#state = "stopped";
   }
 
   assertHealthy(): void {
-    if (this.#state === "lost") throw this.#loss;
+    this.#throwIfLost();
   }
 
   snapshot(): LeaseHeartbeatSnapshot {
@@ -240,7 +240,7 @@ export class GenerationLeaseHeartbeatController {
       queueItemId: this.#queueItemId,
       jobId: this.#jobId,
       state: this.#state,
-      healthy: this.#state !== "lost",
+      healthy: !this.#hasLostOwnership(),
       heartbeatCount: this.#heartbeatCount,
       revision: this.#latest.revision,
       ...(lease
@@ -270,8 +270,21 @@ export class GenerationLeaseHeartbeatController {
     this.#timer = undefined;
   }
 
+  #hasLostOwnership(): boolean {
+    return this.#state === "lost";
+  }
+
+  #requireLoss(): GenerationLeaseOwnershipLostError {
+    return this.#loss
+      ?? new GenerationLeaseOwnershipLostError("GENERATION_HEARTBEAT_LOSS_STATE_INVALID");
+  }
+
+  #throwIfLost(): void {
+    if (this.#hasLostOwnership()) throw this.#requireLoss();
+  }
+
   #markLost(code: string): void {
-    if (this.#state === "lost") return;
+    if (this.#hasLostOwnership()) return;
     this.#loss = new GenerationLeaseOwnershipLostError(code);
     this.#state = "lost";
     this.#cancelTimer();
