@@ -1,7 +1,13 @@
+import { dirname, resolve } from "node:path";
 import { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
 import { FileBudgetLedger } from "@evavo/storyteller-engine/budget-ledger";
+import { FileCalibrationSessionStore } from "@evavo/storyteller-engine/calibration-store";
 import { FileGenerationBudgetController } from "@evavo/storyteller-engine/generation-budget";
-import { FileGenerationMaterialStore } from "@evavo/storyteller-engine/generation-material";
+import {
+  CalibratedGenerationMaterialStore,
+  FileGenerationCalibrationBindingStore,
+  createCalibrationBoundProviderRegistry,
+} from "@evavo/storyteller-engine/generation-calibration";
 import { FileGenerationQueue } from "@evavo/storyteller-engine/generation-queue";
 import type { LeaseHeartbeatScheduler } from "@evavo/storyteller-engine/lease-heartbeat";
 import { FilePrivateObjectStore } from "@evavo/storyteller-engine/private-object-store";
@@ -97,18 +103,24 @@ async function preflightProviders(
   credentials: CredentialResolver;
 }>> {
   const providerIds = dependencies.providers.ids();
-  if (providerIds.length === 0) throw new Error("WORKER_PROVIDER_ADAPTERS_REQUIRED");
+  if (providerIds.length === 0) {
+    throw new Error("WORKER_PROVIDER_ADAPTERS_REQUIRED");
+  }
 
   const credentials = new Map<string, string>();
   for (const providerId of providerIds) {
     const adapter = dependencies.providers.get(providerId);
     if (!adapter) throw new Error("WORKER_PROVIDER_ADAPTER_LOOKUP_FAILED");
     const credential = await dependencies.credentials.resolve(providerId);
-    if (!credential) throw new Error(`WORKER_PROVIDER_CREDENTIAL_MISSING:${providerId}`);
+    if (!credential) {
+      throw new Error(`WORKER_PROVIDER_CREDENTIAL_MISSING:${providerId}`);
+    }
     credentials.set(providerId, credential);
     const snapshot = await adapter.inspectCapabilities({
       credential,
-      signal: AbortSignal.timeout(Math.min(configuration.providerTimeoutMs, 30_000)),
+      signal: AbortSignal.timeout(
+        Math.min(configuration.providerTimeoutMs, 30_000),
+      ),
     });
     assertCapability(snapshot, adapter.providerId, adapter.adapterVersion);
   }
@@ -124,26 +136,52 @@ export function createWorkerService(
   dependencies: WorkerRuntimeDependencies,
   credentials: CredentialResolver,
 ): GenerationWorkerService {
+  const now = dependencies.now ?? (() => new Date());
   const queueState = new FileProjectStore(configuration.queueRootDirectory);
   const queue = new FileGenerationQueue(queueState);
-  const materials = new FileGenerationMaterialStore(queueState);
+  const calibrationStore = new FileCalibrationSessionStore(
+    new FileProjectStore(resolve(
+      dirname(configuration.queueRootDirectory),
+      "calibration-sessions",
+    )),
+  );
+  const calibrationBindings = new FileGenerationCalibrationBindingStore(
+    queueState,
+  );
+  const materials = new CalibratedGenerationMaterialStore(
+    queueState,
+    calibrationBindings,
+    calibrationStore,
+    now,
+  );
+  const providers = createCalibrationBoundProviderRegistry({
+    providers: dependencies.providers,
+    bindings: calibrationBindings,
+    calibrations: calibrationStore,
+    now,
+  });
   const budgetController = new FileGenerationBudgetController(
     new FileBudgetLedger(queueState),
   );
   const artifactRegistry = new FileArtifactRegistry(
     new FileProjectStore(configuration.artifactRootDirectory),
   );
-  const objectStore = new FilePrivateObjectStore(configuration.objectRootDirectory, {
-    provider: configuration.objectProvider,
-    container: configuration.objectContainer,
-    ...(configuration.objectRegion ? { region: configuration.objectRegion } : {}),
-  });
+  const objectStore = new FilePrivateObjectStore(
+    configuration.objectRootDirectory,
+    {
+      provider: configuration.objectProvider,
+      container: configuration.objectContainer,
+      ...(configuration.objectRegion
+        ? { region: configuration.objectRegion }
+        : {}),
+    },
+  );
 
   return new GenerationWorkerService(
     {
       queue,
       materials,
-      providers: dependencies.providers,
+      providers,
       credentials,
       objectStore,
       artifactRegistry,
@@ -152,7 +190,9 @@ export function createWorkerService(
     {
       workerId: configuration.workerId,
       verifierActorId: configuration.verifierActorId,
-      ...(configuration.projectId ? { projectId: configuration.projectId } : {}),
+      ...(configuration.projectId
+        ? { projectId: configuration.projectId }
+        : {}),
       concurrency: configuration.concurrency,
       pollIntervalMs: configuration.pollIntervalMs,
       leaseDurationMs: configuration.leaseDurationMs,
@@ -163,7 +203,7 @@ export function createWorkerService(
       providerTimeoutMs: configuration.providerTimeoutMs,
       outcomeHistoryLimit: configuration.outcomeHistoryLimit,
       requireBudget: true,
-      ...(dependencies.now ? { now: dependencies.now } : {}),
+      now,
       ...(dependencies.waiter ? { waiter: dependencies.waiter } : {}),
     },
   );
@@ -183,7 +223,11 @@ export async function runConfiguredWorkerRuntime(
   }
 
   const preflight = await preflightProviders(configuration, dependencies);
-  const service = createWorkerService(configuration, dependencies, preflight.credentials);
+  const service = createWorkerService(
+    configuration,
+    dependencies,
+    preflight.credentials,
+  );
   const lifecycle = await runWorkerLifecycle({
     service,
     mode: configuration.mode,
