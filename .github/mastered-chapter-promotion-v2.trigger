@@ -1,1 +1,1 @@
-run the reliable mastered chapter promotion wrapper and verify every gate
+run the mastered chapter promotion with the stable structural tamper expectation
