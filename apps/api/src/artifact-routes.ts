@@ -92,7 +92,7 @@ function artifactIdRoute(pathname: string): string | null {
 export async function handleArtifactReadRoute(input: Readonly<{
   method: string | undefined;
   url: URL;
-  registry: FileArtifactRegistry;
+  registry: FileArtifactRegistry | null;
   requestId: string;
 }>): Promise<ArtifactRouteResult | null> {
   if (!input.url.pathname.startsWith("/v1/artifacts")) return null;
@@ -110,6 +110,8 @@ export async function handleArtifactReadRoute(input: Readonly<{
       },
     };
   }
+
+  if (!input.registry) throw new Error("ARTIFACT_REGISTRY_NOT_CONFIGURED");
 
   if (input.url.pathname === "/v1/artifacts") {
     const projectId = optionalIdentifier(input.url, "projectId", "ARTIFACT_PROJECT_FILTER_INVALID");
