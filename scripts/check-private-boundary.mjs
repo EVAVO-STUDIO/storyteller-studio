@@ -67,16 +67,34 @@ for (const [path, tokens] of Object.entries({
     '"X-Frame-Options", "DENY"',
     "API_REQUEST_BODY_TOO_LARGE",
     "workerApiExposed: false",
+    "artifactWriteApiExposed: false",
+    "releaseApiExposed: false",
+    'url.pathname.startsWith("/v1/artifacts")',
   ],
   "apps/api/src/queue-runtime.ts": [
     "STORYTELLER_FILE_QUEUE_SINGLE_HOST",
     "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED",
     "workerApiExposed: false",
   ],
+  "apps/api/src/artifact-runtime.ts": [
+    "STORYTELLER_FILE_ARTIFACT_STORE_SINGLE_HOST",
+    "ARTIFACT_REGISTRY_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED",
+    "workerWriteApiExposed: false",
+    "releaseApiExposed: false",
+  ],
+  "apps/api/src/artifact-routes.ts": [
+    'input.method !== "GET"',
+    "ARTIFACT_WRITE_API_NOT_EXPOSED",
+    "workerWriteApiExposed: false",
+    "releaseApiExposed: false",
+    "artifactPublicView",
+  ],
   ".env.example": [
     "STORYTELLER_API_ACTOR_ID=local_operator",
     "STORYTELLER_QUEUE_DRIVER=disabled",
     "STORYTELLER_FILE_QUEUE_SINGLE_HOST=false",
+    "STORYTELLER_ARTIFACT_DRIVER=disabled",
+    "STORYTELLER_FILE_ARTIFACT_STORE_SINGLE_HOST=false",
     "STORYTELLER_HUB_LAUNCH_SECRET=",
     "STORYTELLER_SESSION_SIGNING_SECRET=",
   ],
@@ -104,6 +122,11 @@ for (const path of webFiles) {
     "STORYTELLER_SESSION_SIGNING_SECRET",
     "STORYTELLER_API_TOKEN",
     "STORYTELLER_FILE_QUEUE_SINGLE_HOST",
+    "STORYTELLER_ARTIFACT_DRIVER",
+    "STORYTELLER_FILE_ARTIFACT_STORE_SINGLE_HOST",
+    "providerRequestId",
+    "objectKey",
+    "versionId",
     "document.cookie",
     "localStorage",
     "sessionStorage",
@@ -124,8 +147,13 @@ for (const forbidden of [
   "claimNext(",
   "leaseToken",
   "heartbeat(",
+  "completeGenerationWithArtifacts(",
+  "createArtifactRecord(",
+  "verifyArtifactIntegrity(",
+  "recordArtifactReview(",
+  "confirmArtifactRelease(",
 ]) {
-  if (apiSource.includes(forbidden)) problems.push(`API source contains a sensitive logging or worker-control pattern: ${forbidden}`);
+  if (apiSource.includes(forbidden)) problems.push(`API source contains a sensitive logging, worker or artifact-mutation pattern: ${forbidden}`);
 }
 
 const queueRuntimeSource = existsSync(fromRoot("apps/api/src/queue-runtime.ts"))
@@ -134,6 +162,39 @@ const queueRuntimeSource = existsSync(fromRoot("apps/api/src/queue-runtime.ts"))
 for (const forbidden of ["tokenHash", "leaseToken", "workerId:"]) {
   if (queueRuntimeSource.includes(forbidden)) {
     problems.push(`public queue runtime contains a worker-secret field or identifier: ${forbidden}`);
+  }
+}
+
+const artifactRuntimeSource = existsSync(fromRoot("apps/api/src/artifact-runtime.ts"))
+  ? read("apps/api/src/artifact-runtime.ts")
+  : "";
+for (const forbidden of [
+  "objectKey",
+  "container:",
+  "versionId",
+  "providerRequestId",
+  "signedUrl",
+  "downloadUrl",
+  "credential",
+]) {
+  if (artifactRuntimeSource.includes(forbidden)) {
+    problems.push(`public artifact runtime contains a private locator or credential field: ${forbidden}`);
+  }
+}
+
+const artifactRouteSource = existsSync(fromRoot("apps/api/src/artifact-routes.ts"))
+  ? read("apps/api/src/artifact-routes.ts")
+  : "";
+for (const forbidden of [
+  "createArtifactRecord(",
+  "verifyArtifactIntegrity(",
+  "recordArtifactReview(",
+  "confirmArtifactRelease(",
+  "signedUrl",
+  "downloadUrl",
+]) {
+  if (artifactRouteSource.includes(forbidden)) {
+    problems.push(`artifact read route contains a forbidden write or delivery capability: ${forbidden}`);
   }
 }
 
@@ -155,6 +216,9 @@ if (existsSync(fromRoot(cardPath))) {
     "voiceSample",
     "providerSettings",
     "executionControls",
+    "objectKey",
+    "versionId",
+    "providerRequestId",
   ]);
 
   function scan(value, path = "hubCard") {
@@ -183,8 +247,9 @@ if (problems.length > 0) {
 
 console.log("storyteller_private_boundary_check_passed");
 console.log("- the studio is noindex at metadata, robots and response-header layers");
-console.log("- browser source contains no provider, queue or launch credentials");
+console.log("- browser source contains no provider, queue, artifact-storage or launch credentials");
 console.log("- API defaults to loopback, production authentication and bounded request bodies");
-console.log("- file queue production use requires an explicit single-host acknowledgement");
-console.log("- public operator surfaces expose no worker lease controls or secret material");
+console.log("- file queue and artifact production use require explicit single-host acknowledgements");
+console.log("- public artifact routes are read-only and use redacted governed views");
+console.log("- public operator surfaces expose no worker lease, storage locator or release controls");
 console.log("- hub metadata remains hidden, non-launching and free of private production content");
