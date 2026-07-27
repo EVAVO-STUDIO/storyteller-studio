@@ -77,6 +77,18 @@ jobs:
           set -o pipefail
           npm run verify 2>&1 | tee .mastering-render-verify.log
           npm run build 2>&1 | tee .mastering-render-build.log
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastering-render-verification-${{ github.sha }}
+          path: |
+            .mastering-render-fixture-fix.log
+            .mastering-render-verify.log
+            .mastering-render-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
       - name: Commit correction
         shell: bash
         run: |
@@ -97,7 +109,20 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         with:
           script: |
+            const fs = require("node:fs");
             const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".mastering-render-fixture-fix.log",
+              ".mastering-render-verify.log",
+              ".mastering-render-build.log",
+            ].filter((path) => fs.existsSync(path))
+              .map((path) => fs.readFileSync(path, "utf8"))
+              .join("\n")
+              .replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /MASTERING_RENDER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "mastering renderer failed verification";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -106,6 +131,6 @@ jobs:
               context: "storyteller/mastering-render-verification",
               description: state === "success"
                 ? "Mastering renderer, complete tests and builds passed"
-                : "Mastering renderer failed verification",
+                : diagnostic.slice(0, 140),
               target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
