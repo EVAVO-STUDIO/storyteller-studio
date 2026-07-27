@@ -8,8 +8,14 @@ const scope = process.argv[2] ?? "all";
 const rootsByScope = Object.freeze({
   engine: ["packages/storyteller/src"],
   api: ["apps/api/src"],
+  worker: ["apps/worker/src"],
   cli: ["packages/cli/src"],
-  all: ["packages/storyteller/src", "apps/api/src", "packages/cli/src"],
+  all: [
+    "packages/storyteller/src",
+    "apps/api/src",
+    "apps/worker/src",
+    "packages/cli/src",
+  ],
 });
 
 if (!Object.prototype.hasOwnProperty.call(rootsByScope, scope)) {
