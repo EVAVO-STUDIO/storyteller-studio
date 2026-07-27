@@ -70,7 +70,7 @@ requireTokens("packages/storyteller/src/mastering-render.test.ts", [
   "render evidence tampering is detected",
   "FixtureResolver",
   "FixtureRunner",
-  "engineeringRunner",
+  "EngineeringRunner",
 ]);
 
 requireTokens("docs/MASTERING_RENDERING.md", [
