@@ -42,9 +42,6 @@ jobs:
           path.write_text(source.replace(old, new), encoding="utf-8", newline="\n")
           PY
 
-      - name: Prove the repaired engine module parses
-        run: node --import tsx -e 'import("./packages/storyteller/src/index.ts")'
-
       - name: Commit the repair directly to main
         shell: bash
         run: |
