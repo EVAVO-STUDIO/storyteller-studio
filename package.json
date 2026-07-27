@@ -30,7 +30,7 @@
     "verify:material": "node scripts/check-generation-material.mjs",
     "verify:budget": "node scripts/check-budget-ledger.mjs",
     "verify:generation-budget": "node scripts/check-generation-budget.mjs",
-    "verify:calibration": "node scripts/check-calibration-workflow.mjs",
+    "verify:calibration": "node scripts/check-calibration-workflow.mjs && node scripts/check-generation-calibration.mjs",
     "verify:elevenlabs-cli": "node scripts/check-elevenlabs-cli.mjs",
     "verify:elevenlabs-generation": "node scripts/check-elevenlabs-generation.mjs",
     "verify:elevenlabs": "node scripts/check-elevenlabs-adapter.mjs && node scripts/check-elevenlabs-runtime.mjs && npm run verify:elevenlabs-cli && npm run verify:elevenlabs-generation",
