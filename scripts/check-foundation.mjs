@@ -55,6 +55,14 @@ function requireTokens(path, tokens) {
   }
 }
 
+function forbidTokens(path, tokens) {
+  if (!existsSync(fromRoot(path))) return;
+  const source = read(path);
+  for (const token of tokens) {
+    if (source.includes(token)) problems.push(`${path} contains forbidden contract token: ${token}`);
+  }
+}
+
 for (const path of requiredFiles) requireFile(path);
 
 if (existsSync(fromRoot("package.json"))) {
@@ -174,6 +182,7 @@ requireTokens("apps/api/src/queue-runtime.ts", [
   "workerApiExposed: false",
   "outputArtifactCount",
 ]);
+forbidTokens("apps/api/src/queue-runtime.ts", ["tokenHash", "leaseToken"]);
 
 requireTokens("apps/api/src/queue-runtime.test.ts", [
   "queue runtime is disabled unless a driver is explicitly configured",
@@ -198,6 +207,7 @@ requireTokens("apps/api/src/server.ts", [
   "workerApiExposed: false",
   "Cancellation is recorded and any in-flight worker lease is invalidated.",
 ]);
+forbidTokens("apps/api/src/server.ts", ["claimNext(", "leaseToken", "heartbeat("]);
 
 requireTokens("apps/api/src/server.test.ts", [
   "queue routes fail closed when durable admission is not configured",
@@ -221,10 +231,10 @@ requireTokens("packages/cli/src/main.ts", [
   'case "queue-reap"',
   'case "verify"',
   "queueCliView",
-  "tokenHash",
   "fileURLToPath(import.meta.url)",
   "PROVIDER_EXECUTION_NOT_CONFIGURED",
 ]);
+forbidTokens("packages/cli/src/main.ts", ["tokenHash", "leaseToken", "claimNext("]);
 
 requireTokens("packages/cli/src/main.test.ts", [
   "local queue CLI can enqueue, list, inspect and cancel without exposing lease hashes",
