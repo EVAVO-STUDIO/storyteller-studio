@@ -30,6 +30,9 @@
     "verify:audio": "node scripts/check-audio-engineering.mjs",
     "verify:assembly": "node scripts/check-chapter-assembly.mjs",
     "verify:render": "node scripts/check-chapter-render.mjs",
+    "verify:master": "node scripts/check-chapter-master.mjs",
+    "verify:mastering": "node scripts/check-mastering-plan.mjs",
+    "verify:mastering-render": "node scripts/check-mastering-render.mjs",
     "verify:material": "node scripts/check-generation-material.mjs",
     "verify:budget": "node scripts/check-budget-ledger.mjs",
     "verify:generation-budget": "node scripts/check-generation-budget.mjs",
@@ -39,11 +42,9 @@
     "verify:elevenlabs": "node scripts/check-elevenlabs-adapter.mjs && node scripts/check-elevenlabs-runtime.mjs && npm run verify:elevenlabs-cli && npm run verify:elevenlabs-generation",
     "verify:runtime": "node scripts/check-worker-runtime.mjs",
     "verify:worker": "npm run verify:material && npm run verify:budget && npm run verify:generation-budget && npm run verify:elevenlabs && node scripts/check-generation-worker.mjs && node scripts/check-lease-heartbeat.mjs && node scripts/check-worker-service.mjs && npm run verify:runtime",
-    "verify:artifacts": "node scripts/check-artifact-registry.mjs && node scripts/check-artifact-api.mjs && npm run verify:storage && npm run verify:audio && npm run verify:calibration && npm run verify:assembly && npm run verify:render && npm run verify:master && npm run verify:mastering && npm run verify:worker",
+    "verify:artifacts": "node scripts/check-artifact-registry.mjs && node scripts/check-artifact-api.mjs && npm run verify:storage && npm run verify:audio && npm run verify:calibration && npm run verify:assembly && npm run verify:render && npm run verify:master && npm run verify:mastering && npm run verify:mastering-render && npm run verify:worker",
     "verify": "npm run verify:foundation && npm run verify:private-boundary && npm run verify:artifacts && npm run typecheck && npm run test",
-    "build": "npm run build --workspaces --if-present",
-    "verify:master": "node scripts/check-chapter-master.mjs",
-    "verify:mastering": "node scripts/check-mastering-plan.mjs"
+    "build": "npm run build --workspaces --if-present"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
