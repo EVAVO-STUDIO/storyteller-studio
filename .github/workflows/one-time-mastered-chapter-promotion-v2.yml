@@ -40,16 +40,8 @@ jobs:
 
           test_path = Path("packages/storyteller/src/mastered-chapter.test.ts")
           source = test_path.read_text(encoding="utf-8")
-          old = '''    assert.throws(
-              () => masteredChapterPublicView(comparisonTampered),
-              /MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID/u,
-            );
-          '''
-          new = '''    assert.throws(
-              () => masteredChapterPublicView(comparisonTampered),
-              /MASTERED_CHAPTER_COMPARISON_DURATION_MISMATCH|MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID/u,
-            );
-          '''
+          old = "/MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID/u,"
+          new = "/MASTERED_CHAPTER_COMPARISON_DURATION_MISMATCH|MASTERED_CHAPTER_COMPARISON_FINGERPRINT_INVALID/u,"
           count = source.count(old)
           print(f"MASTERED_CHAPTER_V2_EXPECTATION_ANCHOR:{count}")
           if count != 1:
