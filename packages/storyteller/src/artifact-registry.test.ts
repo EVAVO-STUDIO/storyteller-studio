@@ -226,6 +226,77 @@ test("generation completion requires the exact verified candidate bundle and mat
   assert.equal(mismatched.findings.some((finding) => finding.code === "ARTIFACT_COMPLETION_SCOPE_MISMATCH"), true);
 });
 
+test("mastered chapters require audio integrity, parent provenance and human review", () => {
+  const source = approve(verify(createArtifactRecord({
+    id: "artifact_mastered_source_001",
+    kind: "chapter-master",
+    projectId: job.projectId,
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/chapters/chapter_001/pre-master.wav`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "1".repeat(64),
+      byteCount: 960_000,
+      mimeType: "audio/wav",
+      format: "wav",
+    },
+    provenance: {
+      createdByActorId: "assembler_artifact_001",
+      sourceContentHash: "d".repeat(64),
+      parentArtifactIds: ["artifact_take_001"],
+    },
+    rights: rights(),
+  }, t0)));
+  const mastered = createArtifactRecord({
+    id: "artifact_mastered_chapter_001",
+    kind: "mastered-chapter",
+    projectId: job.projectId,
+    segmentId: "chapter_001",
+    takeId: "mastered_take_001",
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/chapters/chapter_001/mastered.wav`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "2".repeat(64),
+      byteCount: 960_000,
+      mimeType: "audio/wav",
+      format: "wav",
+    },
+    provenance: {
+      createdByActorId: "mastering_artifact_001",
+      sourceContentHash: source.integrity.contentHash,
+      generationRequestHash: "3".repeat(64),
+      parentArtifactIds: [source.id],
+    },
+    rights: rights(),
+  }, t1);
+  assert.equal(mastered.review.required, true);
+  assert.equal(mastered.review.status, "pending");
+  assert.doesNotThrow(() => assertArtifactRecord(mastered));
+
+  assert.throws(
+    () => createArtifactRecord({
+      ...candidateInput("artifact_mastered_invalid_001", "take_mastered_invalid_001", "4"),
+      kind: "mastered-chapter",
+      provenance: {
+        createdByActorId: "mastering_artifact_001",
+        parentArtifactIds: [],
+      },
+    }, t1),
+    /ARTIFACT_PARENT_REQUIRED/u,
+  );
+});
+
 test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {
   const first = approve(verify(createCandidate("artifact_take_008", "take_008", "8")));
   const second = approve(verify(createCandidate("artifact_take_009", "take_009", "9")));

@@ -17,6 +17,7 @@ export type ArtifactKind =
   | "illustration-layer"
   | "visual-render"
   | "chapter-master"
+  | "mastered-chapter"
   | "release-package";
 
 export type ArtifactVerificationStatus =
@@ -181,6 +182,7 @@ const ARTIFACT_KINDS: ReadonlySet<ArtifactKind> = new Set([
   "illustration-layer",
   "visual-render",
   "chapter-master",
+  "mastered-chapter",
   "release-package",
 ]);
 
@@ -203,6 +205,7 @@ const REVIEW_REQUIRED_KINDS: ReadonlySet<ArtifactKind> = new Set([
   "illustration-layer",
   "visual-render",
   "chapter-master",
+  "mastered-chapter",
   "release-package",
 ]);
 
@@ -299,7 +302,7 @@ function validateIntegrity(kind: ArtifactKind, integrity: ArtifactIntegrity): vo
   if (!FORMAT_PATTERN.test(integrity.format)) throw new Error("ARTIFACT_FORMAT_INVALID");
 
   const mime = integrity.mimeType;
-  if ((kind === "audio-candidate" || kind === "chapter-master") && !mime.startsWith("audio/")) {
+  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter") && !mime.startsWith("audio/")) {
     throw new Error("ARTIFACT_AUDIO_MIME_REQUIRED");
   }
   if ((kind === "word-alignment" || kind === "audio-analysis") && mime !== "application/json") {
@@ -359,7 +362,7 @@ function validateProvenance(record: Pick<ArtifactRecord, "id" | "kind" | "jobId"
       throw new Error("ARTIFACT_PROVIDER_PROVENANCE_REQUIRED");
     }
   }
-  if ((record.kind === "chapter-master" || record.kind === "release-package") && parents.length === 0) {
+  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "release-package") && parents.length === 0) {
     throw new Error("ARTIFACT_PARENT_REQUIRED");
   }
 }
