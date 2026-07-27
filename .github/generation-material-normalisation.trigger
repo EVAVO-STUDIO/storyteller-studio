@@ -1,0 +1,1 @@
+canonicalise equivalent private generation intent before persistence
