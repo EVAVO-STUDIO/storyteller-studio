@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "storyteller-series-continuity-v1",
+  "seriesId": "series_example_trilogy",
+  "title": "Example Trilogy",
+  "revision": 1,
+  "narratorAssignmentId": "assignment_narrator",
+  "voiceAssignments": [
+    {
+      "id": "assignment_narrator",
+      "role": "narrator",
+      "voiceProfileId": "voice_narrator_original",
+      "voiceProfileRevision": 1,
+      "sourceKind": "synthetic-designed",
+      "continuityAnchorId": "anchor_narrator_book_one",
+      "introducedInBookId": "project_example_book_one",
+      "approvedBy": "actor_owner",
+      "notes": [
+        "Close listener relationship",
+        "Restrained dramatic emphasis",
+        "Character changes led by intention and rhythm"
+      ]
+    }
+  ],
+  "pronunciations": [
+    {
+      "id": "pronunciation_aelwyn",
+      "writtenForm": "Aelwyn",
+      "canonicalForm": "AYL-win",
+      "language": "invented",
+      "context": "person-name",
+      "revision": 1,
+      "introducedInBookId": "project_example_book_one",
+      "approvedBy": "actor_owner"
+    }
+  ],
+  "acousticAnchors": [
+    {
+      "voiceProfileId": "voice_narrator_original",
+      "continuityAnchorId": "anchor_narrator_book_one",
+      "signature": {
+        "medianPitchHz": 118,
+        "pitchRangeSemitones": 7,
+        "speakingRateWpm": 156,
+        "pauseRatio": 0.19,
+        "energyRmsDb": -21
+      },
+      "approvedInBookId": "project_example_book_one",
+      "revision": 1
+    }
+  ],
+  "performancePrinciples": [
+    "Maintain a clear relationship with the listener",
+    "Let silence carry unresolved dramatic meaning",
+    "Protect the author’s sentence shape",
+    "Use restraint rather than announcing emotion"
+  ],
+  "prohibitedShortcuts": [
+    "Do not turn intensity into automatic volume",
+    "Do not use caricature accents as the primary character distinction"
+  ],
+  "createdAt": "2026-07-27T00:00:00.000Z",
+  "updatedAt": "2026-07-27T00:00:00.000Z",
+  "fingerprint": "replace-with-createSeriesContinuityBible-output"
+}
