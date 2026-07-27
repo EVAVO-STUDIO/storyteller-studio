@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./artifact-queue": "./src/artifact-queue.ts",
     "./artifact-registry": "./src/artifact-registry.ts",
+    "./artifact-store": "./src/artifact-store.ts",
     "./generation-queue": "./src/generation-queue.ts",
     "./project-store": "./src/project-store.ts",
     "./provider-adapter": "./src/provider-adapter.ts",
