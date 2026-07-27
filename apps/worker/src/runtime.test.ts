@@ -13,16 +13,18 @@ import {
   type SynthesisRequest,
   type SynthesisResult,
 } from "@evavo/storyteller-engine/provider-adapter";
+import { resolveWorkerAudioEngineeringPolicy } from "./audio-engineering.js";
 import {
   resolveWorkerRuntimeConfiguration,
   type WorkerEnvironment,
 } from "./configuration.js";
 import { runConfiguredWorkerRuntime } from "./runtime.js";
 
+const now = new Date("2026-07-27T00:00:00.000Z");
 const capability = createCapabilitySnapshot({
   providerId: "provider_runtime",
   adapterVersion: "1.0.0",
-  capturedAt: "2026-07-27T00:00:00.000Z",
+  capturedAt: now.toISOString(),
   features: ["style-instructions"],
   maximumInputCharacters: 20_000,
   supportedFormats: ["wav"],
@@ -79,7 +81,26 @@ function environment(dataDirectory: string): WorkerEnvironment {
     STORYTELLER_WORKER_POLL_INTERVAL_MS: "100",
     STORYTELLER_WORKER_LEASE_DURATION_MS: "2000",
     STORYTELLER_WORKER_HEARTBEAT_INTERVAL_MS: "500",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE: "lossless-production",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION: "evavo-lossless-2026-07",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT: "2026-07-01T00:00:00.000Z",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE:
+      "evavo-lossless-mastering-policy-2026-07",
   };
+}
+
+function engineeringPolicy(
+  runtimeEnvironment: WorkerEnvironment,
+  root: string,
+) {
+  const policy = resolveWorkerAudioEngineeringPolicy({
+    workerEnabled: true,
+    environment: runtimeEnvironment,
+    temporaryRoot: join(root, "audio-engineering-temp"),
+    now,
+  });
+  if (!policy) throw new Error("worker engineering policy required");
+  return policy;
 }
 
 test("disabled runtime returns without providers, credentials or persistence", async () => {
@@ -95,14 +116,35 @@ test("disabled runtime returns without providers, credentials or persistence", a
   assert.equal(result.configuration.executionApiExposed, false);
 });
 
+test("enabled runtime rejects missing engineering policy before provider preflight", async () => {
+  const root = await mkdtemp(join(tmpdir(), "storyteller-worker-runtime-engineering-"));
+  try {
+    const adapter = new PreflightOnlyAdapter();
+    const configuration = resolveWorkerRuntimeConfiguration(environment("./data"), root);
+    await assert.rejects(
+      runConfiguredWorkerRuntime(configuration, {
+        providers: new ProviderAdapterRegistry([adapter]),
+        credentials: new StaticCredentials("fixture-credential"),
+      }),
+      /WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED/u,
+    );
+    assert.equal(adapter.inspectCount, 0);
+    assert.equal(adapter.synthesiseCount, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("enabled runtime fails before queue polling when no provider adapter is registered", async () => {
   const root = await mkdtemp(join(tmpdir(), "storyteller-worker-runtime-empty-"));
   try {
-    const configuration = resolveWorkerRuntimeConfiguration(environment("./data"), root);
+    const runtimeEnvironment = environment("./data");
+    const configuration = resolveWorkerRuntimeConfiguration(runtimeEnvironment, root);
     await assert.rejects(
       runConfiguredWorkerRuntime(configuration, {
         providers: new ProviderAdapterRegistry(),
         credentials: new StaticCredentials(null),
+        audioEngineering: engineeringPolicy(runtimeEnvironment, root),
       }),
       /WORKER_PROVIDER_ADAPTERS_REQUIRED/u,
     );
@@ -115,11 +157,13 @@ test("enabled runtime requires every registered provider credential before claim
   const root = await mkdtemp(join(tmpdir(), "storyteller-worker-runtime-credential-"));
   try {
     const adapter = new PreflightOnlyAdapter();
-    const configuration = resolveWorkerRuntimeConfiguration(environment("./data"), root);
+    const runtimeEnvironment = environment("./data");
+    const configuration = resolveWorkerRuntimeConfiguration(runtimeEnvironment, root);
     await assert.rejects(
       runConfiguredWorkerRuntime(configuration, {
         providers: new ProviderAdapterRegistry([adapter]),
         credentials: new StaticCredentials(null),
+        audioEngineering: engineeringPolicy(runtimeEnvironment, root),
       }),
       /WORKER_PROVIDER_CREDENTIAL_MISSING:provider_runtime/u,
     );
@@ -134,11 +178,13 @@ test("once runtime preflights providers and stops cleanly when the durable queue
   const root = await mkdtemp(join(tmpdir(), "storyteller-worker-runtime-once-"));
   try {
     const adapter = new PreflightOnlyAdapter();
-    const configuration = resolveWorkerRuntimeConfiguration(environment("./private-data"), root);
+    const runtimeEnvironment = environment("./private-data");
+    const configuration = resolveWorkerRuntimeConfiguration(runtimeEnvironment, root);
     const result = await runConfiguredWorkerRuntime(configuration, {
       providers: new ProviderAdapterRegistry([adapter]),
       credentials: new StaticCredentials("fixture-credential"),
-      now: () => new Date("2026-07-27T00:00:00.000Z"),
+      audioEngineering: engineeringPolicy(runtimeEnvironment, root),
+      now: () => now,
     });
 
     assert.equal(result.status, "stopped");
@@ -157,6 +203,8 @@ test("once runtime preflights providers and stops cleanly when the durable queue
       "verifier_runtime_test_001",
       "fixture-credential",
       "provider_runtime",
+      "evavo-lossless-mastering-policy-2026-07",
+      "audio-engineering-temp",
     ]) assert.equal(serialised.includes(forbidden), false);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -171,11 +219,13 @@ test("provider capability mismatch fails before service start", async () => {
       ...capability,
       providerId: "provider_wrong",
     });
-    const configuration = resolveWorkerRuntimeConfiguration(environment("./data"), root);
+    const runtimeEnvironment = environment("./data");
+    const configuration = resolveWorkerRuntimeConfiguration(runtimeEnvironment, root);
     await assert.rejects(
       runConfiguredWorkerRuntime(configuration, {
         providers: new ProviderAdapterRegistry([adapter]),
         credentials: new StaticCredentials("fixture-credential"),
+        audioEngineering: engineeringPolicy(runtimeEnvironment, root),
       }),
       /WORKER_PROVIDER_CAPABILITY_ID_MISMATCH/u,
     );
