@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
 import { FileBudgetLedger } from "@evavo/storyteller-engine/budget-ledger";
 import { FileCalibrationSessionStore } from "@evavo/storyteller-engine/calibration-store";
+import type { GenerationAudioEngineeringPolicy } from "@evavo/storyteller-engine/generation-audio-engineering";
 import { FileGenerationBudgetController } from "@evavo/storyteller-engine/generation-budget";
 import {
   CalibratedGenerationMaterialStore,
@@ -37,6 +38,7 @@ import {
 export interface WorkerRuntimeDependencies {
   providers: ProviderAdapterRegistry;
   credentials: CredentialResolver;
+  audioEngineering?: GenerationAudioEngineeringPolicy;
   signals?: WorkerSignalSource;
   shutdownScheduler?: WorkerShutdownScheduler;
   heartbeatScheduler?: LeaseHeartbeatScheduler;
@@ -136,6 +138,10 @@ export function createWorkerService(
   dependencies: WorkerRuntimeDependencies,
   credentials: CredentialResolver,
 ): GenerationWorkerService {
+  const audioEngineering = dependencies.audioEngineering;
+  if (!audioEngineering) {
+    throw new Error("WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED");
+  }
   const now = dependencies.now ?? (() => new Date());
   const queueState = new FileProjectStore(configuration.queueRootDirectory);
   const queue = new FileGenerationQueue(queueState);
@@ -185,6 +191,7 @@ export function createWorkerService(
       credentials,
       objectStore,
       artifactRegistry,
+      audioEngineering,
       budgetController,
     },
     {
@@ -203,6 +210,7 @@ export function createWorkerService(
       providerTimeoutMs: configuration.providerTimeoutMs,
       outcomeHistoryLimit: configuration.outcomeHistoryLimit,
       requireBudget: true,
+      requireAudioEngineering: true,
       now,
       ...(dependencies.waiter ? { waiter: dependencies.waiter } : {}),
     },
