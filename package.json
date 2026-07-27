@@ -22,7 +22,7 @@
     "test:api": "node scripts/run-tests.mjs api",
     "test:cli": "node scripts/run-tests.mjs cli",
     "test": "node scripts/run-tests.mjs all",
-    "verify:foundation": "node scripts/check-foundation.mjs",
+    "verify:foundation": "node scripts/check-foundation.mjs && node scripts/check-web-artifact-surface.mjs",
     "verify:private-boundary": "node scripts/check-private-boundary.mjs",
     "verify:artifacts": "node scripts/check-artifact-registry.mjs && node scripts/check-artifact-api.mjs",
     "verify": "npm run verify:foundation && npm run verify:private-boundary && npm run verify:artifacts && npm run typecheck && npm run test",
