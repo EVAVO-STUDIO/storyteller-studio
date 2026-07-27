@@ -1,0 +1,14 @@
+{
+  "name": "@evavo/storyteller-api",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc -p ../../tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@evavo/storyteller-engine": "0.2.0"
+  }
+}
