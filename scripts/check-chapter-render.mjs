@@ -56,7 +56,8 @@ requireTokens("packages/storyteller/src/chapter-render.ts", [
   "CHAPTER_RENDER_OUTPUT_MEDIA_INVALID",
   "CHAPTER_RENDER_PROCESS_OUTPUT_TOO_LARGE",
   "CHAPTER_RENDER_FINGERPRINT_MISMATCH",
-  '"<private',
+  "commandFingerprint",
+  "filterFingerprint",
 ]);
 
 requireTokens("packages/storyteller/src/chapter-render.test.ts", [
