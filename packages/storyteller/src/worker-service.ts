@@ -12,7 +12,10 @@ import {
   runGenerationWorkerWithHeartbeat,
   type HeartbeatingGenerationWorkerPublicView,
 } from "./heartbeat-worker.js";
-import { GenerationLeaseOwnershipLostError } from "./lease-heartbeat.js";
+import {
+  GenerationLeaseOwnershipLostError,
+  type LeaseHeartbeatScheduler,
+} from "./lease-heartbeat.js";
 import type { FilePrivateObjectStore } from "./private-object-store.js";
 import type {
   CredentialResolver,
@@ -56,6 +59,7 @@ export interface GenerationWorkerServiceOptions {
   pollIntervalMs?: number;
   leaseDurationMs?: number;
   heartbeatIntervalMs?: number;
+  heartbeatScheduler?: LeaseHeartbeatScheduler;
   providerTimeoutMs?: number;
   outcomeHistoryLimit?: number;
   now?: () => Date;
@@ -166,6 +170,7 @@ export class GenerationWorkerService {
   readonly #pollIntervalMs: number;
   readonly #leaseDurationMs: number;
   readonly #heartbeatIntervalMs: number;
+  readonly #heartbeatScheduler: LeaseHeartbeatScheduler | undefined;
   readonly #providerTimeoutMs: number;
   readonly #outcomeHistoryLimit: number;
   readonly #now: () => Date;
@@ -226,6 +231,7 @@ export class GenerationWorkerService {
       Math.max(250, Math.floor(this.#leaseDurationMs / 2) - 1),
       "GENERATION_WORKER_SERVICE_HEARTBEAT_INTERVAL_INVALID",
     );
+    this.#heartbeatScheduler = options.heartbeatScheduler;
     this.#providerTimeoutMs = requireInteger(
       options.providerTimeoutMs ?? 120_000,
       1_000,
@@ -427,11 +433,15 @@ export class GenerationWorkerService {
         ...(this.#verifierActorId ? { verifierActorId: this.#verifierActorId } : {}),
         timeoutMs: this.#providerTimeoutMs,
         signal: this.#abortController.signal,
+        clock: this.#now,
         now: startedAt,
         heartbeat: {
           leaseDurationMs: this.#leaseDurationMs,
           heartbeatIntervalMs: this.#heartbeatIntervalMs,
           now: this.#now,
+          ...(this.#heartbeatScheduler
+            ? { scheduler: this.#heartbeatScheduler }
+            : {}),
         },
       });
       const publicView = heartbeatingGenerationWorkerPublicView(result);
