@@ -24,7 +24,7 @@
     "test:worker": "node scripts/run-tests.mjs worker",
     "test:cli": "node scripts/run-tests.mjs cli",
     "test": "node scripts/run-tests.mjs all",
-    "verify:foundation": "node scripts/check-foundation.mjs && node scripts/check-web-artifact-surface.mjs",
+    "verify:foundation": "node scripts/check-foundation.mjs && node scripts/check-web-artifact-surface.mjs && node scripts/check-web-calibration-surface.mjs",
     "verify:private-boundary": "node scripts/check-private-boundary.mjs",
     "verify:storage": "node scripts/check-private-object-store.mjs",
     "verify:material": "node scripts/check-generation-material.mjs",
