@@ -11,6 +11,7 @@
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
     "./generation-queue": "./src/generation-queue.ts",
+    "./generation-worker": "./src/generation-worker.ts",
     "./private-object-store": "./src/private-object-store.ts",
     "./project-store": "./src/project-store.ts",
     "./provider-adapter": "./src/provider-adapter.ts",
