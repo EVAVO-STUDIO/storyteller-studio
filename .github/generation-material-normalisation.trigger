@@ -1,1 +1,1 @@
-canonicalise equivalent private generation intent before persistence
+canonicalise equivalent private generation intent with exact source anchors
