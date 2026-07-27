@@ -1,0 +1,10 @@
+{
+  "name": "@evavo/storyteller-engine",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider-neutral long-form narration, continuity and quality engine.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
