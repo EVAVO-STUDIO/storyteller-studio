@@ -95,6 +95,7 @@ async function withClaim(
     await queue.enqueue(job, { now: t0 });
     const claim = await queue.claimNext({
       workerId: "worker_artifact_queue_001",
+      leaseDurationMs: 120_000,
       now: t0,
     });
     if (!claim) throw new Error("queue claim required");
