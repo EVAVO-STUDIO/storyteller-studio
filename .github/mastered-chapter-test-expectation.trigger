@@ -1,1 +1,1 @@
-accept the earlier structural duration mismatch as the expected tamper failure
+run the registered mastered chapter structural tamper expectation correction
