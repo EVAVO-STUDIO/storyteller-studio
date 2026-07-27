@@ -92,23 +92,35 @@ jobs:
               ".verification/cli-tests.log",
               ".verification/build.log",
             ];
+            const logs = logFiles
+              .filter((file) => fs.existsSync(file))
+              .map((file) => ({
+                file,
+                source: fs.readFileSync(file, "utf8").replace(/\u001b\[[0-9;]*m/g, ""),
+              }));
             let diagnostic = "";
             if (state === "failure") {
-              for (const file of logFiles) {
-                if (!fs.existsSync(file)) continue;
-                const lines = fs.readFileSync(file, "utf8")
-                  .replace(/\u001b\[[0-9;]*m/g, "")
-                  .split(/\r?\n/)
-                  .map((line) => line.trim())
-                  .filter(Boolean);
-                const assertion = lines.find((line) => /^-\s+/.test(line));
+              for (const log of logs) {
+                const lines = log.source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
                 const compilerOrTest = lines.find((line) =>
-                  /error TS|AssertionError|not ok|ERR_[A-Z_]+|npm error|ELIFECYCLE/i.test(line),
+                  /error TS\d+|AssertionError|not ok|ERR_[A-Z_]+|npm error|ELIFECYCLE/i.test(line),
                 );
-                const candidate = assertion || compilerOrTest;
-                if (candidate) {
-                  diagnostic = candidate.replace(/^-\s+/, "");
+                if (compilerOrTest) {
+                  diagnostic = compilerOrTest;
                   break;
+                }
+              }
+              if (!diagnostic) {
+                for (const log of logs) {
+                  if (!/check failed:/i.test(log.source)) continue;
+                  const assertion = log.source
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .find((line) => /^-\s+/.test(line));
+                  if (assertion) {
+                    diagnostic = assertion.replace(/^-\s+/, "");
+                    break;
+                  }
                 }
               }
             }
