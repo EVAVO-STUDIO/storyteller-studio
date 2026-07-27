@@ -41,6 +41,8 @@ function collectRuntimeFiles(directory, output = []) {
 for (const path of [
   "packages/storyteller/src/audio-engineering.ts",
   "packages/storyteller/src/audio-engineering.test.ts",
+  "packages/storyteller/src/audio-engineering-artifact.ts",
+  "packages/storyteller/src/audio-engineering-artifact.test.ts",
   "packages/storyteller/package.json",
   "docs/AUDIO_ENGINEERING.md",
 ]) requireFile(path);
@@ -61,6 +63,7 @@ requireTokens("packages/storyteller/src/audio-engineering.ts", [
   "maximumOutputBytes",
   "commandFingerprints",
   "AUDIO_ENGINEERING_BYTE_COUNT_MISMATCH",
+  "AUDIO_ENGINEERING_SILENCE_EVENT_INVALID",
   "assessTechnicalAudio",
   '"<private-audio>"',
 ]);
@@ -79,6 +82,31 @@ requireTokens("packages/storyteller/src/audio-engineering.test.ts", [
   "AUDIO_ENGINEERING_COMMAND_OUTPUT_TOO_LARGE",
 ]);
 
+requireTokens("packages/storyteller/src/audio-engineering-artifact.ts", [
+  "AudioEngineeringArtifactInput",
+  "ingestAudioEngineeringArtifact",
+  "audioEngineeringArtifactPublicView",
+  "withPrivateTemporaryAudio",
+  "ingestPrivateArtifact",
+  'kind: "audio-analysis"',
+  'claimedMimeType: "application/json"',
+  'parentArtifactIds: [input.candidateArtifactId]',
+  '"audio-engineering-evidence"',
+  "candidateEligible: evidence.eligible && ingest.accepted",
+  "AUDIO_ENGINEERING_TEMPORARY_FILE_FAILED",
+]);
+
+requireTokens("packages/storyteller/src/audio-engineering-artifact.test.ts", [
+  "eligible independent evidence becomes a verified audio-analysis artifact",
+  "engineering failure evidence is retained while candidate eligibility remains blocked",
+  "identical engineering retries reuse the same evidence artifact",
+  "analysis failure creates no artifact and always removes temporary bytes",
+  "candidate and request scope are validated before temporary file creation",
+  'kind, "audio-analysis"',
+  'verification.status, "verified"',
+  "AUDIO_ENGINEERING_COMMAND_FAILED:ffprobe-version",
+]);
+
 requireTokens("docs/AUDIO_ENGINEERING.md", [
   "Trust boundary",
   "Independent measurements",
@@ -86,12 +114,12 @@ requireTokens("docs/AUDIO_ENGINEERING.md", [
   "Versioned delivery profiles",
   "Integrity and redaction",
   "Evidence eligibility",
-  "Current boundary",
+  "Governed artifact integration",
   "ffprobe",
   "astats",
   "loudnorm",
   "silencedetect",
-  "does not yet automatically attach",
+  "audio-analysis",
 ]);
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
@@ -99,26 +127,50 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   if (packageJson.exports?.["./audio-engineering"] !== "./src/audio-engineering.ts") {
     problems.push("storyteller package does not export ./audio-engineering");
   }
+  if (
+    packageJson.exports?.["./audio-engineering-artifact"]
+    !== "./src/audio-engineering-artifact.ts"
+  ) {
+    problems.push("storyteller package does not export ./audio-engineering-artifact");
+  }
 }
 
 const source = existsSync(fromRoot("packages/storyteller/src/audio-engineering.ts"))
   ? read("packages/storyteller/src/audio-engineering.ts")
   : "";
-for (const forbidden of [
-  "exec(",
-  "execSync(",
-  "shell: true",
-  "audioPath:",
-  "stdout:",
-  "stderr:",
-]) {
-  const evidenceStart = source.indexOf("export interface AudioEngineeringEvidence");
-  const evidenceEnd = source.indexOf("export interface AudioEngineeringPublicView");
-  if (evidenceStart >= 0 && evidenceEnd > evidenceStart) {
-    const evidenceContract = source.slice(evidenceStart, evidenceEnd);
+const evidenceStart = source.indexOf("export interface AudioEngineeringEvidence");
+const evidenceEnd = source.indexOf("export interface AudioEngineeringPublicView");
+if (evidenceStart < 0 || evidenceEnd <= evidenceStart) {
+  problems.push("audio engineering evidence contract is missing");
+} else {
+  const evidenceContract = source.slice(evidenceStart, evidenceEnd);
+  for (const forbidden of [
+    "audioPath:",
+    "stdout:",
+    "stderr:",
+    "credential",
+    "providerRequestId",
+  ]) {
     if (evidenceContract.includes(forbidden)) {
       problems.push(`audio engineering evidence retains forbidden execution material: ${forbidden}`);
     }
+  }
+}
+for (const forbidden of ["exec(", "execSync(", "shell: true"]) {
+  if (source.includes(forbidden)) problems.push(`audio engineering runner uses forbidden execution: ${forbidden}`);
+}
+
+const coordinator = existsSync(fromRoot("packages/storyteller/src/audio-engineering-artifact.ts"))
+  ? read("packages/storyteller/src/audio-engineering-artifact.ts")
+  : "";
+if (coordinator.includes("adapterVersion:")) {
+  problems.push("independent audio analysis is incorrectly represented as provider-adapter provenance");
+}
+if (coordinator.includes("temporaryRoot:") && coordinator.includes("AudioEngineeringArtifactPublicView")) {
+  const publicStart = coordinator.indexOf("export interface AudioEngineeringArtifactPublicView");
+  const publicEnd = coordinator.indexOf("const SAFE_IDENTIFIER", publicStart);
+  if (coordinator.slice(publicStart, publicEnd).includes("temporaryRoot")) {
+    problems.push("audio engineering artifact public view exposes temporary storage");
   }
 }
 
@@ -129,8 +181,10 @@ for (const path of [
   const runtime = read(path);
   for (const forbidden of [
     "@evavo/storyteller-engine/audio-engineering",
+    "@evavo/storyteller-engine/audio-engineering-artifact",
     "NodeAudioEngineeringRunner",
     "analyseAudioEngineering",
+    "ingestAudioEngineeringArtifact",
     "FFMPEG_PATH",
     "FFPROBE_PATH",
   ]) {
@@ -138,6 +192,13 @@ for (const path of [
       problems.push(`${path} exposes private audio-engineering execution: ${forbidden}`);
     }
   }
+}
+
+for (const path of [
+  ".github/workflows/one-time-audio-silence-parser-fix.yml",
+  ".github/audio-silence-parser-fix.trigger",
+]) {
+  if (existsSync(fromRoot(path))) problems.push(`completed audio parser migration remains: ${path}`);
 }
 
 if (problems.length > 0) {
@@ -150,6 +211,7 @@ console.log("storyteller_audio_engineering_check_passed");
 console.log("- provider metadata cannot self-certify generated audio");
 console.log("- ffprobe, astats, loudnorm and silencedetect evidence remain distinct");
 console.log("- the process runner is shell-free, abortable and bounded by time and output size");
-console.log("- delivery profiles are versioned and fingerprinted for later release revalidation");
-console.log("- evidence omits private paths, raw commands and raw tool output");
-console.log("- engineering eligibility remains separate from transcript, performance, rights and release approval");
+console.log("- private temporary media is deleted before the coordinator returns");
+console.log("- immutable evidence is registered as a verified audio-analysis artifact");
+console.log("- failed engineering evidence remains reviewable while candidate eligibility stays blocked");
+console.log("- API and browser runtimes expose no engineering execution or private paths");
