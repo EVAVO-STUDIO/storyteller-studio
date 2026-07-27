@@ -6,6 +6,7 @@ import {
 } from "@evavo/storyteller-engine/generation-queue";
 import { FileProjectStore, type StoredEnvelope } from "@evavo/storyteller-engine/project-store";
 
+export type StorytellerEnvironment = Readonly<Record<string, string | undefined>>;
 export type GenerationQueueDriver = "disabled" | "file";
 
 export type GenerationQueueRuntimeConfiguration =
@@ -72,7 +73,7 @@ export interface GenerationQueuePublicView {
 
 const QUEUE_DRIVER_PATTERN = /^(?:disabled|file)$/u;
 
-function isProduction(environment: NodeJS.ProcessEnv): boolean {
+function isProduction(environment: StorytellerEnvironment): boolean {
   return environment.NODE_ENV === "production" || environment.VERCEL_ENV === "production";
 }
 
@@ -81,7 +82,7 @@ function enabled(value: string | undefined): boolean {
 }
 
 export function resolveGenerationQueueRuntimeConfiguration(
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: StorytellerEnvironment = process.env,
   workingDirectory = process.cwd(),
 ): GenerationQueueRuntimeConfiguration {
   const rawDriver = environment.STORYTELLER_QUEUE_DRIVER?.trim().toLocaleLowerCase("en-AU") ?? "disabled";
