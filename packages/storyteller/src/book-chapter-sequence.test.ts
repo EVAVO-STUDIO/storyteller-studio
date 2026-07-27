@@ -280,7 +280,7 @@ async function approvedChapter(input: Readonly<{
     now: t2,
   });
   const sourceEngineering = verifiedArtifact({
-    seed: input.seed + 10_000,
+    seed: input.seed,
     kind: "audio-analysis",
     bytes: new TextEncoder().encode(JSON.stringify(sourceEvidence)),
     sourceContentHash: sourceMaster.integrity.contentHash,
@@ -490,10 +490,10 @@ test("chapter ordinals, special roles and identities fail closed", async () => {
     assert.throws(
       () => createBookChapterSequence(sequenceInput([
         chapters[0]!,
-        chapters[1]!,
+        { ...chapters[1]!, role: "epilogue" },
         { ...chapters[2]!, role: "chapter" },
       ])),
-      /BOOK_SEQUENCE_EPILOGUE_POSITION_INVALID|BOOK_SEQUENCE_/u,
+      /BOOK_SEQUENCE_EPILOGUE_POSITION_INVALID/u,
     );
     assert.throws(
       () => createBookChapterSequence(sequenceInput([
@@ -581,7 +581,7 @@ test("rights, engineering and output profiles must remain consistent across the 
     const expired = await approvedChapter({
       root,
       seed: 5,
-      rightsOverrides: { expiresAt: "2026-07-26T00:00:00.000Z" },
+      rightsOverrides: { expiresAt: "2026-07-27T00:00:08.500Z" },
     });
     assert.throws(
       () => createBookChapterSequence(sequenceInput([

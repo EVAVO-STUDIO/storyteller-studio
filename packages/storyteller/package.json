@@ -12,6 +12,7 @@
     "./artifact-store": "./src/artifact-store.ts",
     "./audio-engineering": "./src/audio-engineering.ts",
     "./audio-engineering-artifact": "./src/audio-engineering-artifact.ts",
+    "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
     "./budget-ledger": "./src/budget-ledger.ts",
     "./calibration-admission": "./src/calibration-admission.ts",
     "./calibration-engineering": "./src/calibration-engineering.ts",

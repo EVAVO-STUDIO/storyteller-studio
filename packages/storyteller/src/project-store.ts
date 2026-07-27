@@ -17,6 +17,7 @@ export type StoredEntityType =
   | "generation-job"
   | "take-assessment"
   | "mastered-chapter-review"
+  | "book-chapter-sequence"
   | "chapter-assembly"
   | "release-package";
 
