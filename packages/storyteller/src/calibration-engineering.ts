@@ -2,7 +2,10 @@ import {
   assertAudioEngineeringEvidence,
   type AudioEngineeringEvidence,
 } from "./audio-engineering.js";
-import type { ArtifactRecord } from "./artifact-registry.js";
+import {
+  assertArtifactRecord,
+  type ArtifactRecord,
+} from "./artifact-registry.js";
 import {
   addCalibrationCandidate,
   assertCalibrationSession,
@@ -80,6 +83,9 @@ export function admitEngineeringBackedCalibrationCandidate(
   assertCalibrationSession(input.session);
   assertAudioEngineeringEvidence(input.engineeringEvidence);
   const { candidate, audioCandidate, transcriptAssessment, engineeringArtifact } = input;
+  assertArtifactRecord(audioCandidate);
+  assertArtifactRecord(transcriptAssessment);
+  assertArtifactRecord(engineeringArtifact);
 
   if (audioCandidate.kind !== "audio-candidate") {
     throw new CalibrationEngineeringAdmissionError("CALIBRATION_ENGINEERING_AUDIO_CANDIDATE_REQUIRED");
