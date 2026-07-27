@@ -42,12 +42,16 @@ for (const path of [
   "apps/worker/package.json",
   "apps/worker/src/configuration.ts",
   "apps/worker/src/configuration.test.ts",
+  "apps/worker/src/elevenlabs-provider.ts",
+  "apps/worker/src/elevenlabs-provider.test.ts",
   "apps/worker/src/lifecycle.ts",
   "apps/worker/src/lifecycle.test.ts",
   "apps/worker/src/runtime.ts",
   "apps/worker/src/runtime.test.ts",
   "apps/worker/src/providers.ts",
+  "apps/worker/src/providers.test.ts",
   "apps/worker/src/main.ts",
+  "docs/ELEVENLABS_ADAPTER.md",
   "docs/WORKER_RUNTIME.md",
   "scripts/run-tests.mjs",
   ".env.example",
@@ -76,6 +80,34 @@ requireTokens("apps/worker/src/configuration.test.ts", [
   "environment credential bindings resolve secrets without including them in configuration summaries",
   "production file worker requires queue, artifact and worker single-host acknowledgements",
   "worker configuration rejects unsafe drivers, timing and credential bindings",
+]);
+
+requireTokens("apps/worker/src/elevenlabs-provider.ts", [
+  "ELEVENLABS_CREDENTIAL_BINDING_ID",
+  "ElevenLabsWorkerProviderSummary",
+  "ResolvedElevenLabsWorkerProvider",
+  "resolveElevenLabsWorkerProvider",
+  "elevenLabsWorkerProviderSummary",
+  "if (!input.workerEnabled) return null",
+  "STORYTELLER_ELEVENLABS_ENABLED",
+  "STORYTELLER_ELEVENLABS_MODEL_POLICIES",
+  "STORYTELLER_ELEVENLABS_VOICE_BINDINGS",
+  "STORYTELLER_ELEVENLABS_PRONUNCIATION_DICTIONARIES",
+  "STORYTELLER_ELEVENLABS_DATA_POLICY",
+  "ELEVENLABS_WORKER_CREDENTIAL_BINDING_REQUIRED",
+  "ELEVENLABS_WORKER_MODEL_POLICIES_INVALID",
+  "ELEVENLABS_WORKER_DATA_POLICY_INVALID",
+  "new ElevenLabsNarrationAdapter(configuration)",
+]);
+
+requireTokens("apps/worker/src/elevenlabs-provider.test.ts", [
+  "disabled worker ignores every private ElevenLabs setting",
+  "disabled provider does not evaluate model, voice or pricing records",
+  "complete governed configuration creates one redacted provider summary",
+  "enabled provider requires an explicit server credential binding",
+  "malformed provider JSON and policy shapes fail before adapter registration",
+  "expired pricing and non-premade voices fail closed during construction",
+  "unsafe booleans, bitrate and text normalisation are rejected",
 ]);
 
 requireTokens("apps/worker/src/lifecycle.ts", [
@@ -125,9 +157,20 @@ requireTokens("apps/worker/src/runtime.test.ts", [
 ]);
 
 requireTokens("apps/worker/src/providers.ts", [
+  "CreateWorkerProviderRegistryInput",
   "createWorkerProviderRegistry",
-  "return new ProviderAdapterRegistry();",
-  "rights, privacy, cost and response-validation contracts",
+  "resolveElevenLabsWorkerProvider",
+  "workerEnabled: input.workerEnabled",
+  "credentialBindings: input.credentialBindings",
+  "new ProviderAdapterRegistry(elevenLabs ? [elevenLabs.adapter] : [])",
+  "rights, privacy, pricing, voice-source and response-validation contracts",
+]);
+
+requireTokens("apps/worker/src/providers.test.ts", [
+  "worker provider registry remains empty when the worker is disabled",
+  "worker provider registry remains empty when ElevenLabs is disabled",
+  "worker provider registry conditionally registers one governed ElevenLabs adapter",
+  "worker provider registry rejects incomplete ElevenLabs governance configuration",
 ]);
 
 requireTokens("apps/worker/src/main.ts", [
@@ -135,6 +178,8 @@ requireTokens("apps/worker/src/main.ts", [
   "resolveWorkerRuntimeConfiguration",
   "EnvironmentCredentialResolver",
   "createWorkerProviderRegistry",
+  "workerEnabled: configuration.enabled",
+  "credentialBindings",
   "runConfiguredWorkerRuntime",
   'service: "storyteller-studio-worker"',
   "safeErrorCode",
@@ -160,6 +205,15 @@ requireTokens("docs/WORKER_RUNTIME.md", [
   "PostgreSQL transactional claims, material records and budget accounts",
 ]);
 
+requireTokens("docs/ELEVENLABS_ADAPTER.md", [
+  "Premade voice boundary",
+  "Immutable pricing evidence",
+  "Exact manuscript text",
+  "Provider preflight",
+  "Worker boundary",
+  "The built-in worker registry must remain empty when configuration is absent or invalid",
+]);
+
 requireTokens("scripts/run-tests.mjs", [
   'worker: ["apps/worker/src"]',
   '"apps/worker/src"',
@@ -175,6 +229,13 @@ requireTokens(".env.example", [
   "STORYTELLER_WORKER_SHUTDOWN_GRACE_MS=30000",
   "STORYTELLER_FILE_WORKER_SINGLE_HOST=false",
   "STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}",
+  "STORYTELLER_ELEVENLABS_ENABLED=false",
+  "STORYTELLER_ELEVENLABS_ADAPTER_VERSION=1.0.0",
+  "STORYTELLER_ELEVENLABS_MODEL_POLICIES=[]",
+  "STORYTELLER_ELEVENLABS_VOICE_BINDINGS=[]",
+  "STORYTELLER_ELEVENLABS_PRONUNCIATION_DICTIONARIES=[]",
+  "STORYTELLER_ELEVENLABS_DATA_POLICY={}",
+  "STORYTELLER_ELEVENLABS_ALLOW_V3_PRODUCTION=false",
 ]);
 
 const runtimeSource = existsSync(fromRoot("apps/worker/src/runtime.ts"))
@@ -239,6 +300,31 @@ if (summaryStart < 0) {
   }
 }
 
+const providerConfigurationSource = existsSync(fromRoot("apps/worker/src/elevenlabs-provider.ts"))
+  ? read("apps/worker/src/elevenlabs-provider.ts")
+  : "";
+const providerSummaryStart = providerConfigurationSource.indexOf("function disabledSummary");
+if (providerSummaryStart < 0) {
+  problems.push("ElevenLabs worker provider summary boundary is missing");
+} else {
+  const providerSummarySource = providerConfigurationSource.slice(providerSummaryStart);
+  for (const forbidden of [
+    "voiceId:",
+    "voiceProfileId:",
+    "licenceEvidenceId:",
+    "pronunciationDictionaryId:",
+    "versionId:",
+    "sourceReference:",
+    "microsPerThousandCharacters:",
+    "credentialBindings:",
+    "ELEVENLABS_API_KEY",
+  ]) {
+    if (providerSummarySource.includes(forbidden)) {
+      problems.push(`ElevenLabs worker provider summary exposes private configuration: ${forbidden}`);
+    }
+  }
+}
+
 for (const path of [
   ...collectRuntimeFiles("apps/api/src"),
   ...collectRuntimeFiles("apps/web/src"),
@@ -252,6 +338,8 @@ for (const path of [
     "createWorkerService",
     "FileGenerationBudgetController",
     "FileBudgetLedger",
+    "resolveElevenLabsWorkerProvider",
+    "createWorkerProviderRegistry",
   ]) {
     if (source.includes(forbidden)) {
       problems.push(`${path} exposes the private worker runtime: ${forbidden}`);
@@ -260,8 +348,8 @@ for (const path of [
 }
 
 const envSource = existsSync(fromRoot(".env.example")) ? read(".env.example") : "";
-if (/NEXT_PUBLIC_[A-Z0-9_]*(?:WORKER|BUDGET|CREDENTIAL|SECRET|TOKEN|KEY)/u.test(envSource)) {
-  problems.push("worker, budget or credential configuration must never use a NEXT_PUBLIC_ variable");
+if (/NEXT_PUBLIC_[A-Z0-9_]*(?:WORKER|BUDGET|ELEVENLABS|CREDENTIAL|SECRET|TOKEN|KEY)/u.test(envSource)) {
+  problems.push("worker, provider, budget or credential configuration must never use a NEXT_PUBLIC_ variable");
 }
 
 if (problems.length > 0) {
@@ -273,8 +361,9 @@ if (problems.length > 0) {
 console.log("storyteller_worker_runtime_check_passed");
 console.log("- the dedicated worker is disabled by default and opens no HTTP listener");
 console.log("- file execution requires explicit queue, artifact and worker one-host posture");
+console.log("- ElevenLabs remains absent until complete model, pricing, voice, privacy and credential configuration passes");
 console.log("- provider adapters, credentials and capability snapshots pass preflight before claims");
 console.log("- the private runtime requires transactional budget control before provider work");
 console.log("- SIGINT and SIGTERM drain gracefully before a bounded forced abort");
-console.log("- runtime summaries omit identities, paths, credential bindings, budget records and generated media");
+console.log("- runtime summaries omit identities, paths, provider records, credential bindings, budgets and generated media");
 console.log("- normal API and browser runtimes expose no worker process controls");
