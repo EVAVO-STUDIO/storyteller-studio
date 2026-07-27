@@ -47,6 +47,8 @@ function forbidTokensInFiles(paths, tokens) {
 }
 
 for (const path of [
+  "packages/storyteller/src/artifact-queue.ts",
+  "packages/storyteller/src/artifact-queue.test.ts",
   "packages/storyteller/src/artifact-registry.ts",
   "packages/storyteller/src/artifact-registry.test.ts",
   "packages/storyteller/package.json",
@@ -87,6 +89,27 @@ requireTokens("packages/storyteller/src/artifact-registry.test.ts", [
   "fingerprint tampering is detected",
 ]);
 
+requireTokens("packages/storyteller/src/artifact-queue.ts", [
+  "ArtifactAdmissionError",
+  "artifactAdmissionFingerprint",
+  "completeGenerationWithArtifacts",
+  "assessQueueCompletionArtifacts",
+  "outputArtifactRefs: assessment.artifactIds",
+  "resultIds: candidateTakeIds",
+  "artifactBackedCompletionPublicView",
+  "ARTIFACT_COMPLETION_REPORT_HASH_INVALID",
+  "ARTIFACT_COMPLETION_CLAIM_INVALID",
+]);
+
+requireTokens("packages/storyteller/src/artifact-queue.test.ts", [
+  "artifact-backed completion admits an exact verified candidate bundle",
+  "unverified artifacts block completion without consuming the worker lease",
+  "candidate-count and scope failures are reported before queue completion",
+  "completion accounting and report hashes fail closed before persistence",
+  "providerRequestId",
+  "claim.leaseToken",
+]);
+
 requireTokens("docs/ARTIFACT_REGISTRY.md", [
   "Generation intent",
   "Production artifact",
@@ -101,8 +124,13 @@ requireTokens("docs/ARTIFACT_REGISTRY.md", [
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
-  if (packageJson.exports?.["./artifact-registry"] !== "./src/artifact-registry.ts") {
-    problems.push("storyteller package does not export ./artifact-registry from the governed source module");
+  for (const [exportPath, sourcePath] of [
+    ["./artifact-queue", "./src/artifact-queue.ts"],
+    ["./artifact-registry", "./src/artifact-registry.ts"],
+  ]) {
+    if (packageJson.exports?.[exportPath] !== sourcePath) {
+      problems.push(`storyteller package does not export ${exportPath} from ${sourcePath}`);
+    }
   }
 }
 
@@ -130,6 +158,28 @@ if (publicViewStart < 0) {
   }
 }
 
+const completionSource = existsSync(fromRoot("packages/storyteller/src/artifact-queue.ts"))
+  ? read("packages/storyteller/src/artifact-queue.ts")
+  : "";
+const completionPublicViewStart = completionSource.indexOf("export function artifactBackedCompletionPublicView");
+if (completionPublicViewStart < 0) {
+  problems.push("artifact-backed completion public view is missing");
+} else {
+  const publicView = completionSource.slice(completionPublicViewStart);
+  for (const forbidden of [
+    "leaseToken",
+    "objectKey",
+    "container",
+    "versionId",
+    "providerRequestId",
+    "outputArtifactRefs",
+  ]) {
+    if (publicView.includes(forbidden)) {
+      problems.push(`artifact-backed completion public view exposes forbidden field: ${forbidden}`);
+    }
+  }
+}
+
 forbidTokensInFiles(collectTextFiles("apps/web/src"), [
   "ARTIFACT_STORAGE_OBJECT_KEY",
   "providerRequestId",
@@ -147,5 +197,6 @@ console.log("- generated media remains separate from generation intent and relea
 console.log("- immutable hash, byte-count, provenance and rights evidence are required");
 console.log("- verification precedes review and failed bytes are quarantined");
 console.log("- queue completion requires an exact verified candidate bundle");
+console.log("- queue persistence receives only governed artifact and candidate identifiers");
 console.log("- release traverses verified, approved and rights-valid dependencies");
-console.log("- public views omit private storage locators and provider request identifiers");
+console.log("- public views omit private storage, provider and worker lease material");
