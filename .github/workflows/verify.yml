@@ -113,6 +113,7 @@ jobs:
             const description = state === "success"
               ? "Foundation, boundaries, typecheck, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
+            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -120,5 +121,20 @@ jobs:
               state,
               context: "storyteller/verify",
               description,
-              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              target_url: targetUrl,
             });
+            if (state === "failure") {
+              const slug = (diagnostic || "unknown")
+                .replace(/[^A-Za-z0-9._-]+/g, "-")
+                .replace(/^-+|-+$/g, "")
+                .slice(0, 72) || "unknown";
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: "failure",
+                context: `storyteller/failure/${slug}`.slice(0, 100),
+                description,
+                target_url: targetUrl,
+              });
+            }
