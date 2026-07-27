@@ -473,7 +473,7 @@ function directionForSegment(segment: ManuscriptSegment): PerformanceDirection {
   const questionCount = text.match(/\?/gu)?.length ?? 0;
   const exclamationCount = text.match(/!/gu)?.length ?? 0;
   const ellipsisCount = text.match(/…|\.\.\./gu)?.length ?? 0;
-  const sentenceCount = Math.max(1, text.match(/[.!?](?:[”\"']|$)/gu)?.length ?? 1);
+  const sentenceCount = Math.max(1, text.match(/[.!?](?:[”"']|$)/gu)?.length ?? 1);
   const dialogue = segment.kind === "dialogue";
   const heading = segment.kind === "heading";
   const sceneBreak = segment.kind === "scene-break";
