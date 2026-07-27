@@ -4,6 +4,7 @@ import { stableHash } from "./index.js";
 
 export type StoredEntityType =
   | "artifact"
+  | "generation-material"
   | "project"
   | "series"
   | "manuscript-revision"
