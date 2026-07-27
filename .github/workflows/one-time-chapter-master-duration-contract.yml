@@ -1,0 +1,146 @@
+name: One-time chapter master duration contract
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/chapter-master-duration-contract.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Persist duration comparison in master chain
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .chapter-master-duration-contract.log
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/chapter-master.ts")
+          lines = path.read_text(encoding="utf-8").splitlines()
+
+          def find(text: str, start: int = 0) -> int:
+              for index in range(start, len(lines)):
+                  if lines[index] == text:
+                      return index
+              raise SystemExit(f"CHAPTER_MASTER_DURATION_LINE_MISSING:{text}")
+
+          interface_start = find("export interface ChapterMasterArtifactChain {")
+          interface_end = find("}", interface_start + 1)
+          if not any("expectedDurationMs:" in line for line in lines[interface_start:interface_end]):
+              index = find("  postRenderEngineering: AudioEngineeringArtifactResult;", interface_start)
+              lines[index + 1:index + 1] = [
+                  "  expectedDurationMs: number;",
+                  "  observedDurationMs: number;",
+                  "  durationDriftMs: number;",
+              ]
+
+          fingerprint_start = find("function chainFingerprint(")
+          fingerprint_end = find("}", fingerprint_start + 1)
+          if not any("expectedDurationMs: value.expectedDurationMs" in line for line in lines[fingerprint_start:fingerprint_end + 20]):
+              index = find("    eligibleForReview: value.eligibleForReview,", fingerprint_start)
+              lines[index:index] = [
+                  "    expectedDurationMs: value.expectedDurationMs,",
+                  "    observedDurationMs: value.observedDurationMs,",
+                  "    durationDriftMs: value.durationDriftMs,",
+              ]
+
+          partial_start = find('  const partial: Omit<ChapterMasterArtifactChain, "fingerprint"> = {')
+          partial_end = find("  };", partial_start + 1)
+          if not any("expectedDurationMs:" in line for line in lines[partial_start:partial_end]):
+              index = find("    postRenderEngineering: engineering,", partial_start)
+              lines[index + 1:index + 1] = [
+                  "    expectedDurationMs: input.plan.renderedDurationMs,",
+                  "    observedDurationMs: Math.round(engineering.evidence.probe.durationSeconds * 1_000),",
+                  "    durationDriftMs: comparison.durationDriftMs,",
+              ]
+
+          public_fingerprint_start = find("  if (chainFingerprint({")
+          public_fingerprint_end = find("  }) !== chain.fingerprint) {", public_fingerprint_start + 1)
+          if not any("expectedDurationMs: chain.expectedDurationMs" in line for line in lines[public_fingerprint_start:public_fingerprint_end]):
+              index = find("    postRenderEngineering: chain.postRenderEngineering,", public_fingerprint_start)
+              lines[index + 1:index + 1] = [
+                  "    expectedDurationMs: chain.expectedDurationMs,",
+                  "    observedDurationMs: chain.observedDurationMs,",
+                  "    durationDriftMs: chain.durationDriftMs,",
+              ]
+
+          evidence_index = find("  const evidence = chain.postRenderEngineering.evidence;")
+          master_index = find("  const master = chain.chapterMaster.payload;", evidence_index + 1)
+          replacement = [
+              "  const evidence = chain.postRenderEngineering.evidence;",
+              '  requireInteger(chain.expectedDurationMs, 1, Number.MAX_SAFE_INTEGER, "CHAPTER_MASTER_EXPECTED_DURATION_INVALID");',
+              '  requireInteger(chain.observedDurationMs, 1, Number.MAX_SAFE_INTEGER, "CHAPTER_MASTER_OBSERVED_DURATION_INVALID");',
+              '  requireInteger(chain.durationDriftMs, 0, Number.MAX_SAFE_INTEGER, "CHAPTER_MASTER_DURATION_DRIFT_INVALID");',
+          ]
+          lines[evidence_index:master_index] = replacement
+
+          expected_index = find("    observedDurationMs,", master_index)
+          lines[expected_index] = "    observedDurationMs: chain.observedDurationMs,"
+          lines[expected_index + 1] = "    expectedDurationMs: chain.expectedDurationMs,"
+          lines[expected_index + 2] = "    durationDriftMs: chain.durationDriftMs,"
+
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+          for temporary in [
+              Path(".github/workflows/one-time-chapter-master-duration-contract.yml"),
+              Path(".github/chapter-master-duration-contract.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("CHAPTER_MASTER_DURATION_CONTRACT_FIXED")
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify and build
+        run: |
+          npm run verify
+          npm run build
+      - name: Commit duration contract
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Persist chapter master duration evidence"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".chapter-master-duration-contract.log")
+              ? fs.readFileSync(".chapter-master-duration-contract.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "chapter master duration log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /CHAPTER_MASTER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "chapter master duration contract failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/chapter-master-duration-contract",
+              description: state === "success"
+                ? "Chapter master duration chain and complete verification passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
