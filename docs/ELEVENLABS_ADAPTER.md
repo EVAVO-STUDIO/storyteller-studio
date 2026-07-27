@@ -159,15 +159,48 @@ Worker registration remains fail-closed until all of the following are valid:
 - provider capability preflight;
 - transactional project budget capacity.
 
-The built-in worker registry must remain empty when configuration is absent or invalid. No queue item should be claimed merely because an API key exists.
+The built-in worker registry remains empty when configuration is absent or invalid. No queue item is claimed merely because an API key exists.
 
-## Next integration gate
+## Conditional worker registration
 
-Before enabling the adapter in the dedicated worker runtime, the repository must add:
+The dedicated worker now resolves ElevenLabs only after the worker runtime itself is enabled. `STORYTELLER_ELEVENLABS_ENABLED=false` leaves the registry empty without parsing model, pricing, voice or privacy records.
 
-1. a governed package export;
-2. an executable adapter contract checker;
-3. fail-closed environment parsing for model, voice, pricing, pronunciation and privacy policy records;
-4. conditional worker registration only after complete configuration validation;
-5. startup tests for absent, malformed, expired and non-premade configuration;
-6. a complete green verification and build run on `main`.
+When ElevenLabs is enabled, startup requires:
+
+- a credential binding from provider id `elevenlabs` to a server environment-variable name;
+- exactly governed preview, calibration and production model policies;
+- valid and unexpired pricing snapshots;
+- one or more premade voice bindings;
+- a declared retention and training policy;
+- bounded response and preflight limits;
+- valid optional pronunciation dictionary bindings.
+
+Malformed JSON, missing records, expired pricing, unsupported settings or a non-premade source kind fail before adapter registration. Secrets remain in the environment and are resolved by the worker only during provider preflight and execution.
+
+The worker process logs only provider count and redacted runtime summaries. It does not log model policy JSON, pricing sources, voice identifiers, dictionary identifiers, credential-variable names or credentials.
+
+## Startup preflight proof
+
+The worker test suite exercises the complete startup path:
+
+1. resolve the private worker runtime;
+2. parse the governed ElevenLabs configuration;
+3. register one adapter conditionally;
+4. resolve the server-only credential;
+5. inspect remote model capabilities;
+6. verify the remote voice category is `premade`;
+7. stop cleanly when the durable queue is empty.
+
+The successful empty-queue proof performs no synthesis call. Additional tests show that a missing credential and a remotely reported cloned voice both fail before queue polling.
+
+## Next production gate
+
+The adapter and conditional worker registration are implemented and included in the permanent verification chain. Production generation remains disabled until a real deployment supplies reviewed configuration and a credential, and the project has funded budget accounts and approved generation material.
+
+The next implementation layer is:
+
+1. a safe configuration authoring and validation command that creates pricing fingerprints without hand-editing JSON;
+2. an end-to-end queued generation fixture using the mocked provider timestamp endpoint, transactional budget reservation, private object ingestion and artifact completion;
+3. runtime checks that stale pricing and changed remote model limits prevent claims after restart;
+4. a human-reviewed calibration workflow before any voice is approved for long-form production;
+5. operational metrics and dead-letter recovery that expose no manuscript, voice or credential data.
