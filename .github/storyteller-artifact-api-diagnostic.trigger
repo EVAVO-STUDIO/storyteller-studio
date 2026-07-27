@@ -1,1 +1,1 @@
-print exact source-anchor counts for artifact API wiring
+publish each artifact API source anchor count as a status
