@@ -101,11 +101,13 @@ jobs:
                   .split(/\r?\n/)
                   .map((line) => line.trim())
                   .filter(Boolean);
-                const candidate = lines.find((line) =>
-                  /missing required|missing required contract|contains forbidden|error TS|AssertionError|not ok|ERR_|failed:/i.test(line),
+                const assertion = lines.find((line) => /^-\s+/.test(line));
+                const compilerOrTest = lines.find((line) =>
+                  /error TS|AssertionError|not ok|ERR_[A-Z_]+|npm error|ELIFECYCLE/i.test(line),
                 );
+                const candidate = assertion || compilerOrTest;
                 if (candidate) {
-                  diagnostic = candidate;
+                  diagnostic = candidate.replace(/^-\s+/, "");
                   break;
                 }
               }
