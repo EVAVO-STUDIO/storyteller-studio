@@ -2,6 +2,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   assessCandidateTake,
   buildVisualBeatPlan,
@@ -16,14 +17,33 @@ import {
   type TakeObservation,
   type VoiceRightsEvidence,
 } from "@evavo/storyteller-engine";
+import {
+  FileGenerationQueue,
+  type GenerationQueueItem,
+  type GenerationQueueStatus,
+} from "@evavo/storyteller-engine/generation-queue";
+import {
+  FileProjectStore,
+  type StoredEnvelope,
+} from "@evavo/storyteller-engine/project-store";
 
-type ParsedArguments = {
+export type ParsedArguments = {
   command: string;
   positionals: string[];
   flags: Record<string, string | boolean>;
 };
 
-function parseArguments(argv: readonly string[]): ParsedArguments {
+const QUEUE_STATUSES: readonly GenerationQueueStatus[] = [
+  "queued",
+  "leased",
+  "retry-wait",
+  "completed",
+  "blocked",
+  "failed",
+  "cancelled",
+];
+
+export function parseArguments(argv: readonly string[]): ParsedArguments {
   const [command = "help", ...rest] = argv;
   const positionals: string[] = [];
   const flags: Record<string, string | boolean> = {};
@@ -62,6 +82,27 @@ function numberFlag(args: ParsedArguments, key: string): number | undefined {
   return parsed;
 }
 
+function dateFlag(args: ParsedArguments, key: string): Date | undefined {
+  const value = stringFlag(args, key);
+  if (value === undefined) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) throw new Error(`CLI_FLAG_DATE_INVALID:${key}`);
+  return parsed;
+}
+
+function queueStatusesFlag(args: ParsedArguments): readonly GenerationQueueStatus[] | undefined {
+  const value = stringFlag(args, "status");
+  if (!value) return undefined;
+  const output = new Set<GenerationQueueStatus>();
+  for (const status of value.split(",").map((item) => item.trim()).filter(Boolean)) {
+    if (!QUEUE_STATUSES.includes(status as GenerationQueueStatus)) {
+      throw new Error(`CLI_QUEUE_STATUS_INVALID:${status}`);
+    }
+    output.add(status as GenerationQueueStatus);
+  }
+  return [...output];
+}
+
 function readText(pathValue: string): string {
   const path = resolve(pathValue);
   if (!existsSync(path)) throw new Error(`CLI_FILE_NOT_FOUND:${path}`);
@@ -90,22 +131,56 @@ function emit(value: unknown, outputPath?: string, force = false): void {
   process.stdout.write(`${path}\n`);
 }
 
+function localGenerationQueue(args: ParsedArguments): FileGenerationQueue {
+  const dataDirectory = stringFlag(args, "data-dir") ?? process.env.STORYTELLER_DATA_DIR?.trim();
+  if (!dataDirectory) throw new Error("CLI_FLAG_REQUIRED:data-dir");
+  return new FileGenerationQueue(
+    new FileProjectStore(resolve(dataDirectory, "generation-queue")),
+  );
+}
+
+export function queueCliView(envelope: StoredEnvelope<GenerationQueueItem>): Record<string, unknown> {
+  const { lease, ...item } = envelope.payload;
+  return {
+    ...item,
+    ...(lease
+      ? {
+          lease: {
+            workerId: lease.workerId,
+            acquiredAt: lease.acquiredAt,
+            heartbeatAt: lease.heartbeatAt,
+            expiresAt: lease.expiresAt,
+          },
+        }
+      : {}),
+    revision: envelope.revision,
+    contentHash: envelope.contentHash,
+  };
+}
+
 function help(): void {
   process.stdout.write(`EVAVO Storyteller Studio CLI\n\n`);
   process.stdout.write(`Usage: npm run storyteller -- <command> [options]\n\n`);
   process.stdout.write(`Commands:\n`);
-  process.stdout.write(`  segment       Segment an immutable manuscript into stable production units.\n`);
-  process.stdout.write(`  plan          Build a governed project manifest from manuscript, rights and provider evidence.\n`);
-  process.stdout.write(`  providers     Rank a provider catalogue against explicit project requirements.\n`);
-  process.stdout.write(`  take-check    Evaluate transcript fidelity, engineering limits and continuity evidence.\n`);
-  process.stdout.write(`  visual-plan   Build scene-level visual beats without literal sentence-by-sentence imagery.\n`);
-  process.stdout.write(`  jobs          Create deterministic generation job intents from a project manifest.\n`);
-  process.stdout.write(`  verify        Validate structural invariants in a project manifest.\n`);
-  process.stdout.write(`  generate      Explain why provider execution remains gated until an adapter is configured.\n\n`);
+  process.stdout.write(`  segment        Segment an immutable manuscript into stable production units.\n`);
+  process.stdout.write(`  plan           Build a governed project manifest from manuscript, rights and provider evidence.\n`);
+  process.stdout.write(`  providers      Rank a provider catalogue against explicit project requirements.\n`);
+  process.stdout.write(`  take-check     Evaluate transcript fidelity, engineering limits and continuity evidence.\n`);
+  process.stdout.write(`  visual-plan    Build scene-level visual beats without literal sentence-by-sentence imagery.\n`);
+  process.stdout.write(`  jobs           Create deterministic generation job intents from a project manifest.\n`);
+  process.stdout.write(`  queue-enqueue  Persist generation intents to the local, single-host queue.\n`);
+  process.stdout.write(`  queue-list     List local queue state without exposing lease tokens.\n`);
+  process.stdout.write(`  queue-show     Inspect one local queue item without exposing its lease token hash.\n`);
+  process.stdout.write(`  queue-cancel   Cancel queued or in-flight work as an identified operator.\n`);
+  process.stdout.write(`  queue-reap     Requeue expired worker leases or fail exhausted work.\n`);
+  process.stdout.write(`  verify         Validate structural invariants in a project manifest.\n`);
+  process.stdout.write(`  generate       Explain why provider execution remains gated until an adapter is configured.\n\n`);
   process.stdout.write(`Examples:\n`);
   process.stdout.write(`  npm run storyteller -- segment --input book.txt --output segments.json\n`);
   process.stdout.write(`  npm run storyteller -- plan --title "Book One" --input book.txt --rights rights.json --requirements requirements.json --providers providers.json --output project.json\n`);
-  process.stdout.write(`  npm run storyteller -- take-check --input take-observation.json\n`);
+  process.stdout.write(`  npm run storyteller -- queue-enqueue --project project.json --data-dir ./storage\n`);
+  process.stdout.write(`  npm run storyteller -- queue-list --data-dir ./storage --status queued,retry-wait\n`);
+  process.stdout.write(`  npm run storyteller -- queue-cancel --data-dir ./storage --item-id queue_job_123 --actor-id operator_greg --reason "Direction review required"\n`);
 }
 
 function verifyManifest(manifest: ProjectManifest): { ok: boolean; problems: string[] } {
@@ -122,7 +197,7 @@ function verifyManifest(manifest: ProjectManifest): { ok: boolean; problems: str
   return { ok: problems.length === 0, problems };
 }
 
-async function run(args: ParsedArguments): Promise<number> {
+export async function run(args: ParsedArguments): Promise<number> {
   const output = stringFlag(args, "output");
   const force = args.flags.force === true;
 
@@ -198,6 +273,69 @@ async function run(args: ParsedArguments): Promise<number> {
       return result.every((job) => job.status === "ready") ? 0 : 2;
     }
 
+    case "queue-enqueue": {
+      const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
+      const jobs = createGenerationJobs(manifest, numberFlag(args, "candidates") ?? 2);
+      const queue = localGenerationQueue(args);
+      const availableAt = dateFlag(args, "available-at");
+      const rows: Record<string, unknown>[] = [];
+      for (const job of jobs) {
+        const envelope = await queue.enqueue(job, {
+          priority: numberFlag(args, "priority") ?? 50,
+          maxAttempts: numberFlag(args, "max-attempts") ?? 4,
+          ...(availableAt ? { availableAt } : {}),
+        });
+        rows.push(queueCliView(envelope));
+      }
+      emit({ data: rows, execution: rows.some((row) => row.status === "queued") ? "queued" : "blocked" }, output, force);
+      return rows.some((row) => row.status === "queued") ? 0 : 2;
+    }
+
+    case "queue-list": {
+      const queue = localGenerationQueue(args);
+      const statuses = queueStatusesFlag(args);
+      const rows = await queue.list({
+        ...(stringFlag(args, "project-id") ? { projectId: stringFlag(args, "project-id") } : {}),
+        ...(statuses ? { status: statuses } : {}),
+      });
+      const limit = numberFlag(args, "limit") ?? 100;
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) throw new Error("CLI_QUEUE_LIMIT_INVALID");
+      const selected = rows.slice(0, limit);
+      emit({
+        data: selected.map(queueCliView),
+        meta: { total: rows.length, returned: selected.length, truncated: rows.length > selected.length },
+      }, output, force);
+      return 0;
+    }
+
+    case "queue-show": {
+      const queue = localGenerationQueue(args);
+      const itemId = stringFlag(args, "item-id", true)!;
+      const envelope = await queue.read(itemId);
+      if (!envelope) {
+        emit({ ok: false, code: "CLI_QUEUE_ITEM_NOT_FOUND", itemId }, output, force);
+        return 2;
+      }
+      emit({ data: queueCliView(envelope) }, output, force);
+      return 0;
+    }
+
+    case "queue-cancel": {
+      const queue = localGenerationQueue(args);
+      const envelope = await queue.cancel(stringFlag(args, "item-id", true)!, {
+        actorId: stringFlag(args, "actor-id", true)!,
+        reason: stringFlag(args, "reason", true)!,
+      });
+      emit({ data: queueCliView(envelope) }, output, force);
+      return 0;
+    }
+
+    case "queue-reap": {
+      const reaped = await localGenerationQueue(args).reapExpiredLeases();
+      emit({ reaped }, output, force);
+      return 0;
+    }
+
     case "verify": {
       const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
       const result = verifyManifest(manifest);
@@ -218,12 +356,15 @@ async function run(args: ParsedArguments): Promise<number> {
   }
 }
 
-run(parseArguments(process.argv.slice(2)))
-  .then((exitCode) => {
-    process.exitCode = exitCode;
-  })
-  .catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : "CLI_UNEXPECTED_ERROR";
-    process.stderr.write(`${JSON.stringify({ ok: false, error: message })}\n`);
-    process.exitCode = message.startsWith("CLI_FLAG_REQUIRED") || message.startsWith("CLI_COMMAND_UNKNOWN") ? 64 : 1;
-  });
+const entryPath = process.argv[1] ? resolve(process.argv[1]) : "";
+if (entryPath === fileURLToPath(import.meta.url)) {
+  run(parseArguments(process.argv.slice(2)))
+    .then((exitCode) => {
+      process.exitCode = exitCode;
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "CLI_UNEXPECTED_ERROR";
+      process.stderr.write(`${JSON.stringify({ ok: false, error: message })}\n`);
+      process.exitCode = message.startsWith("CLI_FLAG_REQUIRED") || message.startsWith("CLI_COMMAND_UNKNOWN") ? 64 : 1;
+    });
+}
