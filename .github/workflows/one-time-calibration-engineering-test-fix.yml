@@ -27,7 +27,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Correct calibration redaction fixture typo
+      - name: Correct calibration fixture literals
         shell: bash
         run: |
           set -o pipefail
@@ -36,13 +36,27 @@ jobs:
 
           path = Path("packages/storyteller/src/calibration-engineering.test.ts")
           source = path.read_text(encoding="utf-8")
-          old = "      session().text,\n"
-          new = "      segment().text,\n"
-          count = source.count(old)
-          print(f"CALIBRATION_ENGINEERING_TEST_ANCHOR:{count}")
-          if count != 1:
-              raise SystemExit(f"CALIBRATION_ENGINEERING_TEST_MATCH_COUNT_INVALID:{count}")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          replacements = [
+              (
+                  '  allowedUses: Object.freeze(["audiobook"]),\n',
+                  '  allowedUses: Object.freeze(["audiobook"] as const),\n',
+                  "rights-literal",
+              ),
+              (
+                  '      session().text,\n',
+                  '      segment().text,\n',
+                  "redaction-text",
+              ),
+          ]
+          for old, new, label in replacements:
+              count = source.count(old)
+              print(f"CALIBRATION_ENGINEERING_TEST_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(
+                      f"CALIBRATION_ENGINEERING_TEST_MATCH_COUNT_INVALID:{label}:{count}"
+                  )
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8", newline="\n")
           print("CALIBRATION_ENGINEERING_TEST_FIXED")
           PY
 
@@ -67,7 +81,7 @@ jobs:
           git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
           git add packages/storyteller/src/calibration-engineering.test.ts .github/workflows/one-time-calibration-engineering-test-fix.yml .github/calibration-engineering-test-fix.trigger
           git diff --cached --check
-          git commit -m "Correct calibration engineering redaction fixture"
+          git commit -m "Correct calibration engineering fixtures"
           git pull --rebase origin main
           npm run verify
           npm run build
