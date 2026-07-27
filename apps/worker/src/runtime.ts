@@ -229,6 +229,9 @@ export async function runConfiguredWorkerRuntime(
       providerCount: 0,
     });
   }
+  if (!dependencies.audioEngineering) {
+    throw new Error("WORKER_AUDIO_ENGINEERING_POLICY_REQUIRED");
+  }
 
   const preflight = await preflightProviders(configuration, dependencies);
   const service = createWorkerService(
