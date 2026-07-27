@@ -19,6 +19,14 @@ import {
   type FileGenerationQueue,
   type GenerationQueueStatus,
 } from "@evavo/storyteller-engine/generation-queue";
+import type { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
+import {
+  artifactRegistryRuntimeSummary,
+  createArtifactRegistryRuntime,
+  resolveArtifactRegistryRuntimeConfiguration,
+  type ArtifactRegistryRuntimeConfiguration,
+} from "./artifact-runtime.js";
+import { handleArtifactReadRoute } from "./artifact-routes.js";
 import {
   createGenerationQueueRuntime,
   generationQueuePublicView,
@@ -246,6 +254,10 @@ function errorStatus(code: string): number {
     || code === "GENERATION_QUEUE_DATA_DIR_REQUIRED"
     || code === "GENERATION_QUEUE_DRIVER_INVALID"
     || code === "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"
+    || code === "ARTIFACT_REGISTRY_NOT_CONFIGURED"
+    || code === "ARTIFACT_REGISTRY_DATA_DIR_REQUIRED"
+    || code === "ARTIFACT_REGISTRY_DRIVER_INVALID"
+    || code === "ARTIFACT_REGISTRY_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED"
     || code === "API_ACTOR_CONFIGURATION_MISSING"
     || code === "API_ACTOR_CONFIGURATION_INVALID"
   ) return 503;
@@ -263,6 +275,8 @@ export function createStorytellerApiHandler(options: StorytellerApiHandlerOption
   const now = options.now ?? (() => new Date());
   let queueConfiguration: GenerationQueueRuntimeConfiguration | undefined;
   let queueRuntime: FileGenerationQueue | null | undefined;
+  let artifactConfiguration: ArtifactRegistryRuntimeConfiguration | undefined;
+  let artifactRuntime: FileArtifactRegistry | null | undefined;
 
   const resolveQueueConfiguration = (): GenerationQueueRuntimeConfiguration => {
     queueConfiguration ??= resolveGenerationQueueRuntimeConfiguration(environment, workingDirectory);
@@ -285,6 +299,35 @@ export function createStorytellerApiHandler(options: StorytellerApiHandlerOption
     }
   };
 
+const resolveArtifactConfiguration = (): ArtifactRegistryRuntimeConfiguration => {
+  artifactConfiguration ??= resolveArtifactRegistryRuntimeConfiguration(environment, workingDirectory);
+  return artifactConfiguration;
+};
+
+const requireArtifactRuntime = (): FileArtifactRegistry => {
+  if (artifactRuntime === undefined) {
+    artifactRuntime = createArtifactRegistryRuntime(resolveArtifactConfiguration());
+  }
+  if (!artifactRuntime) throw new Error("ARTIFACT_REGISTRY_NOT_CONFIGURED");
+  return artifactRuntime;
+};
+
+const artifactHealth = (): Readonly<Record<string, unknown>> => {
+  try {
+    const summary = artifactRegistryRuntimeSummary(resolveArtifactConfiguration());
+    return { status: summary.enabled ? "ready" : "disabled", ...summary };
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "ARTIFACT_REGISTRY_CONFIGURATION_INVALID";
+    return {
+      status: "misconfigured",
+      enabled: false,
+      workerWriteApiExposed: false,
+      releaseApiExposed: false,
+      code,
+    };
+  }
+};
+
   return async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const id = requestId(request);
     const startedAt = Date.now();
@@ -293,13 +336,17 @@ export function createStorytellerApiHandler(options: StorytellerApiHandlerOption
     try {
       if (request.method === "GET" && url.pathname === "/health") {
         const generationQueue = queueHealth();
-        status = generationQueue.status === "misconfigured" ? 503 : 200;
+        const artifactRegistry = artifactHealth();
+        status = generationQueue.status === "misconfigured" || artifactRegistry.status === "misconfigured"
+          ? 503
+          : 200;
         sendJson(response, id, status, {
           service: "storyteller-studio-api",
           status: status === 200 ? "ok" : "degraded",
           engineVersion: STORYTELLER_ENGINE_VERSION,
           providerExecutionEnabled: false,
           generationQueue,
+          artifactRegistry,
         });
         return;
       }
@@ -312,8 +359,11 @@ export function createStorytellerApiHandler(options: StorytellerApiHandlerOption
           quality: ["transcript fidelity", "audio delivery profiles", "candidate take selection"],
           governance: ["voice rights and consent", "provider capability negotiation", "fail-closed production status"],
           orchestration: ["idempotent queue admission", "exclusive worker leases", "bounded retry", "operator cancellation"],
+          artifacts: ["immutable integrity records", "private storage references", "quarantine", "review and release gates"],
           visuals: ["scene-level beat grouping", "continuity keys", "restrained motion policies"],
           workerApiExposed: false,
+          artifactWriteApiExposed: false,
+          releaseApiExposed: false,
         });
         return;
       }
@@ -324,6 +374,20 @@ export function createStorytellerApiHandler(options: StorytellerApiHandlerOption
         sendJson(response, id, status, { error: { code: auth.code, requestId: id } });
         return;
       }
+
+    if (url.pathname.startsWith("/v1/artifacts")) {
+      const artifactRoute = await handleArtifactReadRoute({
+        method: request.method,
+        url,
+        registry: request.method === "GET" ? requireArtifactRuntime() : null,
+        requestId: id,
+      });
+      if (artifactRoute) {
+        status = artifactRoute.status;
+        sendJson(response, id, status, artifactRoute.body);
+        return;
+      }
+    }
 
       if (request.method === "POST" && url.pathname === "/v1/projects/plan") {
         const input = parseProjectInput(await readJson(request, environment));
