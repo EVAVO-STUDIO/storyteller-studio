@@ -24,7 +24,8 @@
     "test": "node scripts/run-tests.mjs all",
     "verify:foundation": "node scripts/check-foundation.mjs",
     "verify:private-boundary": "node scripts/check-private-boundary.mjs",
-    "verify": "npm run verify:foundation && npm run verify:private-boundary && npm run typecheck && npm run test",
+    "verify:artifacts": "node scripts/check-artifact-registry.mjs",
+    "verify": "npm run verify:foundation && npm run verify:private-boundary && npm run verify:artifacts && npm run typecheck && npm run test",
     "build": "npm run build --workspaces --if-present"
   },
   "devDependencies": {
