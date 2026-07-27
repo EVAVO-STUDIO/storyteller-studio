@@ -76,9 +76,11 @@ if (exitCode !== 0) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  const primary = lines.find((line) => /^(?:not ok \d+ - |[✖✘]\s+)/u.test(line))
-    ?? lines.find((line) => /AssertionError|ERR_[A-Z_]+|failureType:|Could not find|(?:^|\s)Error:/u.test(line))
-    ?? `exit-${exitCode}`;
+  const detail = lines.find((line) =>
+    /AssertionError|ERR_[A-Z_]+|failureType:|Could not find|SyntaxError|TypeError|ReferenceError|RangeError|(?:^|\s)Error:/u.test(line),
+  );
+  const failedTest = lines.find((line) => /^(?:not ok \d+ - |[✖✘]\s+)/u.test(line));
+  const primary = detail ?? failedTest ?? `exit-${exitCode}`;
   console.error(`TEST_FAILURE_DIAGNOSTIC:${scope}:${primary}`);
 }
 process.exit(exitCode);
