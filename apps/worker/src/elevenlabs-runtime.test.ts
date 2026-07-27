@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createElevenLabsPricingSnapshot } from "@evavo/storyteller-engine/elevenlabs-adapter";
+import { resolveWorkerAudioEngineeringPolicy } from "./audio-engineering.js";
 import {
   EnvironmentCredentialResolver,
   resolveWorkerRuntimeConfiguration,
@@ -47,6 +48,11 @@ function environment(dataDirectory: string, overrides: WorkerEnvironment = {}): 
     STORYTELLER_WORKER_CREDENTIAL_BINDINGS: JSON.stringify({
       elevenlabs: "ELEVENLABS_API_KEY",
     }),
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE: "lossless-production",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION: "evavo-lossless-2026-07",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT: "2026-07-01T00:00:00.000Z",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE:
+      "evavo-lossless-mastering-policy-2026-07",
     ELEVENLABS_API_KEY: "fixture-elevenlabs-runtime-secret",
     STORYTELLER_ELEVENLABS_ENABLED: "true",
     STORYTELLER_ELEVENLABS_ADAPTER_VERSION: "1.0.0",
@@ -89,6 +95,17 @@ function environment(dataDirectory: string, overrides: WorkerEnvironment = {}): 
     STORYTELLER_ELEVENLABS_PREFLIGHT_TIMEOUT_MS: "5000",
     ...overrides,
   };
+}
+
+function engineeringPolicy(env: WorkerEnvironment, root: string) {
+  const policy = resolveWorkerAudioEngineeringPolicy({
+    workerEnabled: true,
+    environment: env,
+    temporaryRoot: join(root, "audio-engineering-temp"),
+    now: t0,
+  });
+  if (!policy) throw new Error("worker engineering policy required");
+  return policy;
 }
 
 function jsonResponse(value: unknown): Response {
@@ -167,6 +184,7 @@ test("configured ElevenLabs worker preflights models and premade voices before a
     const result = await runConfiguredWorkerRuntime(configuration, {
       providers,
       credentials,
+      audioEngineering: engineeringPolicy(env, root),
       now: () => t0,
     });
 
@@ -186,6 +204,8 @@ test("configured ElevenLabs worker preflights models and premade voices before a
       "fixture-elevenlabs-runtime-secret",
       "premadeVoice0001",
       "voice_runtime_narrator_001",
+      "evavo-lossless-mastering-policy-2026-07",
+      "audio-engineering-temp",
     ]) assert.equal(serialised.includes(forbidden), false);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -213,7 +233,12 @@ test("missing ElevenLabs secret blocks startup before any provider request or qu
       configuration.enabled ? configuration.credentialBindings : {},
     );
     await assert.rejects(
-      runConfiguredWorkerRuntime(configuration, { providers, credentials, now: () => t0 }),
+      runConfiguredWorkerRuntime(configuration, {
+        providers,
+        credentials,
+        audioEngineering: engineeringPolicy(env, root),
+        now: () => t0,
+      }),
       /WORKER_PROVIDER_CREDENTIAL_MISSING:elevenlabs/u,
     );
     assert.equal(calls.length, 0);
@@ -241,7 +266,12 @@ test("remote non-premade voice blocks startup before queue polling", async () =>
       configuration.enabled ? configuration.credentialBindings : {},
     );
     await assert.rejects(
-      runConfiguredWorkerRuntime(configuration, { providers, credentials, now: () => t0 }),
+      runConfiguredWorkerRuntime(configuration, {
+        providers,
+        credentials,
+        audioEngineering: engineeringPolicy(env, root),
+        now: () => t0,
+      }),
       /ELEVENLABS_REMOTE_NON_STOCK_VOICE_PROHIBITED/u,
     );
   } finally {
