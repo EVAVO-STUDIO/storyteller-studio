@@ -1,4 +1,6 @@
 import { FileArtifactRegistry } from "@evavo/storyteller-engine/artifact-store";
+import { FileBudgetLedger } from "@evavo/storyteller-engine/budget-ledger";
+import { FileGenerationBudgetController } from "@evavo/storyteller-engine/generation-budget";
 import { FileGenerationMaterialStore } from "@evavo/storyteller-engine/generation-material";
 import { FileGenerationQueue } from "@evavo/storyteller-engine/generation-queue";
 import type { LeaseHeartbeatScheduler } from "@evavo/storyteller-engine/lease-heartbeat";
@@ -125,6 +127,9 @@ export function createWorkerService(
   const queueState = new FileProjectStore(configuration.queueRootDirectory);
   const queue = new FileGenerationQueue(queueState);
   const materials = new FileGenerationMaterialStore(queueState);
+  const budgetController = new FileGenerationBudgetController(
+    new FileBudgetLedger(queueState),
+  );
   const artifactRegistry = new FileArtifactRegistry(
     new FileProjectStore(configuration.artifactRootDirectory),
   );
@@ -142,6 +147,7 @@ export function createWorkerService(
       credentials,
       objectStore,
       artifactRegistry,
+      budgetController,
     },
     {
       workerId: configuration.workerId,
@@ -156,6 +162,7 @@ export function createWorkerService(
         : {}),
       providerTimeoutMs: configuration.providerTimeoutMs,
       outcomeHistoryLimit: configuration.outcomeHistoryLimit,
+      requireBudget: true,
       ...(dependencies.now ? { now: dependencies.now } : {}),
       ...(dependencies.waiter ? { waiter: dependencies.waiter } : {}),
     },

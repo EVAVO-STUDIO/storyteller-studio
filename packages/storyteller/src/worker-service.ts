@@ -1,5 +1,10 @@
 import type { FileArtifactRegistry } from "./artifact-store.js";
 import {
+  isGenerationBudgetAdmissionError,
+  type FileGenerationBudgetController,
+  type GenerationBudgetSession,
+} from "./generation-budget.js";
+import {
   FileGenerationMaterialStore,
   GenerationMaterialConflictError,
   GenerationMaterialIntegrityError,
@@ -49,6 +54,7 @@ export interface GenerationWorkerServiceDependencies {
   credentials: CredentialResolver;
   objectStore: FilePrivateObjectStore;
   artifactRegistry: FileArtifactRegistry;
+  budgetController?: FileGenerationBudgetController;
 }
 
 export interface GenerationWorkerServiceOptions {
@@ -62,6 +68,7 @@ export interface GenerationWorkerServiceOptions {
   heartbeatScheduler?: LeaseHeartbeatScheduler;
   providerTimeoutMs?: number;
   outcomeHistoryLimit?: number;
+  requireBudget?: boolean;
   now?: () => Date;
   waiter?: WorkerServiceWaiter;
 }
@@ -173,6 +180,7 @@ export class GenerationWorkerService {
   readonly #heartbeatScheduler: LeaseHeartbeatScheduler | undefined;
   readonly #providerTimeoutMs: number;
   readonly #outcomeHistoryLimit: number;
+  readonly #requireBudget: boolean;
   readonly #now: () => Date;
   readonly #waiter: WorkerServiceWaiter;
   readonly #abortController = new AbortController();
@@ -244,6 +252,10 @@ export class GenerationWorkerService {
       1_000,
       "GENERATION_WORKER_SERVICE_HISTORY_LIMIT_INVALID",
     );
+    this.#requireBudget = options.requireBudget ?? false;
+    if (this.#requireBudget && !dependencies.budgetController) {
+      throw new Error("GENERATION_WORKER_SERVICE_BUDGET_CONTROLLER_REQUIRED");
+    }
     this.#now = options.now ?? (() => new Date());
     this.#waiter = options.waiter ?? defaultWaiter();
   }
@@ -420,6 +432,54 @@ export class GenerationWorkerService {
       };
     }
 
+
+    let budgetSession: GenerationBudgetSession | undefined;
+    if (this.#requireBudget) {
+      if (this.#abortController.signal.aborted) {
+        return this.#outcome(claim, "aborted", 0, 0, [], this.#now());
+      }
+      const controller = this.#dependencies.budgetController;
+      if (!controller) {
+        throw new Error("GENERATION_WORKER_SERVICE_BUDGET_CONTROLLER_REQUIRED");
+      }
+      try {
+        budgetSession = await controller.reserve({
+          claim,
+          material,
+          actorId: this.#workerId,
+          providerTimeoutMs: this.#providerTimeoutMs,
+          now: this.#now(),
+        });
+      } catch (error) {
+        if (!isGenerationBudgetAdmissionError(error)) throw error;
+        const code = safeErrorCode(error, "GENERATION_BUDGET_ADMISSION_FAILED");
+        const envelope = await this.#dependencies.queue.block(
+          claim.item.id,
+          claim.leaseToken,
+          {
+            codes: [code],
+            message: "The claimed job could not reserve its approved maximum provider cost.",
+            now: this.#now(),
+          },
+        );
+        return {
+          queueItemId: envelope.payload.id,
+          jobId: envelope.payload.jobId,
+          disposition: "blocked",
+          queueRevision: envelope.revision,
+          artifactCount: 0,
+          candidateCount: 0,
+          occurredAt: this.#now().toISOString(),
+          findingCodes: Object.freeze([code]),
+        };
+      }
+    }
+
+    const settleInterruptedBudget = async (code: string): Promise<void> => {
+      if (!budgetSession) return;
+      await budgetSession.settleInterrupted({ code, at: this.#now() });
+    };
+
     try {
       const result = await runGenerationWorkerWithHeartbeat({
         queue: this.#dependencies.queue,
@@ -435,6 +495,13 @@ export class GenerationWorkerService {
         signal: this.#abortController.signal,
         clock: this.#now,
         now: startedAt,
+        ...(budgetSession
+          ? {
+              beforeQueueTransition: async (transition) => {
+                await budgetSession?.settle(transition);
+              },
+            }
+          : {}),
         heartbeat: {
           leaseDurationMs: this.#leaseDurationMs,
           heartbeatIntervalMs: this.#heartbeatIntervalMs,
@@ -464,12 +531,15 @@ export class GenerationWorkerService {
       };
     } catch (error) {
       if (error instanceof GenerationLeaseOwnershipLostError) {
+        await settleInterruptedBudget("GENERATION_BUDGET_LEASE_OWNERSHIP_LOST");
         return this.#outcome(claim, "ownership-lost", 0, 0, [error.causeCode], this.#now());
       }
       if (this.#abortController.signal.aborted) {
+        await settleInterruptedBudget("GENERATION_BUDGET_WORKER_ABORTED");
         return this.#outcome(claim, "aborted", 0, 0, [], this.#now());
       }
 
+      await settleInterruptedBudget("GENERATION_BUDGET_WORKER_RUNTIME_FAILED");
       const current = await this.#dependencies.queue.read(claim.item.id);
       if (
         !current
