@@ -11,6 +11,7 @@
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
     "./budget-ledger": "./src/budget-ledger.ts",
+    "./generation-budget": "./src/generation-budget.ts",
     "./generation-material": "./src/generation-material.ts",
     "./generation-queue": "./src/generation-queue.ts",
     "./generation-worker": "./src/generation-worker.ts",
