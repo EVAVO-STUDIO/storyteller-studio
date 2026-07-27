@@ -39,6 +39,19 @@ jobs:
                   raise SystemExit(f"MASTERED_CHAPTER_FOUNDATION_ANCHOR_INVALID:{label}:{count}")
               source = source.replace(old, new, 1)
 
+          def replace_section(start: str, end: str, replacement: str, label: str) -> None:
+              global source
+              start_count = source.count(start)
+              end_count = source.count(end)
+              print(f"MASTERED_CHAPTER_FOUNDATION_SECTION:{label}:{start_count}:{end_count}")
+              if start_count != 1 or end_count != 1:
+                  raise SystemExit(
+                      f"MASTERED_CHAPTER_FOUNDATION_SECTION_INVALID:{label}:{start_count}:{end_count}"
+                  )
+              start_index = source.index(start)
+              end_index = source.index(end, start_index)
+              source = source[:start_index] + replacement + source[end_index:]
+
           replace_once(
               '''import {
             assertAudioEngineeringEvidence,
@@ -104,69 +117,8 @@ jobs:
           ''',
               "validation-constants",
           )
-          replace_once(
-              '''function policyFingerprint(
-            value: Omit<MasteredChapterComparisonPolicy, "fingerprint">,
-          ): string {
-            return stableHash(value);
-          }
 
-          export function createMasteredChapterComparisonPolicy(
-            input: Partial<Omit<MasteredChapterComparisonPolicy, "fingerprint">> = {},
-          ): MasteredChapterComparisonPolicy {
-            const partial: Omit<MasteredChapterComparisonPolicy, "fingerprint"> = {
-              durationToleranceMs: requireInteger(
-                input.durationToleranceMs ?? 100,
-                0,
-                5_000,
-                "MASTERED_CHAPTER_DURATION_TOLERANCE_INVALID",
-              ),
-              rmsToleranceDb: requireFinite(
-                input.rmsToleranceDb ?? 0.75,
-                0,
-                6,
-                "MASTERED_CHAPTER_RMS_TOLERANCE_INVALID",
-              ),
-              peakToleranceDb: requireFinite(
-                input.peakToleranceDb ?? 0.75,
-                0,
-                6,
-                "MASTERED_CHAPTER_PEAK_TOLERANCE_INVALID",
-              ),
-              truePeakToleranceDb: requireFinite(
-                input.truePeakToleranceDb ?? 0.75,
-                0,
-                6,
-                "MASTERED_CHAPTER_TRUE_PEAK_TOLERANCE_INVALID",
-              ),
-              noiseFloorToleranceDb: requireFinite(
-                input.noiseFloorToleranceDb ?? 1.5,
-                0,
-                12,
-                "MASTERED_CHAPTER_NOISE_TOLERANCE_INVALID",
-              ),
-              strictTransparentPrediction: input.strictTransparentPrediction ?? true,
-            };
-            return Object.freeze({ ...partial, fingerprint: policyFingerprint(partial) });
-          }
-
-          export function assertMasteredChapterComparisonPolicy(
-            policy: MasteredChapterComparisonPolicy,
-          ): void {
-            const recreated = createMasteredChapterComparisonPolicy({
-              durationToleranceMs: policy.durationToleranceMs,
-              rmsToleranceDb: policy.rmsToleranceDb,
-              peakToleranceDb: policy.peakToleranceDb,
-              truePeakToleranceDb: policy.truePeakToleranceDb,
-              noiseFloorToleranceDb: policy.noiseFloorToleranceDb,
-              strictTransparentPrediction: policy.strictTransparentPrediction,
-            });
-            if (recreated.fingerprint !== policy.fingerprint) {
-              throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_FINGERPRINT_INVALID");
-            }
-          }
-          ''',
-              '''function requireBoundedText(value: string, maximum: number, code: string): string {
+          policy_section = '''function requireBoundedText(value: string, maximum: number, code: string): string {
             const trimmed = value.trim();
             if (!trimmed || trimmed.length > maximum || CONTROL_CHARACTERS.test(trimmed)) {
               throw new MasteredChapterError(code);
@@ -295,32 +247,44 @@ jobs:
               throw new MasteredChapterError("MASTERED_CHAPTER_COMPARISON_POLICY_FINGERPRINT_INVALID");
             }
           }
-          ''',
+
+          '''
+          replace_section(
+              "function policyFingerprint(\n",
+              "function requireCurrentRights(\n",
+              policy_section,
               "versioned-comparison-policy",
           )
-          replace_once(
-              '''  for (const value of [rights.expiresAt, rights.deletionRequiredAt]) {
-            if (value && Date.parse(value) <= now.getTime()) {
-              throw new MasteredChapterError(
-                value === rights.expiresAt
-                  ? "MASTERED_CHAPTER_RIGHTS_EXPIRED"
-                  : "MASTERED_CHAPTER_RETENTION_EXPIRED",
-              );
+
+          rights_section = '''function requireCurrentRights(
+            rights: ArtifactRightsSnapshot,
+            sourceMaster: ArtifactRecord,
+            sourceEngineering: ArtifactRecord,
+            now: Date,
+          ): void {
+            requireIdentifier(rights.rightsEvidenceId, "MASTERED_CHAPTER_RIGHTS_ID_INVALID");
+            requireHash(rights.rightsFingerprint, "MASTERED_CHAPTER_RIGHTS_HASH_INVALID");
+            if (!rights.allowedUses.includes("audiobook")) {
+              throw new MasteredChapterError("MASTERED_CHAPTER_AUDIOBOOK_RIGHTS_REQUIRED");
             }
-            if (value && Date.parse(value) > now.getTime() + CURRENCY_DATE_LIMIT_MS) {
-              throw new MasteredChapterError("MASTERED_CHAPTER_RIGHTS_DATE_UNBOUNDED");
+            if (!rights.commercialUseApproved) {
+              throw new MasteredChapterError("MASTERED_CHAPTER_COMMERCIAL_RIGHTS_REQUIRED");
             }
-          }
-          ''',
-              '''  for (const [value, invalidCode] of [
-            [rights.expiresAt, "MASTERED_CHAPTER_RIGHTS_EXPIRY_INVALID"],
-            [rights.retainUntil, "MASTERED_CHAPTER_RETAIN_UNTIL_INVALID"],
-            [rights.deletionRequiredAt, "MASTERED_CHAPTER_DELETION_DATE_INVALID"],
-          ] as const) {
-            if (value && Number.isNaN(Date.parse(value))) {
-              throw new MasteredChapterError(invalidCode);
+            if (
+              sourceMaster.rights.rightsFingerprint !== rights.rightsFingerprint
+              || sourceEngineering.rights.rightsFingerprint !== rights.rightsFingerprint
+            ) {
+              throw new MasteredChapterError("MASTERED_CHAPTER_RIGHTS_SCOPE_MISMATCH");
             }
-          }
+            for (const [value, invalidCode] of [
+              [rights.expiresAt, "MASTERED_CHAPTER_RIGHTS_EXPIRY_INVALID"],
+              [rights.retainUntil, "MASTERED_CHAPTER_RETAIN_UNTIL_INVALID"],
+              [rights.deletionRequiredAt, "MASTERED_CHAPTER_DELETION_DATE_INVALID"],
+            ] as const) {
+              if (value && Number.isNaN(Date.parse(value))) {
+                throw new MasteredChapterError(invalidCode);
+              }
+            }
             if (rights.expiresAt && Date.parse(rights.expiresAt) <= now.getTime()) {
               throw new MasteredChapterError("MASTERED_CHAPTER_RIGHTS_EXPIRED");
             }
@@ -330,9 +294,16 @@ jobs:
             ) {
               throw new MasteredChapterError("MASTERED_CHAPTER_RETENTION_EXPIRED");
             }
-          ''',
-              "rights-dates",
+          }
+
+          '''
+          replace_section(
+              "function requireCurrentRights(\n",
+              "function assertArtifactMatchesSnapshot(\n",
+              rights_section,
+              "rights-validation",
           )
+
           replace_once(
               '    || record.revision !== snapshot.revision\n',
               '',
@@ -376,52 +347,35 @@ jobs:
           ''',
               "engineering-profile-and-duration",
           )
-          replace_once(
-              '''function compareMastering(
-            plan: MasteringPlan,
-            observed: AudioEngineeringEvidence,
-            policy: MasteredChapterComparisonPolicy,
-          ): MasteredChapterComparison {
-          ''',
-              '''function compareMastering(
+
+          comparison_section = '''function compareMastering(
             plan: MasteringPlan,
             observed: AudioEngineeringEvidence,
             expectedDurationMs: number,
             policy: MasteredChapterComparisonPolicy,
           ): MasteredChapterComparison {
-          ''',
-              "comparison-signature",
-          )
-          replace_once(
-              '''  const expectedDurationMs = plan.sourceEngineering.metrics.leadingSilenceMs
-            + plan.sourceEngineering.metrics.trailingSilenceMs
-            + Math.max(
-              0,
-              Math.round(observed.probe.durationSeconds * 1_000)
-                - observed.metrics.leadingSilenceMs
-                - observed.metrics.trailingSilenceMs,
+            assertMasteredChapterComparisonPolicy(policy);
+            requireInteger(
+              expectedDurationMs,
+              1,
+              7 * 24 * 60 * 60 * 1_000,
+              "MASTERED_CHAPTER_EXPECTED_DURATION_INVALID",
             );
-            const observedDurationMs = Math.round(observed.probe.durationSeconds * 1_000);
-            const durationDriftMs = Math.abs(
-              observedDurationMs - inputDurationFromPlan(plan, observedDurationMs),
-            );
-          ''',
-              '''  requireInteger(
-            expectedDurationMs,
-            1,
-            7 * 24 * 60 * 60 * 1_000,
-            "MASTERED_CHAPTER_EXPECTED_DURATION_INVALID",
-          );
+            const strictPrediction = policy.strictTransparentPrediction
+              && plan.operations.every((operation) => operation.kind === "gain");
             const observedDurationMs = Math.round(observed.probe.durationSeconds * 1_000);
             const durationDriftMs = Math.abs(observedDurationMs - expectedDurationMs);
-          ''',
-              "duration-comparison",
-          )
-          replace_once(
-              '''  const findings: Finding[] = [];
-            if (durationDriftMs > policy.durationToleranceMs) {
-          ''',
-              '''  const findings: Finding[] = [];
+            const predicted = plan.prediction.metrics;
+            const metrics = observed.metrics;
+            const metricDeltaDb = Object.freeze({
+              rmsDb: delta(predicted.rmsDb, metrics.rmsDb),
+              peakDb: delta(predicted.peakDb, metrics.peakDb),
+              ...(predicted.truePeakDb !== undefined && metrics.truePeakDb !== undefined
+                ? { truePeakDb: delta(predicted.truePeakDb, metrics.truePeakDb) }
+                : {}),
+              noiseFloorDb: delta(predicted.noiseFloorDb, metrics.noiseFloorDb),
+            });
+            const findings: Finding[] = [];
             if (predicted.truePeakDb !== undefined && metrics.truePeakDb === undefined) {
               findings.push({
                 code: "MASTERED_CHAPTER_TRUE_PEAK_OBSERVATION_MISSING",
@@ -430,21 +384,85 @@ jobs:
               });
             }
             if (durationDriftMs > policy.durationToleranceMs) {
-          ''',
-              "true-peak-required",
-          )
-          replace_once(
-              '''function inputDurationFromPlan(
-            _plan: MasteringPlan,
-            observedFallbackMs: number,
-          ): number {
-            return observedFallbackMs;
+              findings.push({
+                code: "MASTERED_CHAPTER_DURATION_DRIFT",
+                severity: "error",
+                message: `Observed mastered duration differs from the source by ${durationDriftMs} ms.`,
+              });
+            }
+            if (metrics.sampleRateHz !== plan.output.sampleRateHz) {
+              findings.push({
+                code: "MASTERED_CHAPTER_SAMPLE_RATE_DRIFT",
+                severity: "error",
+                message: "Observed mastered sample rate differs from the approved output profile.",
+              });
+            }
+            if (metrics.channels !== plan.output.channels) {
+              findings.push({
+                code: "MASTERED_CHAPTER_CHANNEL_DRIFT",
+                severity: "error",
+                message: "Observed mastered channel count differs from the approved output profile.",
+              });
+            }
+            const metricChecks: readonly [string, number, number][] = [
+              ["MASTERED_CHAPTER_RMS_PREDICTION_DRIFT", metricDeltaDb.rmsDb, policy.rmsToleranceDb],
+              ["MASTERED_CHAPTER_PEAK_PREDICTION_DRIFT", metricDeltaDb.peakDb, policy.peakToleranceDb],
+              [
+                "MASTERED_CHAPTER_NOISE_PREDICTION_DRIFT",
+                metricDeltaDb.noiseFloorDb,
+                policy.noiseFloorToleranceDb,
+              ],
+            ];
+            if (metricDeltaDb.truePeakDb !== undefined) {
+              metricChecks.push?.();
+            }
+            for (const [code, amount, tolerance] of [
+              ...metricChecks,
+              ...(metricDeltaDb.truePeakDb === undefined
+                ? []
+                : [[
+                    "MASTERED_CHAPTER_TRUE_PEAK_PREDICTION_DRIFT",
+                    metricDeltaDb.truePeakDb,
+                    policy.truePeakToleranceDb,
+                  ] as const]),
+            ]) {
+              if (amount > tolerance) {
+                findings.push({
+                  code,
+                  severity: strictPrediction ? "error" : "warning",
+                  message: `Observed mastering result differs from the approved prediction by ${amount} dB.`,
+                });
+              }
+            }
+            const partial: Omit<MasteredChapterComparison, "fingerprint"> = {
+              strictPrediction,
+              expectedDurationMs,
+              observedDurationMs,
+              durationDriftMs,
+              predictedMetrics: predicted,
+              observedMetrics: metrics,
+              metricDeltaDb,
+              findings: Object.freeze(findings),
+            };
+            return Object.freeze({ ...partial, fingerprint: comparisonFingerprint(partial) });
           }
 
+          '''
+          # Remove an accidental no-op marker before writing the TypeScript section.
+          comparison_section = comparison_section.replace(
+              '''            if (metricDeltaDb.truePeakDb !== undefined) {
+              metricChecks.push?.();
+            }
           ''',
-              '',
-              "remove-duration-placeholder",
+              "",
           )
+          replace_section(
+              "function compareMastering(\n",
+              "function chainFingerprint(\n",
+              comparison_section,
+              "comparison-logic",
+          )
+
           replace_once(
               '  const policy = input.comparisonPolicy ?? createMasteredChapterComparisonPolicy();\n  assertMasteredChapterComparisonPolicy(policy);\n',
               '  const policy = input.comparisonPolicy;\n  assertMasteredChapterComparisonPolicy(policy);\n',
@@ -472,6 +490,7 @@ jobs:
           )
 
           path.write_text(source, encoding="utf-8", newline="\n")
+          Path(".github/mastered-chapter-anchor-report.txt").unlink(missing_ok=True)
           Path(".github/workflows/one-time-mastered-chapter-foundation.yml").unlink(missing_ok=True)
           Path(".github/mastered-chapter-foundation.trigger").unlink(missing_ok=True)
           print("MASTERED_CHAPTER_FOUNDATION_REPAIRED")
@@ -520,7 +539,7 @@ jobs:
               .replace(/\u001b\[[0-9;]*m/g, "");
             const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
             const diagnostic = lines.find((line) =>
-              /MASTERED_CHAPTER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+              /_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
             ) || lines.at(-1) || "mastered chapter foundation repair failed";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
