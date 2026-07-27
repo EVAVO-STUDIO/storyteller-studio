@@ -58,6 +58,7 @@ export interface MasteringPlan {
   sourceMaster: MasteringArtifactSnapshot;
   sourceEngineering: Readonly<{
     artifact: MasteringArtifactSnapshot;
+    metrics: AudioMetrics;
     evidenceFingerprint: string;
     profileFingerprint: string;
   }>;
@@ -172,6 +173,36 @@ function assertSnapshot(value: MasteringArtifactSnapshot): void {
   }
 }
 
+function assertMetrics(metrics: AudioMetrics): void {
+  requireFinite(metrics.rmsDb, -200, 24, "MASTERING_PLAN_METRICS_RMS_INVALID");
+  requireFinite(metrics.peakDb, -200, 24, "MASTERING_PLAN_METRICS_PEAK_INVALID");
+  if (metrics.truePeakDb !== undefined) {
+    requireFinite(metrics.truePeakDb, -200, 24, "MASTERING_PLAN_METRICS_TRUE_PEAK_INVALID");
+  }
+  requireFinite(metrics.noiseFloorDb, -200, 24, "MASTERING_PLAN_METRICS_NOISE_INVALID");
+  if (!Number.isSafeInteger(metrics.sampleRateHz) || metrics.sampleRateHz < 8_000 || metrics.sampleRateHz > 384_000) {
+    throw new MasteringPlanError("MASTERING_PLAN_METRICS_SAMPLE_RATE_INVALID");
+  }
+  if (
+    metrics.bitRateKbps !== undefined
+    && (!Number.isFinite(metrics.bitRateKbps) || metrics.bitRateKbps <= 0 || metrics.bitRateKbps > 100_000)
+  ) {
+    throw new MasteringPlanError("MASTERING_PLAN_METRICS_BIT_RATE_INVALID");
+  }
+  if (!Number.isSafeInteger(metrics.channels) || metrics.channels < 1 || metrics.channels > 32) {
+    throw new MasteringPlanError("MASTERING_PLAN_METRICS_CHANNELS_INVALID");
+  }
+  for (const [value, code] of [
+    [metrics.clippedSampleCount, "MASTERING_PLAN_METRICS_CLIPPING_INVALID"],
+    [metrics.leadingSilenceMs, "MASTERING_PLAN_METRICS_LEADING_SILENCE_INVALID"],
+    [metrics.trailingSilenceMs, "MASTERING_PLAN_METRICS_TRAILING_SILENCE_INVALID"],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < 0 || value > 86_400_000) {
+      throw new MasteringPlanError(code);
+    }
+  }
+}
+
 function assertVerified(record: ArtifactRecord, code: string): void {
   assertArtifactRecord(record);
   if (
@@ -249,7 +280,11 @@ function assertOperationOrder(operations: readonly MasteringOperation[]): void {
       throw new MasteringPlanError("MASTERING_PLAN_OPERATION_DUPLICATE");
     }
     kinds.add(operation.kind);
-    const current = order[operation.kind];
+    const current = operation.kind === "high-pass"
+      ? 0
+      : operation.kind === "gain"
+        ? 1
+        : 2;
     if (current < previous) throw new MasteringPlanError("MASTERING_PLAN_OPERATION_ORDER_INVALID");
     previous = current;
   }
@@ -408,6 +443,7 @@ export function createMasteringPlan(
     sourceMaster: snapshot(input.chapterMaster),
     sourceEngineering: Object.freeze({
       artifact: snapshot(input.engineeringArtifact),
+      metrics: Object.freeze({ ...input.engineeringEvidence.metrics }),
       evidenceFingerprint: input.engineeringEvidence.fingerprint,
       profileFingerprint: input.engineeringEvidence.profile.fingerprint,
     }),
@@ -512,15 +548,19 @@ export function assertMasteringPlan(plan: MasteringPlan): void {
   requireIdentifier(plan.createdByActorId, "MASTERING_PLAN_ACTOR_ID_INVALID");
   assertSnapshot(plan.sourceMaster);
   assertSnapshot(plan.sourceEngineering.artifact);
+  assertMetrics(plan.sourceEngineering.metrics);
   requireHash(plan.sourceEngineering.evidenceFingerprint, "MASTERING_PLAN_EVIDENCE_HASH_INVALID");
   requireHash(plan.sourceEngineering.profileFingerprint, "MASTERING_PLAN_SOURCE_PROFILE_HASH_INVALID");
   assertProfile(plan.targetProfile);
   assertOperationOrder(plan.operations);
   requireRationale(plan.rationale);
   if (Number.isNaN(Date.parse(plan.createdAt))) throw new MasteringPlanError("MASTERING_PLAN_DATE_INVALID");
-  const predicted = applyPrediction(plan.prediction.metrics, []);
-  if (predicted.metrics.rmsDb !== plan.prediction.metrics.rmsDb) {
-    throw new MasteringPlanError("MASTERING_PLAN_PREDICTION_INVALID");
+  if (Date.parse(plan.targetProfile.reviewedAt) > Date.parse(plan.createdAt)) {
+    throw new MasteringPlanError("MASTERING_PLAN_PROFILE_REVIEW_IN_FUTURE");
+  }
+  const predicted = applyPrediction(plan.sourceEngineering.metrics, plan.operations);
+  if (stableHash(predicted.metrics) !== stableHash(plan.prediction.metrics)) {
+    throw new MasteringPlanError("MASTERING_PLAN_PREDICTION_MISMATCH");
   }
   if (plan.prediction.requiresPostRenderMeasurement !== true) {
     throw new MasteringPlanError("MASTERING_PLAN_POST_RENDER_MEASUREMENT_REQUIRED");
