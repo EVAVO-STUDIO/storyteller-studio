@@ -17,6 +17,7 @@ import {
   type TakeObservation,
   type VoiceRightsEvidence,
 } from "@evavo/storyteller-engine";
+import type { ElevenLabsModelId } from "@evavo/storyteller-engine/elevenlabs-adapter";
 import {
   FileGenerationQueue,
   type GenerationQueueItem,
@@ -26,6 +27,10 @@ import {
   FileProjectStore,
   type StoredEnvelope,
 } from "@evavo/storyteller-engine/project-store";
+import {
+  createElevenLabsPricingForConfiguration,
+  validateElevenLabsConfigurationDocument,
+} from "./elevenlabs-config.js";
 
 export type ParsedArguments = {
   command: string;
@@ -168,6 +173,8 @@ function help(): void {
   process.stdout.write(`  take-check     Evaluate transcript fidelity, engineering limits and continuity evidence.\n`);
   process.stdout.write(`  visual-plan    Build scene-level visual beats without literal sentence-by-sentence imagery.\n`);
   process.stdout.write(`  jobs           Create deterministic generation job intents from a project manifest.\n`);
+  process.stdout.write(`  elevenlabs-pricing  Create an immutable, expiring pricing snapshot without provider access.\n`);
+  process.stdout.write(`  elevenlabs-validate Validate a complete ElevenLabs configuration offline.\n`);
   process.stdout.write(`  queue-enqueue  Persist generation intents to the local, single-host queue.\n`);
   process.stdout.write(`  queue-list     List local queue state without exposing lease tokens.\n`);
   process.stdout.write(`  queue-show     Inspect one local queue item without exposing its lease token hash.\n`);
@@ -178,6 +185,8 @@ function help(): void {
   process.stdout.write(`Examples:\n`);
   process.stdout.write(`  npm run storyteller -- segment --input book.txt --output segments.json\n`);
   process.stdout.write(`  npm run storyteller -- plan --title "Book One" --input book.txt --rights rights.json --requirements requirements.json --providers providers.json --output project.json\n`);
+  process.stdout.write(`  npm run storyteller -- elevenlabs-pricing --model eleven_multilingual_v2 --currency AUD --micros-per-thousand 120000 --effective-from 2026-07-01T00:00:00Z --expires-at 2026-08-31T00:00:00Z --source-reference elevenlabs-pricing-2026-07 --output pricing.json\n`);
+  process.stdout.write(`  npm run storyteller -- elevenlabs-validate --input elevenlabs.json --validation-at 2026-07-27T00:00:00Z --output elevenlabs-summary.json\n`);
   process.stdout.write(`  npm run storyteller -- queue-enqueue --project project.json --data-dir ./storage\n`);
   process.stdout.write(`  npm run storyteller -- queue-list --data-dir ./storage --status queued,retry-wait\n`);
   process.stdout.write(`  npm run storyteller -- queue-cancel --data-dir ./storage --item-id queue_job_123 --actor-id operator_greg --reason "Direction review required"\n`);
@@ -272,6 +281,34 @@ export async function run(args: ParsedArguments): Promise<number> {
       emit(result, output, force);
       return result.every((job) => job.status === "ready") ? 0 : 2;
     }
+
+    case "elevenlabs-pricing": {
+    const rate = numberFlag(args, "micros-per-thousand");
+    if (rate === undefined) throw new Error("CLI_FLAG_REQUIRED:micros-per-thousand");
+    if (!Number.isSafeInteger(rate) || rate < 1) {
+      throw new Error("CLI_FLAG_INTEGER_INVALID:micros-per-thousand");
+    }
+    const result = createElevenLabsPricingForConfiguration({
+      modelId: stringFlag(args, "model", true)! as ElevenLabsModelId,
+      currency: stringFlag(args, "currency", true)!,
+      microsPerThousandCharacters: rate,
+      effectiveFrom: stringFlag(args, "effective-from", true)!,
+      expiresAt: stringFlag(args, "expires-at", true)!,
+      sourceReference: stringFlag(args, "source-reference", true)!,
+    });
+    emit(result, output, force);
+    return 0;
+  }
+
+  case "elevenlabs-validate": {
+    const document = readJson<unknown>(stringFlag(args, "input", true)!);
+    const result = validateElevenLabsConfigurationDocument(
+      document,
+      dateFlag(args, "validation-at") ?? new Date(),
+    );
+    emit(result, output, force);
+    return 0;
+  }
 
     case "queue-enqueue": {
       const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
