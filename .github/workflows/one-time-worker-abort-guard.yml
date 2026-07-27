@@ -1,0 +1,143 @@
+name: One-time worker abort guard integration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/worker-abort-guard.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-worker-abort-guard
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add abort checkpoints to worker execution
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .worker-abort-guard.log
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/generation-worker.ts")
+          source = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  'function buildRequests(\n',
+                  '''function throwIfWorkerAborted(signal: AbortSignal | undefined): void {
+            if (!signal?.aborted) return;
+            if (signal.reason instanceof Error) throw signal.reason;
+            throw new Error("GENERATION_WORKER_ABORTED");
+          }
+
+          function buildRequests(
+          ''',
+                  "abort-helper",
+              ),
+              (
+                  '  requireWorkerInput(input);\n  const now = input.now ?? new Date();\n',
+                  '  requireWorkerInput(input);\n  throwIfWorkerAborted(input.signal);\n  const now = input.now ?? new Date();\n',
+                  "initial-abort-check",
+              ),
+              (
+                  '  });\n\n  const requestsById = new Map(requests.map((request) => [request.requestId, request]));\n',
+                  '  });\n  throwIfWorkerAborted(input.signal);\n\n  const requestsById = new Map(requests.map((request) => [request.requestId, request]));\n',
+                  "provider-return-check",
+              ),
+              (
+                  '    for (const result of report.results) {\n      const request = requestsById.get(result.requestId);\n',
+                  '    for (const result of report.results) {\n      throwIfWorkerAborted(input.signal);\n      const request = requestsById.get(result.requestId);\n',
+                  "candidate-loop-check",
+              ),
+              (
+                  '  } catch {\n    return blockClaim({\n',
+                  '  } catch {\n    throwIfWorkerAborted(input.signal);\n    return blockClaim({\n',
+                  "ingest-catch-check",
+              ),
+              (
+                  '  const artifacts = ingested.map((item) => item.envelope.payload);\n',
+                  '  throwIfWorkerAborted(input.signal);\n  const artifacts = ingested.map((item) => item.envelope.payload);\n',
+                  "post-ingest-check",
+              ),
+              (
+                  '  const reportArtifact = await ingestExecutionReport({\n',
+                  '  throwIfWorkerAborted(input.signal);\n  const reportArtifact = await ingestExecutionReport({\n',
+                  "pre-report-check",
+              ),
+              (
+                  '  artifacts.push(reportArtifact.ingest.envelope.payload);\n',
+                  '  artifacts.push(reportArtifact.ingest.envelope.payload);\n  throwIfWorkerAborted(input.signal);\n',
+                  "post-report-check",
+              ),
+          ]
+
+          for old, new, label in replacements:
+              count = source.count(old)
+              print(f"WORKER_ABORT_GUARD_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"WORKER_ABORT_GUARD_MATCH_COUNT_INVALID:{label}:{count}")
+              source = source.replace(old, new, 1)
+
+          path.write_text(source, encoding="utf-8", newline="\n")
+          print("WORKER_ABORT_GUARD_PATCHED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify abort guard
+        run: npm run typecheck && npm run test:engine
+
+      - name: Commit abort checkpoints
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/generation-worker.ts
+          git diff --cached --check
+          git commit -m "Stop stale workers after abort"
+          git push origin HEAD:main
+
+      - name: Publish integration status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          ABORT_GUARD_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.ABORT_GUARD_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".worker-abort-guard.log")
+              ? fs.readFileSync(".worker-abort-guard.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "worker abort guard log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /WORKER_ABORT_GUARD_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "worker abort guard integration failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/worker-abort-guard",
+              description: state === "success"
+                ? "Aborted workers stop before post-provider writes"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
