@@ -1,0 +1,106 @@
+name: One-time budget reservation identity fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/budget-reservation-id-fix.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-budget-reservation-id-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Restrict reservation identity to immutable scope
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .budget-reservation-id-fix.log
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/budget-ledger.ts")
+          source = path.read_text(encoding="utf-8")
+          old = '''  return `reservation_${stableHash(input).slice(0, 32)}`;
+          }
+          '''
+          new = '''  return `reservation_${stableHash({
+            accountId: input.accountId,
+            jobId: input.jobId,
+            queueItemId: input.queueItemId,
+            attempt: input.attempt,
+          }).slice(0, 32)}`;
+          }
+          '''
+          count = source.count(old)
+          print(f"BUDGET_RESERVATION_ID_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"BUDGET_RESERVATION_ID_MATCH_COUNT_INVALID:{count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          PY
+
+      - name: Remove fix machinery
+        shell: bash
+        run: |
+          git rm -f \
+            .github/workflows/one-time-budget-reservation-id-fix.yml \
+            .github/budget-reservation-id-fix.trigger
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify budget ledger
+        run: npm run verify:budget && npm run typecheck && npm run test:engine
+
+      - name: Commit reservation identity correction
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/budget-ledger.ts
+          git diff --cached --check
+          git commit -m "Fix deterministic budget reservation identity"
+          git push origin HEAD:main
+
+      - name: Publish fix status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          FIX_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.FIX_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".budget-reservation-id-fix.log")
+              ? fs.readFileSync(".budget-reservation-id-fix.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "budget reservation identity log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /BUDGET_RESERVATION_ID_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "budget reservation identity fix failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/budget-reservation-id",
+              description: state === "success"
+                ? "Budget reservation identity is deterministic"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
