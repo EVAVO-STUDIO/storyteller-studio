@@ -1,1 +1,1 @@
-correct strict adapter typing before provider runtime integration
+commit strict adapter typing before continuing provider test triage
