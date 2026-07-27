@@ -1,7 +1,7 @@
 # Governed production artifact registry
 
 Status: executable foundation 0.2.0  
-Scope: narration, analysis, illustration, chapter assembly and release artifacts
+Scope: narration, analysis, illustration, chapter assembly, mastering and release artifacts
 
 ## Purpose
 
@@ -27,7 +27,10 @@ The registry supports the media and evidence records needed by the production pi
 - illustration layers;
 - visual renders;
 - chapter masters;
+- mastered chapters;
 - release packages.
+
+A `mastered-chapter` is a new immutable audio artifact produced from an approved `chapter-master` through a governed mastering plan and render. It never overwrites the approved pre-master chapter. It requires parent provenance, independent verification and a new human review before release.
 
 These are separate records because they have different formats, reviewers, retention needs and failure modes. A waveform is not an audio master. A transcript is not proof that an audio file is complete. A release ZIP is not approved merely because it can be opened.
 
@@ -88,7 +91,7 @@ Provider-generated media records:
 - private provider request identifier;
 - parent artifact identifiers.
 
-Chapter masters and release packages must identify their input artifacts. The dependency graph makes it possible to prove which approved takes, reports and masters contributed to a release without embedding raw media in database rows or queue state.
+Chapter masters, mastered chapters and release packages must identify their input artifacts. The dependency graph makes it possible to prove which approved takes, plans, renders, reports and masters contributed to a release without embedding raw media in database rows or queue state.
 
 ## Rights and retention
 
@@ -135,6 +138,7 @@ Human review is required by default for:
 - illustration layers;
 - visual renders;
 - chapter masters;
+- mastered chapters;
 - release packages.
 
 Technical analysis records can be configured as review-not-required when their schemas and verification checks are sufficient, but they still require integrity verification.
@@ -174,7 +178,7 @@ Every reachable artifact must:
 - resolve all parent references;
 - avoid dependency cycles.
 
-An audiobook release package must depend on at least one verified and approved chapter master.
+An audiobook release package must depend on at least one verified and approved `mastered-chapter`. A pre-master `chapter-master` is preserved in the graph as evidence but cannot satisfy the final release requirement on its own.
 
 After those checks pass, release still requires:
 
