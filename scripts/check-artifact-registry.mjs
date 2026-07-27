@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 
 const root = process.cwd();
 const problems = [];
@@ -20,12 +20,28 @@ function requireTokens(path, tokens) {
   }
 }
 
-function forbidTokens(path, tokens) {
-  if (!existsSync(fromRoot(path))) return;
-  const source = read(path);
-  for (const token of tokens) {
-    if (source.includes(token)) {
-      problems.push(`${path} contains forbidden artifact-registry token: ${token}`);
+function collectTextFiles(directory, output = []) {
+  const absolute = fromRoot(directory);
+  if (!existsSync(absolute)) return output;
+  for (const name of readdirSync(absolute)) {
+    const absolutePath = join(absolute, name);
+    const item = statSync(absolutePath);
+    if (item.isDirectory()) {
+      collectTextFiles(relative(root, absolutePath), output);
+    } else if (/\.(?:ts|tsx|js|mjs|json|md|css)$/u.test(name)) {
+      output.push(relative(root, absolutePath).replaceAll("\\", "/"));
+    }
+  }
+  return output;
+}
+
+function forbidTokensInFiles(paths, tokens) {
+  for (const path of paths) {
+    const source = read(path);
+    for (const token of tokens) {
+      if (source.includes(token)) {
+        problems.push(`${path} contains forbidden artifact-registry token: ${token}`);
+      }
     }
   }
 }
@@ -114,7 +130,7 @@ if (publicViewStart < 0) {
   }
 }
 
-forbidTokens("apps/web/src", [
+forbidTokensInFiles(collectTextFiles("apps/web/src"), [
   "ARTIFACT_STORAGE_OBJECT_KEY",
   "providerRequestId",
   "versionId",
