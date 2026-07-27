@@ -145,7 +145,6 @@ test("once runtime preflights providers and stops cleanly when the durable queue
     assert.equal(result.providerCount, 1);
     assert.equal(adapter.inspectCount, 1);
     assert.equal(adapter.synthesiseCount, 0);
-    if (result.status === "disabled") throw new Error("enabled worker result required");
     assert.equal(result.lifecycle.mode, "once");
     assert.equal(result.lifecycle.service.state, "stopped");
     assert.equal(result.lifecycle.service.claimedJobs, 0);
