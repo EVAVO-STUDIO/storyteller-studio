@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import "./artifacts.css";
 
 export const metadata: Metadata = {
   title: {
