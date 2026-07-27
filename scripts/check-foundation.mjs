@@ -8,8 +8,18 @@ const requiredFiles = [
   "package.json",
   "tsconfig.json",
   ".env.example",
+  "packages/storyteller/package.json",
   "packages/storyteller/src/index.ts",
   "packages/storyteller/src/index.test.ts",
+  "packages/storyteller/src/project-store.ts",
+  "packages/storyteller/src/project-store.test.ts",
+  "packages/storyteller/src/provider-adapter.ts",
+  "packages/storyteller/src/provider-adapter.test.ts",
+  "packages/storyteller/src/series-continuity.ts",
+  "packages/storyteller/src/series-continuity.test.ts",
+  "packages/storyteller/src/generation-queue-contracts.ts",
+  "packages/storyteller/src/generation-queue.ts",
+  "packages/storyteller/src/generation-queue.test.ts",
   "packages/cli/src/main.ts",
   "apps/api/src/server.ts",
   "apps/web/src/app/page.tsx",
@@ -18,6 +28,7 @@ const requiredFiles = [
   "apps/web/src/lib/evavoHubManifest.ts",
   "apps/web/public/hub/storyteller-studio.card.json",
   "docs/FOUNDATION.md",
+  "docs/GENERATION_EXECUTION.md",
 ];
 
 function fromRoot(path) {
@@ -53,6 +64,15 @@ if (existsSync(fromRoot("package.json"))) {
   }
 }
 
+if (existsSync(fromRoot("packages/storyteller/package.json"))) {
+  const packageJson = JSON.parse(read("packages/storyteller/package.json"));
+  for (const exportPath of [".", "./generation-queue", "./project-store", "./provider-adapter", "./series-continuity"]) {
+    if (typeof packageJson.exports?.[exportPath] !== "string") {
+      problems.push(`packages/storyteller/package.json is missing export: ${exportPath}`);
+    }
+  }
+}
+
 requireTokens("packages/storyteller/src/index.ts", [
   "segmentManuscript",
   "verifySegmentCoverage",
@@ -78,6 +98,67 @@ requireTokens("packages/storyteller/src/index.test.ts", [
   "transcript QA catches final-word truncation",
   "provider ranking fails closed",
   "visual planning groups dramatic material",
+]);
+
+requireTokens("packages/storyteller/src/project-store.ts", [
+  "StoreConflictError",
+  "StoreIntegrityError",
+  "previousEnvelopeHash",
+  "#writeAtomic",
+  "#acquireLock",
+  "appendAuditEvent",
+]);
+
+requireTokens("packages/storyteller/src/provider-adapter.ts", [
+  "ProviderAdapterRegistry",
+  "ProviderCapabilitySnapshot",
+  "buildSynthesisRequest",
+  "executeGenerationJob",
+  "idempotencyKey",
+  "credentialReference",
+]);
+
+requireTokens("packages/storyteller/src/series-continuity.ts", [
+  "createSeriesContinuityBible",
+  "assessSeriesContinuity",
+  "promoteSeriesContinuity",
+  "selectSeriesRegressionSuite",
+  "SERIES_NARRATOR_RECAST_UNAPPROVED",
+]);
+
+requireTokens("packages/storyteller/src/generation-queue-contracts.ts", [
+  "GENERATION_QUEUE_SCHEMA_VERSION",
+  "GenerationQueueStatus",
+  "tokenHash",
+  "generationQueueIdempotencyKey",
+  "generationLeaseTokenMatches",
+  "assertGenerationQueueItem",
+  "GENERATION_QUEUE_LEASE_TOKEN_INVALID",
+  "outputArtifactRefs",
+]);
+
+requireTokens("packages/storyteller/src/generation-queue.ts", [
+  "FileGenerationQueue",
+  "claimNext",
+  "heartbeat",
+  "complete",
+  "reapExpiredLeases",
+  "GENERATION_QUEUE_LEASE_TOKEN_MISMATCH",
+  "GENERATION_QUEUE_LEASE_LOST",
+  "generation.queue.cancelled",
+  "retry-wait",
+]);
+
+requireTokens("packages/storyteller/src/generation-queue.test.ts", [
+  "enqueue is idempotent but rejects changed generation intent",
+  "blocked generation intents remain visible but cannot be leased",
+  "claims are priority ordered and lease exclusive",
+  "persisted leases contain only a token hash",
+  "retryable failures back off and stop at the attempt ceiling",
+  "expired leases are reaped",
+  "completion stores references and provenance hashes without raw media",
+  "operator cancellation invalidates an in-flight worker lease",
+  "queue reads fail closed for malformed persisted queue state",
 ]);
 
 requireTokens("apps/api/src/server.ts", [
@@ -154,6 +235,17 @@ requireTokens("docs/FOUNDATION.md", [
   "Delivery roadmap",
 ]);
 
+requireTokens("docs/GENERATION_EXECUTION.md", [
+  "generation intent",
+  "Queue state model",
+  "Lease security",
+  "Only its SHA-256 hash is persisted",
+  "deterministic exponential backoff",
+  "private object storage",
+  "Production worker sequence",
+  "do not auto-release",
+]);
+
 if (problems.length > 0) {
   console.error("Storyteller Studio foundation check failed:\n");
   for (const problem of problems) console.error(`- ${problem}`);
@@ -163,5 +255,6 @@ if (problems.length > 0) {
 console.log("storyteller_foundation_check_passed");
 console.log("- exact-source manuscript and performance contracts are present");
 console.log("- rights, provider, continuity, transcript and technical QA gates are present");
+console.log("- durable queue leases, retries, cancellation and artifact references are verified");
 console.log("- API and CLI remain provider-neutral and fail closed before execution");
 console.log("- private web and EVAVO hub contracts remain source-ready but unreleased");
