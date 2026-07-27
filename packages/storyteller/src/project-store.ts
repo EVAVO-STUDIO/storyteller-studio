@@ -19,6 +19,7 @@ export type StoredEntityType =
   | "mastered-chapter-review"
   | "book-chapter-sequence"
   | "book-credit-script"
+  | "book-credit-generation"
   | "chapter-assembly"
   | "release-package";
 

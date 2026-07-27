@@ -37,22 +37,13 @@ import type { GenerationWorkerMaterial } from "./generation-worker.js";
 export const BOOK_CREDIT_GENERATION_SCHEMA_VERSION =
   "storyteller-book-credit-generation-v1" as const;
 
-export interface BookCreditGenerationScriptSnapshot {
-  id: string;
-  revision: number;
-  fingerprint: string;
-  textHash: string;
-  wordCount: number;
-  approvalFingerprint: string;
-}
-
 export interface BookCreditGenerationPlan {
   schemaVersion: typeof BOOK_CREDIT_GENERATION_SCHEMA_VERSION;
   id: string;
   projectId: string;
   bookId: string;
   creditKind: BookCreditScript["kind"];
-  script: BookCreditGenerationScriptSnapshot;
+  script: BookCreditScript;
   job: GenerationJob;
   material: GenerationMaterialRecord;
   calibration: GenerationCalibrationBindingRecord;
@@ -313,21 +304,13 @@ export function createBookCreditGenerationPlan(
     input.calibrationLock,
     createdAt,
   );
-  const scriptSnapshot: BookCreditGenerationScriptSnapshot = Object.freeze({
-    id: input.script.id,
-    revision: input.script.revision,
-    fingerprint: input.script.fingerprint,
-    textHash: input.script.textHash,
-    wordCount: input.script.wordCount,
-    approvalFingerprint: input.script.approval.fingerprint,
-  });
   const partial: Omit<BookCreditGenerationPlan, "fingerprint"> = {
     schemaVersion: BOOK_CREDIT_GENERATION_SCHEMA_VERSION,
     id: input.id,
     projectId: input.script.projectId,
     bookId: input.script.bookId,
     creditKind: input.script.kind,
-    script: scriptSnapshot,
+    script: input.script,
     job,
     material,
     calibration,
@@ -351,25 +334,18 @@ export function assertBookCreditGenerationPlan(
   if (plan.creditKind !== "opening" && plan.creditKind !== "closing") {
     throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_KIND_INVALID");
   }
-  requireIdentifier(plan.script.id, "BOOK_CREDIT_GENERATION_SCRIPT_ID_INVALID");
-  requireInteger(
-    plan.script.revision,
-    1,
-    Number.MAX_SAFE_INTEGER,
-    "BOOK_CREDIT_GENERATION_SCRIPT_REVISION_INVALID",
-  );
-  requireHash(plan.script.fingerprint, "BOOK_CREDIT_GENERATION_SCRIPT_HASH_INVALID");
-  requireHash(plan.script.textHash, "BOOK_CREDIT_GENERATION_TEXT_HASH_INVALID");
-  requireInteger(
-    plan.script.wordCount,
-    1,
-    500,
-    "BOOK_CREDIT_GENERATION_WORD_COUNT_INVALID",
-  );
-  requireHash(
-    plan.script.approvalFingerprint,
-    "BOOK_CREDIT_GENERATION_APPROVAL_HASH_INVALID",
-  );
+  assertBookCreditScript(plan.script);
+if (plan.script.status !== "approved" || !plan.script.approval) {
+  throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_APPROVED_SCRIPT_REQUIRED");
+}
+if (
+  plan.script.projectId !== plan.projectId
+  || plan.script.bookId !== plan.bookId
+  || plan.script.kind !== plan.creditKind
+  || plan.script.textHash !== stableHash(plan.script.text)
+) {
+  throw new BookCreditGenerationError("BOOK_CREDIT_GENERATION_SCRIPT_SCOPE_MISMATCH");
+}
   assertGenerationMaterialRecord(plan.material);
   assertGenerationCalibrationBindingRecord(plan.calibration);
   if (
@@ -384,7 +360,9 @@ export function assertBookCreditGenerationPlan(
     || plan.calibration.segmentId !== plan.job.segmentId
     || plan.calibration.jobCacheKey !== plan.job.cacheKey
     || plan.calibration.candidateCount !== plan.job.candidateCount
-    || plan.material.textHash !== plan.script.textHash
+    || plan.job.segmentId !== bookCreditSegmentId(plan.script)
+  || plan.material.textHash !== plan.script.textHash
+  || plan.material.material.text !== plan.script.text
     || plan.material.material.immutableSourceHash !== plan.script.textHash
     || plan.material.material.voiceProfileId
       !== plan.calibration.calibrationLock.voiceProfileId
