@@ -107,6 +107,10 @@ requireTokens("apps/worker/src/runtime.ts", [
   "WORKER_PROVIDER_CREDENTIAL_MISSING",
   "WORKER_PROVIDER_CAPABILITY_ID_MISMATCH",
   "FileGenerationMaterialStore",
+  "FileBudgetLedger",
+  "FileGenerationBudgetController",
+  "budgetController",
+  "requireBudget: true",
   "FilePrivateObjectStore",
   "GenerationWorkerService",
   "runWorkerLifecycle",
@@ -142,13 +146,18 @@ requireTokens("docs/WORKER_RUNTIME.md", [
   "Fail-closed storage",
   "Isolated persistence",
   "Provider preflight",
+  "Required budget control",
   "Bounded execution",
   "Process signals",
   "No HTTP execution surface",
   "Safe operational output",
   "Production migration",
   "WORKER_PROVIDER_ADAPTERS_REQUIRED",
-  "transactional budget reservations before provider execution",
+  "requireBudget: true",
+  "before provider invocation",
+  "after artifact admission and before queue completion",
+  "settles interrupted work conservatively",
+  "PostgreSQL transactional claims, material records and budget accounts",
 ]);
 
 requireTokens("scripts/run-tests.mjs", [
@@ -167,6 +176,25 @@ requireTokens(".env.example", [
   "STORYTELLER_FILE_WORKER_SINGLE_HOST=false",
   "STORYTELLER_WORKER_CREDENTIAL_BINDINGS={}",
 ]);
+
+const runtimeSource = existsSync(fromRoot("apps/worker/src/runtime.ts"))
+  ? read("apps/worker/src/runtime.ts")
+  : "";
+const stateIndex = runtimeSource.indexOf("const queueState = new FileProjectStore");
+const budgetIndex = runtimeSource.indexOf("const budgetController = new FileGenerationBudgetController");
+const serviceIndex = runtimeSource.indexOf("return new GenerationWorkerService");
+if (
+  stateIndex < 0
+  || budgetIndex < 0
+  || serviceIndex < 0
+  || stateIndex >= budgetIndex
+  || budgetIndex >= serviceIndex
+) {
+  problems.push("private runtime must create the shared state, budget controller, then worker service in order");
+}
+if (!runtimeSource.includes("budgetController,") || !runtimeSource.includes("requireBudget: true")) {
+  problems.push("private runtime does not require its configured budget controller");
+}
 
 const workerRuntimeFiles = collectRuntimeFiles("apps/worker/src");
 for (const path of workerRuntimeFiles) {
@@ -202,6 +230,8 @@ if (summaryStart < 0) {
     "objectRootDirectory:",
     "credentialBindings:",
     "objectContainer:",
+    "budgetController:",
+    "reservationId:",
   ]) {
     if (summary.includes(forbidden)) {
       problems.push(`worker runtime summary exposes private configuration: ${forbidden}`);
@@ -220,6 +250,8 @@ for (const path of [
     "runConfiguredWorkerRuntime",
     "startStorytellerWorker",
     "createWorkerService",
+    "FileGenerationBudgetController",
+    "FileBudgetLedger",
   ]) {
     if (source.includes(forbidden)) {
       problems.push(`${path} exposes the private worker runtime: ${forbidden}`);
@@ -228,8 +260,8 @@ for (const path of [
 }
 
 const envSource = existsSync(fromRoot(".env.example")) ? read(".env.example") : "";
-if (/NEXT_PUBLIC_[A-Z0-9_]*(?:WORKER|CREDENTIAL|SECRET|TOKEN|KEY)/u.test(envSource)) {
-  problems.push("worker or credential configuration must never use a NEXT_PUBLIC_ variable");
+if (/NEXT_PUBLIC_[A-Z0-9_]*(?:WORKER|BUDGET|CREDENTIAL|SECRET|TOKEN|KEY)/u.test(envSource)) {
+  problems.push("worker, budget or credential configuration must never use a NEXT_PUBLIC_ variable");
 }
 
 if (problems.length > 0) {
@@ -242,6 +274,7 @@ console.log("storyteller_worker_runtime_check_passed");
 console.log("- the dedicated worker is disabled by default and opens no HTTP listener");
 console.log("- file execution requires explicit queue, artifact and worker one-host posture");
 console.log("- provider adapters, credentials and capability snapshots pass preflight before claims");
+console.log("- the private runtime requires transactional budget control before provider work");
 console.log("- SIGINT and SIGTERM drain gracefully before a bounded forced abort");
-console.log("- runtime summaries omit identities, paths, credential bindings and generated media");
+console.log("- runtime summaries omit identities, paths, credential bindings, budget records and generated media");
 console.log("- normal API and browser runtimes expose no worker process controls");
