@@ -64,4 +64,6 @@ if (result.signal) {
   process.exit(1);
 }
 
-process.exit(result.status ?? 1);
+const exitCode = result.status ?? 1;
+if (exitCode !== 0) console.error(`TEST_SCOPE_FAILED:${scope}:exit-${exitCode}`);
+process.exit(exitCode);
