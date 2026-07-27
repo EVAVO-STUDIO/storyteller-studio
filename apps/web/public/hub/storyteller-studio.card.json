@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "evavo-hub-card-v1",
+  "id": "evavo-storyteller-studio",
+  "applicationKey": "storyteller-studio",
+  "title": "EVAVO Storyteller Studio",
+  "shortLabel": "ST",
+  "description": "Directed long-form narration, series voice continuity, audiobook quality and art-directed visual story companions.",
+  "status": "active-development",
+  "availability": "source-ready-launch-pending",
+  "accent": "evavo-cherry",
+  "priority": 55,
+  "defaultVisible": false,
+  "clientRelease": false,
+  "sourceRepo": "EVAVO-STUDIO/storyteller-studio",
+  "healthHref": "/api/health",
+  "manifestHref": "/manifest.webmanifest",
+  "launchHref": null,
+  "capabilities": [
+    "Exact-source manuscript and performance planning",
+    "Narrator, character and pronunciation continuity",
+    "Rights-aware provider capability negotiation",
+    "Candidate-take transcript and engineering QA",
+    "Audiobook mastering and release gates",
+    "Scene-level illustrated story planning",
+    "Web, API and CLI production surfaces"
+  ],
+  "guardrails": [
+    "Protected standalone runtime only",
+    "Signed launch and isolated session required before release",
+    "No credentials, manuscript text or voice samples in hub metadata",
+    "No unauthorised performer impersonation or voice cloning"
+  ]
+}
