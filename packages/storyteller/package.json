@@ -18,6 +18,7 @@
     "./calibration-store": "./src/calibration-store.ts",
     "./calibration-workflow": "./src/calibration-workflow.ts",
     "./chapter-assembly": "./src/chapter-assembly.ts",
+    "./chapter-render": "./src/chapter-render.ts",
     "./elevenlabs-adapter": "./src/elevenlabs-adapter.ts",
     "./generation-audio-engineering": "./src/generation-audio-engineering.ts",
     "./generation-budget": "./src/generation-budget.ts",
