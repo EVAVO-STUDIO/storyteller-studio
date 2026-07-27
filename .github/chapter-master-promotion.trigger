@@ -1,1 +1,1 @@
-export and verify the governed chapter master evidence chain
+export, verify and retain diagnostics for the governed chapter master evidence chain
