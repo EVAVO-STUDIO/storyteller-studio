@@ -1,1 +1,1 @@
-add a distinct mastered chapter artifact kind with disambiguated sets and verify every gate
+add the mastered chapter artifact kind after current release documentation and verify every gate
