@@ -1,0 +1,119 @@
+name: One-time ElevenLabs test fixture correction
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/elevenlabs-test-fixture-fix.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-elevenlabs-test-fixture-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Correct isolated adapter test fixtures
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .elevenlabs-test-fixture-fix.log
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/elevenlabs-adapter.test.ts")
+          source = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  '          ? { ...policy, modelId: "eleven_v3", pricing: pricing("eleven_v3") }\n',
+                  '          ? {\n'
+                  '              ...policy,\n'
+                  '              modelId: "eleven_v3",\n'
+                  '              maximumInputCharacters: 3_000,\n'
+                  '              pricing: pricing("eleven_v3"),\n'
+                  '            }\n',
+                  "v3-policy-fixture",
+              ),
+              (
+                  '  const oversized = createAdapter(timestampResponse(source.text), 8);\n',
+                  '  const oversizedAudio = new Uint8Array(1_100);\n'
+                  '  oversizedAudio.set(wavBytes());\n'
+                  '  const oversized = createAdapter(\n'
+                  '    timestampResponse(source.text, oversizedAudio),\n'
+                  '    1_024,\n'
+                  '  );\n',
+                  "oversized-response-fixture",
+              ),
+          ]
+          for old, new, label in replacements:
+              count = source.count(old)
+              print(f"ELEVENLABS_TEST_FIXTURE_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"ELEVENLABS_TEST_FIXTURE_MATCH_COUNT_INVALID:{label}:{count}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8", newline="\n")
+          print("ELEVENLABS_TEST_FIXTURES_FIXED")
+          PY
+
+      - name: Remove one-time fixture machinery
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-elevenlabs-test-fixture-fix.yml
+          rm -f .github/elevenlabs-test-fixture-fix.trigger
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify adapter tests
+        run: npm run typecheck && npm run test:engine
+
+      - name: Commit corrected adapter fixtures
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/elevenlabs-adapter.test.ts .github/workflows/one-time-elevenlabs-test-fixture-fix.yml .github/elevenlabs-test-fixture-fix.trigger
+          git diff --cached --check
+          git commit -m "Correct ElevenLabs adapter test fixtures"
+          git push origin HEAD:main
+
+      - name: Publish fixture correction status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          FIXTURE_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.FIXTURE_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".elevenlabs-test-fixture-fix.log")
+              ? fs.readFileSync(".elevenlabs-test-fixture-fix.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "ElevenLabs test fixture correction log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /ELEVENLABS_TEST_FIXTURE_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "ElevenLabs test fixture correction failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/elevenlabs-test-fixtures",
+              description: state === "success"
+                ? "ElevenLabs adapter tests passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
