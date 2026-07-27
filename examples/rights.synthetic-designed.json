@@ -1,0 +1,31 @@
+{
+  "id": "rights_example_synthetic_designed",
+  "voiceLabel": "Original designed narrator",
+  "sourceKind": "synthetic-designed",
+  "allowedUses": [
+    "audiobook",
+    "visual-companion",
+    "internal-calibration"
+  ],
+  "allowedProjectIds": [
+    "project_example_book_one"
+  ],
+  "allowedSeriesIds": [
+    "series_example_trilogy"
+  ],
+  "territories": [
+    "worldwide"
+  ],
+  "commercialUseApproved": true,
+  "craftReferences": [
+    {
+      "name": "Intimate oral storytelling",
+      "principles": [
+        "Maintain a clear relationship with the listener",
+        "Use silence to carry dramatic meaning",
+        "Differentiate characters through intention and rhythm before pitch or accent",
+        "Protect humour through timing and restraint"
+      ]
+    }
+  ]
+}
