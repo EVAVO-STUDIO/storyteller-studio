@@ -8,7 +8,7 @@ on:
       - ".github/mastered-chapter-foundation-diagnostic.trigger"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
@@ -17,12 +17,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
       - name: Execute repair script diagnostically
         shell: bash
         run: |
-          set -o pipefail
-          python3 - <<'PY' 2>&1 | tee mastered-chapter-foundation-diagnostic.log
+          python3 - <<'PY'
           from pathlib import Path
+          import contextlib
+          import io
+          import traceback
+
           workflow = Path(".github/workflows/one-time-mastered-chapter-foundation.yml").read_text(encoding="utf-8")
           start_marker = "          python3 - <<'PY' 2>&1 | tee .mastered-chapter-foundation.log\n"
           end_marker = "          PY\n\n      - name: Install dependencies"
@@ -30,13 +34,30 @@ jobs:
           end = workflow.index(end_marker, start)
           lines = workflow[start:end].splitlines()
           code = "\n".join(line[10:] if line.startswith("          ") else line for line in lines) + "\n"
-          exec(compile(code, "mastered-chapter-foundation.py", "exec"), {})
+          output = io.StringIO()
+          status = "success"
+          with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+              try:
+                  exec(compile(code, "mastered-chapter-foundation.py", "exec"), {})
+              except BaseException:
+                  status = "failure"
+                  traceback.print_exc()
+          Path("/tmp/mastered-chapter-foundation-diagnostic.txt").write_text(
+              f"status={status}\n" + output.getvalue(),
+              encoding="utf-8",
+              newline="\n",
+          )
           PY
-      - name: Retain diagnostic
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mastered-chapter-foundation-diagnostic-${{ github.sha }}
-          path: mastered-chapter-foundation-diagnostic.log
-          if-no-files-found: error
-          retention-days: 7
+      - name: Publish diagnostic report
+        shell: bash
+        run: |
+          git reset --hard HEAD
+          cp /tmp/mastered-chapter-foundation-diagnostic.txt .github/mastered-chapter-foundation-diagnostic.txt
+          rm -f .github/workflows/one-time-mastered-chapter-foundation-diagnostic.yml
+          rm -f .github/mastered-chapter-foundation-diagnostic.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Record mastered chapter foundation diagnostic"
+          git push origin HEAD:main
