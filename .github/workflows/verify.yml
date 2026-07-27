@@ -68,6 +68,12 @@ jobs:
           set -o pipefail
           npm run test:api 2>&1 | tee .verification/api-tests.log
 
+      - name: Test private worker runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:worker 2>&1 | tee .verification/worker-tests.log
+
       - name: Test CLI workflows
         shell: bash
         run: |
@@ -106,6 +112,7 @@ jobs:
               ".verification/typecheck.log",
               ".verification/engine-tests.log",
               ".verification/api-tests.log",
+              ".verification/worker-tests.log",
               ".verification/cli-tests.log",
               ".verification/build.log",
             ];
@@ -144,7 +151,7 @@ jobs:
                 }
               }
               if (!diagnostic) {
-                const failedLog = logs.find((log) => /artifacts|engine-tests|api-tests|cli-tests/.test(log.file));
+                const failedLog = logs.find((log) => /artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
                 if (failedLog) {
                   const fallback = failedLog.source
                     .split(/\r?\n/)
@@ -156,7 +163,7 @@ jobs:
               }
             }
             const description = state === "success"
-              ? "Foundation, boundaries, artifacts, typecheck, tests and builds passed"
+              ? "Foundation, boundaries, artifacts, worker, typecheck, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
