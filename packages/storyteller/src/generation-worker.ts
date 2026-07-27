@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import {
+  ingestAudioEngineeringArtifact,
+  type AudioEngineeringArtifactResult,
+} from "./audio-engineering-artifact.js";
+import type { GenerationAudioEngineeringPolicy } from "./generation-audio-engineering.js";
+import {
   completeGenerationWithArtifacts,
   ArtifactAdmissionError,
   type ArtifactBackedCompletionResult,
@@ -93,6 +98,7 @@ export interface ClaimedGenerationWorkerInput {
   credentials: CredentialResolver;
   objectStore: FilePrivateObjectStore;
   artifactRegistry: FileArtifactRegistry;
+  audioEngineering?: GenerationAudioEngineeringPolicy;
   material: GenerationWorkerMaterial;
   workerActorId: string;
   verifierActorId?: string;
@@ -319,7 +325,10 @@ async function ingestResultArtifacts(input: Readonly<{
   request: SynthesisRequest;
   result: SynthesisResult;
   now: Date;
-}>): Promise<readonly ArtifactIngestResult[]> {
+}>): Promise<Readonly<{
+  ingested: readonly ArtifactIngestResult[];
+  engineering?: AudioEngineeringArtifactResult;
+}>> {
   const { worker, request, result, now } = input;
   const identity = resultIdentity(worker.claim.item.jobId, request, result);
   const verifierActorId = worker.verifierActorId ?? worker.workerActorId;
@@ -356,7 +365,7 @@ async function ingestResultArtifacts(input: Readonly<{
     },
   );
   const ingested: ArtifactIngestResult[] = [audio];
-  if (!audio.accepted) return ingested;
+  if (!audio.accepted) return Object.freeze({ ingested: Object.freeze(ingested) });
 
   if (result.transcript?.trim()) {
     const transcriptBytes = new TextEncoder().encode(result.transcript);
@@ -429,7 +438,59 @@ async function ingestResultArtifacts(input: Readonly<{
     ));
   }
 
-  return ingested;
+  let engineering: AudioEngineeringArtifactResult | undefined;
+  if (worker.audioEngineering) {
+    if (request.format === "pcm") {
+      throw new Error("GENERATION_AUDIO_ENGINEERING_FORMAT_UNSUPPORTED");
+    }
+    engineering = await ingestAudioEngineeringArtifact(
+      worker.objectStore,
+      worker.artifactRegistry,
+      {
+        candidateArtifactId: identity.artifactId,
+        projectId: worker.claim.item.projectId,
+        jobId: worker.claim.item.jobId,
+        segmentId: worker.claim.item.segmentId,
+        takeId: identity.takeId,
+        generationRequestHash: request.idempotencyKey,
+        bytes: result.audio,
+        format: request.format,
+        rights: worker.material.rights,
+        actorId: worker.workerActorId,
+        verifierActorId,
+        profile: worker.audioEngineering.profile.profile,
+        profileVersion: worker.audioEngineering.profile.externalVersion,
+        profileReviewedAt: worker.audioEngineering.profile.reviewedAt,
+        profileSourceReference: worker.audioEngineering.profile.sourceReference,
+        ...(worker.audioEngineering.runner
+          ? { runner: worker.audioEngineering.runner }
+          : {}),
+        ...(worker.audioEngineering.ffprobePath
+          ? { ffprobePath: worker.audioEngineering.ffprobePath }
+          : {}),
+        ...(worker.audioEngineering.ffmpegPath
+          ? { ffmpegPath: worker.audioEngineering.ffmpegPath }
+          : {}),
+        ...(worker.audioEngineering.timeoutMs !== undefined
+          ? { timeoutMs: worker.audioEngineering.timeoutMs }
+          : {}),
+        ...(worker.audioEngineering.maximumOutputBytes !== undefined
+          ? { maximumOutputBytes: worker.audioEngineering.maximumOutputBytes }
+          : {}),
+        ...(worker.audioEngineering.temporaryRoot
+          ? { temporaryRoot: worker.audioEngineering.temporaryRoot }
+          : {}),
+        now,
+        ...(worker.signal ? { signal: worker.signal } : {}),
+      },
+    );
+    ingested.push(engineering.ingest);
+  }
+
+  return Object.freeze({
+    ingested: Object.freeze(ingested),
+    ...(engineering ? { engineering } : {}),
+  });
 }
 
 async function ingestExecutionReport(input: Readonly<{
@@ -551,17 +612,27 @@ export async function runClaimedGenerationWorker(
 
   const requestsById = new Map(requests.map((request) => [request.requestId, request]));
   const ingested: ArtifactIngestResult[] = [];
+  const engineeringBlockedCodes: string[] = [];
   try {
     for (const result of report.results) {
       throwIfWorkerAborted(input.signal);
       const request = requestsById.get(result.requestId);
       if (!request) throw new Error("GENERATION_WORKER_RESULT_REQUEST_MISSING");
-      ingested.push(...await ingestResultArtifacts({
+      const resultArtifacts = await ingestResultArtifacts({
         worker: input,
         request,
         result,
         now: currentTime(),
-      }));
+      });
+      ingested.push(...resultArtifacts.ingested);
+      if (resultArtifacts.engineering && !resultArtifacts.engineering.candidateEligible) {
+        const codes = resultArtifacts.engineering.evidence.findings
+          .filter((finding) => finding.severity === "error")
+          .map((finding) => finding.code);
+        engineeringBlockedCodes.push(
+          ...(codes.length > 0 ? codes : ["GENERATION_AUDIO_ENGINEERING_INELIGIBLE"]),
+        );
+      }
     }
   } catch {
     throwIfWorkerAborted(input.signal);
@@ -630,6 +701,21 @@ export async function runClaimedGenerationWorker(
       accounting,
       codes: [accounting.blockedCode],
       message: "Generation cost evidence does not satisfy the configured production policy.",
+      artifacts,
+      candidateArtifactIds,
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      reportHash: reportArtifact.reportHash,
+      now: currentTime(),
+    });
+  }
+
+  if (engineeringBlockedCodes.length > 0) {
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: Object.freeze([...new Set(engineeringBlockedCodes)].sort()),
+      message: "Independent engineering evidence did not satisfy the configured delivery profile.",
       artifacts,
       candidateArtifactIds,
       reportArtifactId: reportArtifact.ingest.envelope.payload.id,
