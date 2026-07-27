@@ -1,0 +1,39 @@
+[
+  {
+    "id": "example-private-batch-provider",
+    "label": "Example private batch provider",
+    "features": [
+      "batch-long-form",
+      "pronunciation-dictionary",
+      "word-timestamps",
+      "style-instructions",
+      "regional-processing"
+    ],
+    "maximumInputCharacters": 10000,
+    "regions": [
+      "australia"
+    ],
+    "storesInputs": false,
+    "trainsOnCustomerData": false,
+    "customVoiceRequiresConsent": true,
+    "estimatedUnitCost": 0.8,
+    "estimatedLatencyMs": 1200
+  },
+  {
+    "id": "example-preview-only-provider",
+    "label": "Example preview-only provider",
+    "features": [
+      "streaming",
+      "style-instructions"
+    ],
+    "maximumInputCharacters": 500,
+    "regions": [
+      "global"
+    ],
+    "storesInputs": true,
+    "trainsOnCustomerData": true,
+    "customVoiceRequiresConsent": false,
+    "estimatedUnitCost": 0.3,
+    "estimatedLatencyMs": 350
+  }
+]
