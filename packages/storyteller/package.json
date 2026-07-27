@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Provider-neutral long-form narration, continuity and quality engine.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./generation-queue": "./src/generation-queue.ts",
+    "./project-store": "./src/project-store.ts",
+    "./provider-adapter": "./src/provider-adapter.ts",
+    "./series-continuity": "./src/series-continuity.ts"
   }
 }
