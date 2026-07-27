@@ -116,7 +116,12 @@ if (publicViewStart < 0) {
   }
 }
 
-for (const path of [...collectTextFiles("apps/api/src"), ...collectTextFiles("apps/web/src")]) {
+const runtimeFiles = [
+  ...collectTextFiles("apps/api/src"),
+  ...collectTextFiles("apps/web/src"),
+].filter((path) => !/\.(?:test|spec)\.[^.]+$/u.test(path));
+
+for (const path of runtimeFiles) {
   const source = read(path);
   for (const forbidden of [
     "runClaimedGenerationWorker",
@@ -143,4 +148,4 @@ console.log("- candidate bytes, transcripts, alignments and execution evidence a
 console.log("- partial provider failures retry without pretending the generation completed");
 console.log("- missing configuration, quarantine and cost-policy failures block completion");
 console.log("- queue completion receives only verified artifact and candidate identifiers");
-console.log("- normal API and browser surfaces expose no worker execution operation");
+console.log("- normal API and browser runtime surfaces expose no worker execution operation");
