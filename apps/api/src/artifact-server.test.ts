@@ -44,7 +44,9 @@ function authHeaders(token = "test-api-token"): Record<string, string> {
   };
 }
 
-function artifactEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+function artifactEnvironment(
+  overrides: Readonly<Record<string, string | undefined>> = {},
+): NodeJS.ProcessEnv {
   return {
     NODE_ENV: "test",
     STORYTELLER_API_TOKEN: "test-api-token",
@@ -53,7 +55,7 @@ function artifactEnvironment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessE
     STORYTELLER_ARTIFACT_DRIVER: "file",
     STORYTELLER_DATA_DIR: ".",
     ...overrides,
-  };
+  } as NodeJS.ProcessEnv;
 }
 
 async function seedArtifact(environment: NodeJS.ProcessEnv, root: string) {
