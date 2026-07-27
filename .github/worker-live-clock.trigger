@@ -1,1 +1,1 @@
-use current time after heartbeat renewals for artifact and terminal transitions
+use structural line replacement for every post-heartbeat transition timestamp
