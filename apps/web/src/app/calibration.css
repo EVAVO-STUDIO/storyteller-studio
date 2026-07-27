@@ -1,0 +1,250 @@
+.calibration-panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(116, 198, 157, 0.07), transparent 24rem),
+    radial-gradient(circle at 92% 18%, rgba(255, 36, 78, 0.075), transparent 22rem),
+    linear-gradient(150deg, rgba(18, 18, 18, 0.99), rgba(9, 9, 9, 0.99));
+}
+
+.calibration-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--green), var(--cherry), transparent 82%);
+  opacity: 0.75;
+}
+
+.calibration-posture-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 30px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--line);
+}
+
+.calibration-posture-card {
+  min-height: 122px;
+  padding: 18px;
+  background: #0d0d0d;
+}
+
+.calibration-posture-card > span {
+  display: block;
+  color: var(--quiet);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.calibration-posture-card strong {
+  display: block;
+  margin-top: 25px;
+  color: #ded9d0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.calibration-posture-card p {
+  margin: 6px 0 0;
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.calibration-posture-card[data-tone="ready"] strong { color: var(--green); }
+.calibration-posture-card[data-tone="review"] strong { color: var(--amber); }
+.calibration-posture-card[data-tone="private"] strong { color: var(--cherry); }
+
+.calibration-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.24fr) minmax(300px, 0.76fr);
+  gap: 24px;
+}
+
+.calibration-flow,
+.calibration-dimensions {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(10, 10, 10, 0.62);
+}
+
+.calibration-flow {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calibration-flow li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  gap: 15px;
+  align-items: center;
+  min-height: 78px;
+  padding: 13px 17px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calibration-flow li:last-child { border-bottom: 0; }
+
+.calibration-flow-index {
+  color: #5f5c57;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.calibration-flow strong {
+  display: block;
+  color: #d8d3ca;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.calibration-flow p {
+  margin: 5px 0 0;
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.calibration-flow-state {
+  min-width: 72px;
+  padding: 5px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: #918d86;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.calibration-flow-state[data-tone="ready"] {
+  color: var(--green);
+  border-color: rgba(116, 198, 157, 0.34);
+  background: rgba(116, 198, 157, 0.065);
+}
+
+.calibration-flow-state[data-tone="review"] {
+  color: var(--amber);
+  border-color: rgba(241, 184, 104, 0.34);
+  background: rgba(241, 184, 104, 0.065);
+}
+
+.calibration-flow-state[data-tone="blocked"] {
+  color: #e98282;
+  border-color: rgba(233, 130, 130, 0.32);
+  background: rgba(233, 130, 130, 0.065);
+}
+
+.calibration-dimensions {
+  padding: 18px;
+}
+
+.calibration-dimensions-header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calibration-dimensions-header span {
+  color: var(--cherry);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.calibration-dimensions-header h3 {
+  margin: 8px 0 0;
+  color: #ddd8cf;
+  font-size: 20px;
+  font-weight: 560;
+  letter-spacing: -0.035em;
+}
+
+.calibration-dimension-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calibration-dimension-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 49px;
+  border-bottom: 1px solid var(--line);
+}
+
+.calibration-dimension-list li:last-child { border-bottom: 0; }
+.calibration-dimension-list strong { color: #bbb7af; font-size: 11px; font-weight: 550; }
+.calibration-dimension-list span { color: var(--quiet); font-size: 9px; text-align: right; }
+
+.calibration-guardrail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  align-items: center;
+  margin-top: 26px;
+  padding: 16px 17px;
+  border: 1px solid rgba(241, 184, 104, 0.24);
+  border-radius: 8px;
+  background: rgba(241, 184, 104, 0.035);
+}
+
+.calibration-guardrail-mark {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(241, 184, 104, 0.5);
+  border-radius: 50%;
+  color: var(--amber);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.calibration-guardrail strong {
+  display: block;
+  color: #d5d0c7;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.calibration-guardrail p {
+  margin: 4px 0 0;
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.calibration-guardrail > span:last-child {
+  color: var(--amber);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1180px) {
+  .calibration-posture-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calibration-body { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .calibration-posture-grid { grid-template-columns: 1fr; }
+  .calibration-posture-card { min-height: 105px; }
+  .calibration-flow li { grid-template-columns: 34px minmax(0, 1fr); padding: 14px; }
+  .calibration-flow-state { grid-column: 2; justify-self: start; }
+  .calibration-guardrail { grid-template-columns: auto minmax(0, 1fr); }
+  .calibration-guardrail > span:last-child { grid-column: 2; }
+}
