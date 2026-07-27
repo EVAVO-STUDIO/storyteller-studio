@@ -1,0 +1,149 @@
+name: One-time chapter assembly hardening
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/chapter-assembly-hardening.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Harden chapter assembly validation
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .chapter-assembly-hardening.log
+          from pathlib import Path
+
+          test_path = Path("packages/storyteller/src/chapter-assembly.test.ts")
+          test_source = test_path.read_text(encoding="utf-8")
+          old_regex = "/AUDIO_ENGINEERING_EVIDENCE_FINGERPRINT_MISMATCH|CHAPTER_ASSEMBLY_ENGINEERING_CONTENT_MISMATCH/u"
+          new_regex = "/AUDIO_ENGINEERING_FINGERPRINT_INVALID|AUDIO_ENGINEERING_EVIDENCE_FINGERPRINT_MISMATCH|CHAPTER_ASSEMBLY_ENGINEERING_CONTENT_MISMATCH/u"
+          count = test_source.count(old_regex)
+          print(f"CHAPTER_ASSEMBLY_TEST_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"CHAPTER_ASSEMBLY_TEST_ANCHOR_INVALID:{count}")
+          test_path.write_text(test_source.replace(old_regex, new_regex, 1), encoding="utf-8", newline="\n")
+
+          path = Path("packages/storyteller/src/chapter-assembly.ts")
+          source = path.read_text(encoding="utf-8")
+          old_sets = '''  let cursorMs = 0;
+          let sourceDurationMs = 0;
+          let previousSourceEnd = -1;
+          for (const [index, segment] of plan.segments.entries()) {
+          '''
+          new_sets = '''  let cursorMs = 0;
+          let sourceDurationMs = 0;
+          let previousSourceEnd = -1;
+          const segmentIds = new Set<string>();
+          const takeIds = new Set<string>();
+          const audioIds = new Set<string>();
+          if (Number.isNaN(Date.parse(plan.createdAt))) {
+            throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_DATE_INVALID");
+          }
+          requireInteger(plan.sourceDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_SOURCE_TOTAL_INVALID");
+          requireInteger(plan.renderedDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_RENDERED_TOTAL_INVALID");
+          for (const [index, segment] of plan.segments.entries()) {
+          '''
+          count = source.count(old_sets)
+          print(f"CHAPTER_ASSEMBLY_SET_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"CHAPTER_ASSEMBLY_SET_ANCHOR_INVALID:{count}")
+          source = source.replace(old_sets, new_sets, 1)
+
+          old_checks = '''    requireHash(segment.rightsFingerprint, "CHAPTER_ASSEMBLY_RIGHTS_HASH_INVALID");
+            if (segment.sourceStart < previousSourceEnd || segment.sourceEnd <= segment.sourceStart) {
+          '''
+          new_checks = '''    requireHash(segment.rightsFingerprint, "CHAPTER_ASSEMBLY_RIGHTS_HASH_INVALID");
+            if (segmentIds.has(segment.segmentId)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_SEGMENT_DUPLICATE");
+            if (takeIds.has(segment.takeId)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_TAKE_DUPLICATE");
+            if (audioIds.has(segment.audio.id)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_AUDIO_DUPLICATE");
+            segmentIds.add(segment.segmentId);
+            takeIds.add(segment.takeId);
+            audioIds.add(segment.audio.id);
+            for (const [value, maximum, code] of [
+              [segment.trimStartMs, plan.policy.maximumTrimMs, "CHAPTER_ASSEMBLY_TRIM_START_INVALID"],
+              [segment.trimEndMs, plan.policy.maximumTrimMs, "CHAPTER_ASSEMBLY_TRIM_END_INVALID"],
+              [segment.fadeInMs, plan.policy.maximumFadeMs, "CHAPTER_ASSEMBLY_FADE_IN_INVALID"],
+              [segment.fadeOutMs, plan.policy.maximumFadeMs, "CHAPTER_ASSEMBLY_FADE_OUT_INVALID"],
+              [segment.gapBeforeMs, plan.policy.maximumGapMs, "CHAPTER_ASSEMBLY_GAP_BEFORE_INVALID"],
+              [segment.gapAfterMs, plan.policy.maximumGapMs, "CHAPTER_ASSEMBLY_GAP_AFTER_INVALID"],
+            ] as const) requireInteger(value, 0, maximum, code);
+            requireInteger(segment.sourceDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_DURATION_INVALID");
+            if (segment.renderedDurationMs < 1) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_TRIM_CONSUMES_AUDIO");
+            if (segment.fadeInMs + segment.fadeOutMs > segment.renderedDurationMs) {
+              throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_FADES_EXCEED_AUDIO");
+            }
+            if (segment.sourceStart < previousSourceEnd || segment.sourceEnd <= segment.sourceStart) {
+          '''
+          count = source.count(old_checks)
+          print(f"CHAPTER_ASSEMBLY_CHECK_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"CHAPTER_ASSEMBLY_CHECK_ANCHOR_INVALID:{count}")
+          source = source.replace(old_checks, new_checks, 1)
+          path.write_text(source, encoding="utf-8", newline="\n")
+
+          for temporary in [
+              Path(".github/workflows/one-time-chapter-assembly-hardening.yml"),
+              Path(".github/chapter-assembly-hardening.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("CHAPTER_ASSEMBLY_HARDENING_WRITTEN")
+          PY
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Verify and build
+        run: |
+          npm run verify
+          npm run build
+      - name: Commit hardening
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Harden governed chapter assembly"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".chapter-assembly-hardening.log")
+              ? fs.readFileSync(".chapter-assembly-hardening.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "chapter assembly hardening log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /CHAPTER_ASSEMBLY_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "chapter assembly hardening failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/chapter-assembly-hardening",
+              description: state === "success"
+                ? "Chapter assembly, complete tests and builds passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
