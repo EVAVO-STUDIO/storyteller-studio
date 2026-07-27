@@ -80,7 +80,8 @@ jobs:
         with:
           name: storyteller-verification-${{ github.sha }}
           path: .verification
-          if-no-files-found: warn
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 7
 
       - name: Publish verification commit status
