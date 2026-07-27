@@ -11,6 +11,8 @@
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
     "./budget-ledger": "./src/budget-ledger.ts",
+    "./calibration-store": "./src/calibration-store.ts",
+    "./calibration-workflow": "./src/calibration-workflow.ts",
     "./elevenlabs-adapter": "./src/elevenlabs-adapter.ts",
     "./generation-budget": "./src/generation-budget.ts",
     "./generation-material": "./src/generation-material.ts",
