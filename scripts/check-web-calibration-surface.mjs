@@ -65,7 +65,7 @@ requireTokens("apps/web/src/app/page.tsx", [
   "Textual truth",
   "Sustained listenability",
   "No calibration session loaded",
-  "mutation API absent",
+  "mutations remain internal",
   "Read only",
   "NO PRIVATE MANUSCRIPT OR GENERATED MEDIA LOADED",
 ]);
