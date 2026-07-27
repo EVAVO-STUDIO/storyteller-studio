@@ -58,15 +58,25 @@ for (const [path, tokens] of Object.entries({
     "noindex, nofollow, noarchive, nosnippet, noimageindex",
   ],
   "apps/api/src/server.ts": [
-    'process.env.STORYTELLER_API_TOKEN',
+    "environment.STORYTELLER_API_TOKEN",
+    "environment.NODE_ENV === \"production\"",
+    "configuredActorId",
     "timingSafeEqual",
-    'process.env.NODE_ENV === "production"',
     'STORYTELLER_API_HOST ?? "127.0.0.1"',
     '"Cache-Control", "no-store, max-age=0"',
     '"X-Frame-Options", "DENY"',
     "API_REQUEST_BODY_TOO_LARGE",
+    "workerApiExposed: false",
+  ],
+  "apps/api/src/queue-runtime.ts": [
+    "STORYTELLER_FILE_QUEUE_SINGLE_HOST",
+    "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED",
+    "workerApiExposed: false",
   ],
   ".env.example": [
+    "STORYTELLER_API_ACTOR_ID=local_operator",
+    "STORYTELLER_QUEUE_DRIVER=disabled",
+    "STORYTELLER_FILE_QUEUE_SINGLE_HOST=false",
     "STORYTELLER_HUB_LAUNCH_SECRET=",
     "STORYTELLER_SESSION_SIGNING_SECRET=",
   ],
@@ -93,6 +103,7 @@ for (const path of webFiles) {
     "STORYTELLER_HUB_LAUNCH_SECRET",
     "STORYTELLER_SESSION_SIGNING_SECRET",
     "STORYTELLER_API_TOKEN",
+    "STORYTELLER_FILE_QUEUE_SINGLE_HOST",
     "document.cookie",
     "localStorage",
     "sessionStorage",
@@ -110,8 +121,20 @@ for (const forbidden of [
   "console.log(payload",
   "console.info(payload",
   "request.headers.authorization }",
+  "claimNext(",
+  "leaseToken",
+  "heartbeat(",
 ]) {
-  if (apiSource.includes(forbidden)) problems.push(`API source contains a sensitive logging pattern: ${forbidden}`);
+  if (apiSource.includes(forbidden)) problems.push(`API source contains a sensitive logging or worker-control pattern: ${forbidden}`);
+}
+
+const queueRuntimeSource = existsSync(fromRoot("apps/api/src/queue-runtime.ts"))
+  ? read("apps/api/src/queue-runtime.ts")
+  : "";
+for (const forbidden of ["tokenHash", "leaseToken", "workerId:"]) {
+  if (queueRuntimeSource.includes(forbidden)) {
+    problems.push(`public queue runtime contains a worker-secret field or identifier: ${forbidden}`);
+  }
 }
 
 const cardPath = "apps/web/public/hub/storyteller-studio.card.json";
@@ -160,6 +183,8 @@ if (problems.length > 0) {
 
 console.log("storyteller_private_boundary_check_passed");
 console.log("- the studio is noindex at metadata, robots and response-header layers");
-console.log("- browser source contains no provider or launch credentials");
+console.log("- browser source contains no provider, queue or launch credentials");
 console.log("- API defaults to loopback, production authentication and bounded request bodies");
+console.log("- file queue production use requires an explicit single-host acknowledgement");
+console.log("- public operator surfaces expose no worker lease controls or secret material");
 console.log("- hub metadata remains hidden, non-launching and free of private production content");
