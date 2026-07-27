@@ -103,7 +103,7 @@ jobs:
               for (const log of logs) {
                 const lines = log.source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
                 const compilerOrTest = lines.find((line) =>
-                  /error TS\d+|AssertionError|not ok|ERR_[A-Z_]+|npm error|ELIFECYCLE/i.test(line),
+                  /error TS\d+|AssertionError|not ok|[✖✘]|failureType|ERR_[A-Z_]+|TEST_[A-Z_]+|Could not find|(?:^|\s)Error:/i.test(line),
                 );
                 if (compilerOrTest) {
                   diagnostic = compilerOrTest;
@@ -121,6 +121,17 @@ jobs:
                     diagnostic = assertion.replace(/^-\s+/, "");
                     break;
                   }
+                }
+              }
+              if (!diagnostic) {
+                const failedTestLog = logs.find((log) => /engine-tests|api-tests|cli-tests/.test(log.file));
+                if (failedTestLog) {
+                  const fallback = failedTestLog.source
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter((line) => line && !line.startsWith(">") && !line.startsWith("storyteller_test_") && !line.startsWith("- packages/") && !line.startsWith("- apps/"))
+                    .at(-1);
+                  diagnostic = fallback || "test-runner-failed-without-diagnostic";
                 }
               }
             }
