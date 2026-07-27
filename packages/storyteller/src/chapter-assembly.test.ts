@@ -444,7 +444,7 @@ test("scope, parent, content and rights drift fail closed", async () => {
         inputContentHash: "f".repeat(64),
       },
     }])),
-    /AUDIO_ENGINEERING_EVIDENCE_FINGERPRINT_MISMATCH|CHAPTER_ASSEMBLY_ENGINEERING_CONTENT_MISMATCH/u,
+    /AUDIO_ENGINEERING_FINGERPRINT_INVALID|AUDIO_ENGINEERING_EVIDENCE_FINGERPRINT_MISMATCH|CHAPTER_ASSEMBLY_ENGINEERING_CONTENT_MISMATCH/u,
   );
 
   const otherRights = rights({ rightsFingerprint: "e".repeat(64) });

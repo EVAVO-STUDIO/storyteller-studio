@@ -513,6 +513,14 @@ export function assertChapterAssemblyPlan(plan: ChapterAssemblyPlan): void {
   let cursorMs = 0;
   let sourceDurationMs = 0;
   let previousSourceEnd = -1;
+  const segmentIds = new Set<string>();
+  const takeIds = new Set<string>();
+  const audioIds = new Set<string>();
+  if (Number.isNaN(Date.parse(plan.createdAt))) {
+    throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_DATE_INVALID");
+  }
+  requireInteger(plan.sourceDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_SOURCE_TOTAL_INVALID");
+  requireInteger(plan.renderedDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_RENDERED_TOTAL_INVALID");
   for (const [index, segment] of plan.segments.entries()) {
     if (segment.ordinal !== index + 1) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_SEGMENT_ORDER_INVALID");
     requireIdentifier(segment.segmentId, "CHAPTER_ASSEMBLY_SEGMENT_ID_INVALID");
@@ -527,6 +535,25 @@ export function assertChapterAssemblyPlan(plan: ChapterAssemblyPlan): void {
     requireHash(segment.engineering.profileFingerprint, "CHAPTER_ASSEMBLY_PROFILE_FINGERPRINT_INVALID");
     requireHash(segment.generationRequestHash, "CHAPTER_ASSEMBLY_REQUEST_HASH_INVALID");
     requireHash(segment.rightsFingerprint, "CHAPTER_ASSEMBLY_RIGHTS_HASH_INVALID");
+    if (segmentIds.has(segment.segmentId)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_SEGMENT_DUPLICATE");
+    if (takeIds.has(segment.takeId)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_TAKE_DUPLICATE");
+    if (audioIds.has(segment.audio.id)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_AUDIO_DUPLICATE");
+    segmentIds.add(segment.segmentId);
+    takeIds.add(segment.takeId);
+    audioIds.add(segment.audio.id);
+    for (const [value, maximum, code] of [
+      [segment.trimStartMs, plan.policy.maximumTrimMs, "CHAPTER_ASSEMBLY_TRIM_START_INVALID"],
+      [segment.trimEndMs, plan.policy.maximumTrimMs, "CHAPTER_ASSEMBLY_TRIM_END_INVALID"],
+      [segment.fadeInMs, plan.policy.maximumFadeMs, "CHAPTER_ASSEMBLY_FADE_IN_INVALID"],
+      [segment.fadeOutMs, plan.policy.maximumFadeMs, "CHAPTER_ASSEMBLY_FADE_OUT_INVALID"],
+      [segment.gapBeforeMs, plan.policy.maximumGapMs, "CHAPTER_ASSEMBLY_GAP_BEFORE_INVALID"],
+      [segment.gapAfterMs, plan.policy.maximumGapMs, "CHAPTER_ASSEMBLY_GAP_AFTER_INVALID"],
+    ] as const) requireInteger(value, 0, maximum, code);
+    requireInteger(segment.sourceDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_DURATION_INVALID");
+    if (segment.renderedDurationMs < 1) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_TRIM_CONSUMES_AUDIO");
+    if (segment.fadeInMs + segment.fadeOutMs > segment.renderedDurationMs) {
+      throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_FADES_EXCEED_AUDIO");
+    }
     if (segment.sourceStart < previousSourceEnd || segment.sourceEnd <= segment.sourceStart) {
       throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_SOURCE_ORDER_INVALID");
     }
