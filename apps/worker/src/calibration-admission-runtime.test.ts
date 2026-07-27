@@ -22,6 +22,7 @@ import {
   type SynthesisResult,
 } from "@evavo/storyteller-engine/provider-adapter";
 import { FileProjectStore } from "@evavo/storyteller-engine/project-store";
+import { resolveWorkerAudioEngineeringPolicy } from "./audio-engineering.js";
 import {
   resolveWorkerRuntimeConfiguration,
   type WorkerEnvironment,
@@ -141,19 +142,33 @@ function environment(dataDirectory: string): WorkerEnvironment {
     STORYTELLER_WORKER_LEASE_DURATION_MS: "60000",
     STORYTELLER_WORKER_HEARTBEAT_INTERVAL_MS: "20000",
     STORYTELLER_WORKER_PROVIDER_TIMEOUT_MS: "5000",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE: "lossless-production",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_VERSION: "evavo-lossless-2026-07",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_REVIEWED_AT: "2026-07-01T00:00:00.000Z",
+    STORYTELLER_AUDIO_ENGINEERING_PROFILE_SOURCE_REFERENCE:
+      "evavo-lossless-mastering-policy-2026-07",
   };
 }
 
 test("production without a calibration binding blocks before credentials, budget reservation or synthesis", async () => {
   const root = await mkdtemp(join(tmpdir(), "storyteller-uncalibrated-runtime-"));
   try {
+    const runtimeEnvironment = environment("./private-data");
     const configuration = resolveWorkerRuntimeConfiguration(
-      environment("./private-data"),
+      runtimeEnvironment,
       root,
     );
     if (!configuration.enabled) {
       throw new Error("enabled worker configuration required");
     }
+    const audioEngineering = resolveWorkerAudioEngineeringPolicy({
+      workerEnabled: true,
+      environment: runtimeEnvironment,
+      temporaryRoot: join(root, "audio-engineering-temp"),
+      now: t0,
+    });
+    if (!audioEngineering) throw new Error("worker audio engineering policy required");
+
     const state = new FileProjectStore(configuration.queueRootDirectory);
     const queue = new FileGenerationQueue(state);
     await new FileGenerationMaterialStore(state).create(job, material, {
@@ -173,6 +188,7 @@ test("production without a calibration binding blocks before credentials, budget
     const result = await runConfiguredWorkerRuntime(configuration, {
       providers: new ProviderAdapterRegistry([adapter]),
       credentials: new FixtureCredentials(),
+      audioEngineering,
       now: () => t0,
     });
 
@@ -202,6 +218,8 @@ test("production without a calibration binding blocks before credentials, budget
       configuration.queueRootDirectory,
       configuration.artifactRootDirectory,
       configuration.objectRootDirectory,
+      "evavo-lossless-mastering-policy-2026-07",
+      "audio-engineering-temp",
     ]) assert.equal(serialised.includes(forbidden), false);
   } finally {
     await rm(root, { recursive: true, force: true });
