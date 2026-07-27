@@ -211,7 +211,7 @@ requireTokens("docs/ELEVENLABS_ADAPTER.md", [
   "Exact manuscript text",
   "Provider preflight",
   "Worker boundary",
-  "The built-in worker registry must remain empty when configuration is absent or invalid",
+  "The built-in worker registry remains empty when configuration is absent or invalid",
 ]);
 
 requireTokens("scripts/run-tests.mjs", [
