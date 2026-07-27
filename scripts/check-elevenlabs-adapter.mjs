@@ -114,8 +114,11 @@ requireTokens("docs/ELEVENLABS_ADAPTER.md", [
   "Audio and alignment verification",
   "Cost and provenance",
   "Worker boundary",
-  "Next integration gate",
-  "The built-in worker registry must remain empty when configuration is absent or invalid",
+  "Conditional worker registration",
+  "Startup preflight proof",
+  "Next production gate",
+  "The built-in worker registry remains empty when configuration is absent or invalid",
+  "No queue item is claimed merely because an API key exists",
 ]);
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
