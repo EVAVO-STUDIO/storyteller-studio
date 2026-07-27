@@ -44,8 +44,8 @@ jobs:
                   "input-contract",
               ),
               (
-                  '}): Promise<GenerationWorkerResult> {\n  const queueEnvelope = await input.worker.queue.block(\n',
-                  '}): Promise<GenerationWorkerResult> {\n  await input.worker.beforeTerminalTransition?.();\n  const queueEnvelope = await input.worker.queue.block(\n',
+                  '}>): Promise<GenerationWorkerResult> {\n  const queueEnvelope = await input.worker.queue.block(\n',
+                  '}>): Promise<GenerationWorkerResult> {\n  await input.worker.beforeTerminalTransition?.();\n  const queueEnvelope = await input.worker.queue.block(\n',
                   "block-transition",
               ),
               (
