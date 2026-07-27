@@ -38,24 +38,21 @@ jobs:
               path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
 
           test_path = Path("packages/storyteller/src/book-credit-script.test.ts")
-          replace_once(
-              test_path,
-              '''  assert.throws(
-                () => createBookCreditScript({
-                  id: "credit_series_missing_001",
-                  projectId: "project_credit_001",
-                  kind: "opening",
-                  metadata: {
-                    ...seriesMetadata(),
-                    seriesTitle: undefined,
-                  },
-                  policy: creditPolicy,
-                  createdAt: t0,
-                }),
-                /BOOK_CREDIT_SERIES_TITLE_INVALID/u,
-              );
-          ''',
-              '''  const { seriesTitle: _seriesTitle, ...missingSeriesTitle } = seriesMetadata();
+          source = test_path.read_text(encoding="utf-8")
+          start_marker = 'test("series metadata and word limits fail before an unusable script is admitted", () => {\n'
+          end_marker = '  const constrained = createBookCreditPolicy({\n'
+          start_count = source.count(start_marker)
+          end_count = source.count(end_marker)
+          print(f"BOOK_CREDIT_PROMOTION_SECTION:optional-series-title:{start_count}:{end_count}")
+          if start_count != 1 or end_count != 1:
+              raise SystemExit(
+                  f"BOOK_CREDIT_PROMOTION_SECTION_INVALID:optional-series-title:{start_count}:{end_count}"
+              )
+          start = source.index(start_marker)
+          end = source.index(end_marker, start)
+          replacement = '''test("series metadata and word limits fail before an unusable script is admitted", () => {
+            const creditPolicy = policy();
+            const { seriesTitle: _seriesTitle, ...missingSeriesTitle } = seriesMetadata();
             assert.throws(
               () => createBookCreditScript({
                 id: "credit_series_missing_001",
@@ -67,9 +64,8 @@ jobs:
               }),
               /BOOK_CREDIT_SERIES_TITLE_INVALID/u,
             );
-          ''',
-              "optional-series-title",
-          )
+          '''
+          test_path.write_text(source[:start] + replacement + source[end:], encoding="utf-8", newline="\n")
 
           store_path = Path("packages/storyteller/src/project-store.ts")
           replace_once(
