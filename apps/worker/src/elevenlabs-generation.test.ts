@@ -216,14 +216,14 @@ test("queued ElevenLabs production reserves budget, verifies artifacts and compl
     });
     await queue.enqueue(job, { now: t0, maxAttempts: 3 });
 
-    const calls: ReadonlyArray<never> | string[] = [];
+    const calls: string[] = [];
     const providers = createWorkerProviderRegistry({
       workerEnabled: true,
       environment: env,
       credentialBindings: configuration.credentialBindings,
       now: () => t0,
       fetch: fetchFrom(async (url, init) => {
-        (calls as string[]).push(url);
+        calls.push(url);
         assert.equal(
           new Headers(init?.headers).get("xi-api-key"),
           "fixture-elevenlabs-generation-secret",
@@ -276,11 +276,10 @@ test("queued ElevenLabs production reserves budget, verifies artifacts and compl
 
     assert.equal(result.status, "stopped");
     assert.equal(result.providerCount, 1);
-    if (result.status === "disabled") throw new Error("enabled worker result required");
     assert.equal(result.lifecycle.service.claimedJobs, 1);
     assert.equal(result.lifecycle.service.completedJobs, 1);
     assert.equal(result.lifecycle.service.blockedJobs, 0);
-    assert.equal((calls as string[]).length, 3);
+    assert.equal(calls.length, 3);
 
     const queueEnvelope = await queue.read(`queue_${job.id}`);
     assert.equal(queueEnvelope?.payload.status, "completed");
