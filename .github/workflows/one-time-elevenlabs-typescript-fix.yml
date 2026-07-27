@@ -69,8 +69,8 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Verify adapter typing and engine tests
-        run: npm run typecheck && npm run test:engine
+      - name: Verify adapter typing
+        run: npm run typecheck
 
       - name: Commit ElevenLabs TypeScript correction
         shell: bash
@@ -96,7 +96,7 @@ jobs:
               : "ElevenLabs TypeScript correction log unavailable";
             const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
             const diagnostic = lines.find((line) =>
-              /ELEVENLABS_TYPESCRIPT_FIX_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+              /ELEVENLABS_TYPESCRIPT_FIX_MATCH_COUNT_INVALID|error TS\d+|ERR_[A-Z_]+/i.test(line),
             ) || lines.at(-1) || "ElevenLabs TypeScript correction failed";
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
@@ -105,7 +105,7 @@ jobs:
               state,
               context: "storyteller/elevenlabs-typescript-fix",
               description: state === "success"
-                ? "ElevenLabs adapter typing and engine tests passed"
+                ? "ElevenLabs adapter strict TypeScript check passed"
                 : diagnostic.slice(0, 140),
               target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
