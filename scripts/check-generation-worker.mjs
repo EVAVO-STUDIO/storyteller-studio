@@ -38,6 +38,8 @@ function collectTextFiles(directory, output = []) {
 for (const path of [
   "packages/storyteller/src/generation-worker.ts",
   "packages/storyteller/src/generation-worker.test.ts",
+  "packages/storyteller/src/heartbeat-worker.ts",
+  "packages/storyteller/src/heartbeat-worker.test.ts",
   "packages/storyteller/package.json",
   "docs/GENERATION_WORKER.md",
 ]) requireFile(path);
@@ -48,6 +50,9 @@ requireTokens("packages/storyteller/src/generation-worker.ts", [
   "runClaimedGenerationWorker",
   "generationWorkerPublicView",
   "GENERATION_WORKER_CLAIM_ACTOR_MISMATCH",
+  "GENERATION_WORKER_ABORTED",
+  "beforeTerminalTransition",
+  "throwIfWorkerAborted",
   "buildSynthesisRequest",
   "executeGenerationJob",
   "ingestPrivateArtifact",
@@ -74,6 +79,29 @@ requireTokens("packages/storyteller/src/generation-worker.test.ts", [
   "claim.leaseToken",
 ]);
 
+requireTokens("packages/storyteller/src/heartbeat-worker.ts", [
+  "HeartbeatingGenerationWorkerInput",
+  "HeartbeatingGenerationWorkerResult",
+  "runGenerationWorkerWithHeartbeat",
+  "heartbeatingGenerationWorkerPublicView",
+  "GenerationLeaseHeartbeatController",
+  "combineAbortSignals",
+  "stopForTerminalTransition",
+  "beforeTerminalTransition",
+  "heartbeat.assertHealthy",
+  "combined.dispose",
+]);
+
+requireTokens("packages/storyteller/src/heartbeat-worker.test.ts", [
+  "heartbeat renews during provider execution and stops before verified completion",
+  "lease recovery aborts the stale provider and prevents post-loss artifacts or terminal writes",
+  "an already aborted external signal starts no heartbeat or provider work",
+  "GenerationLeaseOwnershipLostError",
+  "claim.leaseToken",
+  "test-provider-secret",
+  "private-provider-request",
+]);
+
 requireTokens("docs/GENERATION_WORKER.md", [
   "Internal worker boundary",
   "Deterministic requests",
@@ -87,19 +115,27 @@ requireTokens("docs/GENERATION_WORKER.md", [
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
-  if (packageJson.exports?.["./generation-worker"] !== "./src/generation-worker.ts") {
-    problems.push("storyteller package does not export ./generation-worker from its governed source module");
+  for (const [exportPath, sourcePath] of [
+    ["./generation-worker", "./src/generation-worker.ts"],
+    ["./heartbeat-worker", "./src/heartbeat-worker.ts"],
+  ]) {
+    if (packageJson.exports?.[exportPath] !== sourcePath) {
+      problems.push(`storyteller package does not export ${exportPath} from ${sourcePath}`);
+    }
   }
 }
 
-const workerSource = existsSync(fromRoot("packages/storyteller/src/generation-worker.ts"))
-  ? read("packages/storyteller/src/generation-worker.ts")
-  : "";
-const publicViewStart = workerSource.indexOf("export function generationWorkerPublicView");
-if (publicViewStart < 0) {
-  problems.push("generation worker public view implementation is missing");
-} else {
-  const publicView = workerSource.slice(publicViewStart);
+for (const [path, marker] of [
+  ["packages/storyteller/src/generation-worker.ts", "export function generationWorkerPublicView"],
+  ["packages/storyteller/src/heartbeat-worker.ts", "export function heartbeatingGenerationWorkerPublicView"],
+]) {
+  const source = existsSync(fromRoot(path)) ? read(path) : "";
+  const publicViewStart = source.indexOf(marker);
+  if (publicViewStart < 0) {
+    problems.push(`${path} public view implementation is missing`);
+    continue;
+  }
+  const publicView = source.slice(publicViewStart);
   for (const forbidden of [
     "leaseToken",
     "audio",
@@ -111,7 +147,7 @@ if (publicViewStart < 0) {
     "credential",
   ]) {
     if (publicView.includes(forbidden)) {
-      problems.push(`generation worker public view exposes forbidden field: ${forbidden}`);
+      problems.push(`${path} public view exposes forbidden field: ${forbidden}`);
     }
   }
 }
@@ -125,7 +161,10 @@ for (const path of runtimeFiles) {
   const source = read(path);
   for (const forbidden of [
     "runClaimedGenerationWorker",
+    "runGenerationWorkerWithHeartbeat",
     "generation-worker",
+    "heartbeat-worker",
+    "GenerationLeaseHeartbeatController",
     "executeGenerationJob(",
     "claimNext(",
   ]) {
@@ -145,6 +184,9 @@ console.log("storyteller_generation_worker_check_passed");
 console.log("- claimed jobs are bound to the exclusive worker identity");
 console.log("- provider results are correlated to deterministic synthesis requests");
 console.log("- candidate bytes, transcripts, alignments and execution evidence are governed artifacts");
+console.log("- aborted workers stop before post-provider artifact or terminal writes");
+console.log("- heartbeat ownership loss aborts provider work and prevents stale completion");
+console.log("- terminal queue transitions stop heartbeat scheduling first");
 console.log("- partial provider failures retry without pretending the generation completed");
 console.log("- missing configuration, quarantine and cost-policy failures block completion");
 console.log("- queue completion receives only verified artifact and candidate identifiers");
