@@ -245,6 +245,12 @@ function planInput(
     engineeringArtifact: data.engineering,
     engineeringEvidence: data.evidence,
     targetProfile: data.evidence.profile,
+    output: {
+      format: "wav" as const,
+      sampleRateHz: 44_100,
+      channels: 1 as const,
+      bitDepth: 24 as const,
+    },
     operations,
     rationale: "Apply only the minimum transparent correction needed for the reviewed delivery profile.",
     createdByActorId: "mastering_engineer_001",
@@ -337,6 +343,7 @@ test("approved chapter evidence produces a recomputable preservation-first maste
   const serialised = JSON.stringify(publicView);
   assert.equal(publicView.predictedEligible, true);
   assert.deepEqual(publicView.operationKinds, ["gain"]);
+  assert.deepEqual(publicView.output, plan.output);
   for (const forbidden of [
     data.master.id,
     data.engineering.id,
@@ -392,6 +399,34 @@ test("mastering plan rejects unapproved, mismatched and stale evidence", async (
       engineeringArtifact: wrongRights,
     }),
     /MASTERING_PLAN_RIGHTS_SCOPE_MISMATCH/u,
+  );
+});
+
+test("output profile forbids unmodelled sample-rate and channel conversion", async () => {
+  const data = await fixture();
+  assert.throws(
+    () => createMasteringPlan({
+      ...planInput(data, []),
+      output: {
+        format: "wav",
+        sampleRateHz: 48_000,
+        channels: 1,
+        bitDepth: 24,
+      },
+    }),
+    /MASTERING_PLAN_OUTPUT_SAMPLE_RATE_CONVERSION_UNMODELLED/u,
+  );
+  assert.throws(
+    () => createMasteringPlan({
+      ...planInput(data, []),
+      output: {
+        format: "wav",
+        sampleRateHz: 44_100,
+        channels: 2,
+        bitDepth: 24,
+      },
+    }),
+    /MASTERING_PLAN_OUTPUT_CHANNEL_CONVERSION_UNMODELLED/u,
   );
 });
 

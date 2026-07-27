@@ -43,6 +43,13 @@ export interface MasteringArtifactSnapshot {
   byteCount: number;
 }
 
+export interface MasteringOutputProfile {
+  format: "wav";
+  sampleRateHz: number;
+  channels: 1 | 2;
+  bitDepth: 16 | 24 | 32;
+}
+
 export interface MasteringPrediction {
   metrics: AudioMetrics;
   technical: TechnicalAssessment;
@@ -55,6 +62,7 @@ export interface MasteringPlan {
   id: string;
   projectId: string;
   chapterId: string;
+  output: MasteringOutputProfile;
   sourceMaster: MasteringArtifactSnapshot;
   sourceEngineering: Readonly<{
     artifact: MasteringArtifactSnapshot;
@@ -79,6 +87,7 @@ export interface CreateMasteringPlanInput {
   engineeringArtifact: ArtifactRecord;
   engineeringEvidence: AudioEngineeringEvidence;
   targetProfile: AudioEngineeringProfileSnapshot;
+  output: MasteringOutputProfile;
   operations: readonly MasteringOperation[];
   rationale: string;
   createdByActorId: string;
@@ -98,6 +107,7 @@ export interface MasteringPlanPublicView {
   chapterId: string;
   targetProfileId: string;
   targetProfileVersion: string;
+  output: MasteringOutputProfile;
   operationKinds: readonly MasteringOperation["kind"][];
   predictedMetrics: AudioMetrics;
   predictedEligible: boolean;
@@ -234,6 +244,30 @@ function assertProfile(profile: AudioEngineeringProfileSnapshot): void {
   });
   if (expected !== profile.fingerprint) {
     throw new MasteringPlanError("MASTERING_PLAN_PROFILE_FINGERPRINT_MISMATCH");
+  }
+}
+
+function assertOutput(
+  output: MasteringOutputProfile,
+  sourceMetrics: AudioMetrics,
+): void {
+  if (output.format !== "wav") {
+    throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_FORMAT_INVALID");
+  }
+  if (!Number.isSafeInteger(output.sampleRateHz) || output.sampleRateHz < 8_000 || output.sampleRateHz > 384_000) {
+    throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_SAMPLE_RATE_INVALID");
+  }
+  if (output.channels !== 1 && output.channels !== 2) {
+    throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_CHANNELS_INVALID");
+  }
+  if (![16, 24, 32].includes(output.bitDepth)) {
+    throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_BIT_DEPTH_INVALID");
+  }
+  if (output.sampleRateHz !== sourceMetrics.sampleRateHz) {
+    throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_SAMPLE_RATE_CONVERSION_UNMODELLED");
+  }
+  if (output.channels !== sourceMetrics.channels) {
+    throw new MasteringPlanError("MASTERING_PLAN_OUTPUT_CHANNEL_CONVERSION_UNMODELLED");
   }
 }
 
@@ -430,6 +464,7 @@ export function createMasteringPlan(
   if (Number.isNaN(createdAt.getTime())) throw new MasteringPlanError("MASTERING_PLAN_DATE_INVALID");
   assertScope(input);
   assertProfile(input.targetProfile);
+  assertOutput(input.output, input.engineeringEvidence.metrics);
   if (Date.parse(input.targetProfile.reviewedAt) > createdAt.getTime()) {
     throw new MasteringPlanError("MASTERING_PLAN_PROFILE_REVIEW_IN_FUTURE");
   }
@@ -440,6 +475,7 @@ export function createMasteringPlan(
     id: input.id,
     projectId: input.projectId,
     chapterId: input.chapterId,
+    output: Object.freeze({ ...input.output }),
     sourceMaster: snapshot(input.chapterMaster),
     sourceEngineering: Object.freeze({
       artifact: snapshot(input.engineeringArtifact),
@@ -552,6 +588,7 @@ export function assertMasteringPlan(plan: MasteringPlan): void {
   requireHash(plan.sourceEngineering.evidenceFingerprint, "MASTERING_PLAN_EVIDENCE_HASH_INVALID");
   requireHash(plan.sourceEngineering.profileFingerprint, "MASTERING_PLAN_SOURCE_PROFILE_HASH_INVALID");
   assertProfile(plan.targetProfile);
+  assertOutput(plan.output, plan.sourceEngineering.metrics);
   assertOperationOrder(plan.operations);
   requireRationale(plan.rationale);
   if (Number.isNaN(Date.parse(plan.createdAt))) throw new MasteringPlanError("MASTERING_PLAN_DATE_INVALID");
@@ -588,6 +625,7 @@ export function masteringPlanPublicView(
     chapterId: plan.chapterId,
     targetProfileId: plan.targetProfile.profile.id,
     targetProfileVersion: plan.targetProfile.externalVersion,
+    output: plan.output,
     operationKinds: Object.freeze(plan.operations.map((operation) => operation.kind)),
     predictedMetrics: plan.prediction.metrics,
     predictedEligible: plan.prediction.eligibleByPrediction,

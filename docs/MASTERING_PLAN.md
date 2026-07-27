@@ -33,7 +33,7 @@ The initial mastering contract intentionally permits only:
 2. one bounded gain adjustment from -12 dB to +12 dB;
 3. one bounded true-peak limiter with no more than 3 dB permitted reduction.
 
-Operations must appear in that order and each operation kind may appear at most once.
+Operations must appear in that order and each operation kind may appear at most once. The initial contract preserves the measured source sample rate and channel layout; resampling and channel conversion require separate governed operations before they may be executed.
 
 The first contract does not silently introduce:
 
@@ -80,6 +80,7 @@ A mastering plan stores:
 - source engineering metrics;
 - source evidence and profile fingerprints;
 - target profile;
+- explicit lossless WAV sample rate, channel layout and bit depth;
 - ordered operations;
 - predicted metrics;
 - predicted technical assessment;
