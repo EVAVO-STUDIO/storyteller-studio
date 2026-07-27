@@ -33,6 +33,7 @@ jobs:
           set -o pipefail
           python3 - <<'PY' 2>&1 | tee .worker-live-clock.log
           from pathlib import Path
+          import re
 
           path = Path("packages/storyteller/src/generation-worker.ts")
           source = path.read_text(encoding="utf-8")
@@ -73,11 +74,15 @@ jobs:
           if count != 1:
               raise SystemExit(f"WORKER_LIVE_CLOCK_MATCH_COUNT_INVALID:fixed-now:{count}")
           body = body.replace(anchor, '  const currentTime = () => generationWorkerNow(input);\n', 1)
-          shorthand_count = body.count('\n      now,\n') + body.count('\n        now,\n')
+          body, shorthand_count = re.subn(
+              r'(?m)^(\s*)now,$',
+              r'\1now: currentTime(),',
+              body,
+          )
           print(f"WORKER_LIVE_CLOCK_ANCHOR:now-shorthand:{shorthand_count}")
-          body = body.replace('\n      now,\n', '\n      now: currentTime(),\n')
-          body = body.replace('\n        now,\n', '\n        now: currentTime(),\n')
-          if ' now,' in body or '\n  now,' in body:
+          if shorthand_count < 1:
+              raise SystemExit("WORKER_LIVE_CLOCK_MATCH_COUNT_INVALID:now-shorthand:0")
+          if re.search(r'(?m)^\s*now,$', body):
               raise SystemExit("WORKER_LIVE_CLOCK_UNCONVERTED_SHORTHAND")
           source = source[:start] + body + source[end:]
           path.write_text(source, encoding="utf-8", newline="\n")
