@@ -63,7 +63,6 @@ requireTokens("packages/storyteller/src/generation-budget.ts", [
   "GENERATION_BUDGET_PROVIDER_ATTEMPT_UNRECONCILED",
   "GENERATION_BUDGET_BLOCKED_BEFORE_PROVIDER",
   "GENERATION_BUDGET_RETRY_WITHOUT_PROVIDER",
-  "GENERATION_BUDGET_WORKER_INTERRUPTED",
   "settleInterrupted",
   "isGenerationBudgetAdmissionError",
   "generationBudgetReservationPublicView",
@@ -80,6 +79,7 @@ requireTokens("packages/storyteller/src/generation-budget.test.ts", [
   "controller requires policy, active claim, account capacity and bounded timing",
   "complete settlement fails closed on missing, mismatched or excessive accounting",
   "public reservation projection omits project, queue and reservation identities",
+  "GENERATION_BUDGET_WORKER_INTERRUPTED",
 ]);
 
 requireTokens("packages/storyteller/src/generation-worker.ts", [
@@ -91,6 +91,7 @@ requireTokens("packages/storyteller/src/generation-worker.ts", [
   "attemptedProviderCount",
   "successfulResultCount",
   "beforeTerminalTransition",
+  "beforeQueueComplete: async",
 ]);
 
 requireTokens("packages/storyteller/src/artifact-queue.ts", [
@@ -153,13 +154,17 @@ if (publicViewStart < 0) {
   }
 }
 
-const workerSource = existsSync(fromRoot("packages/storyteller/src/generation-worker.ts"))
-  ? read("packages/storyteller/src/generation-worker.ts")
+const artifactQueueSource = existsSync(fromRoot("packages/storyteller/src/artifact-queue.ts"))
+  ? read("packages/storyteller/src/artifact-queue.ts")
   : "";
-const admissionIndex = workerSource.indexOf("beforeQueueComplete: async");
-const queueCompleteIndex = workerSource.indexOf("input.queue.complete");
-if (admissionIndex < 0 || queueCompleteIndex < 0) {
-  problems.push("generation worker completion settlement boundary is missing");
+const settlementIndex = artifactQueueSource.indexOf("await input.beforeQueueComplete?.");
+const queueCompleteIndex = artifactQueueSource.indexOf("input.queue.complete", settlementIndex);
+if (
+  settlementIndex < 0
+  || queueCompleteIndex < 0
+  || settlementIndex >= queueCompleteIndex
+) {
+  problems.push("artifact admission must invoke settlement before queue completion");
 }
 
 for (const path of [
