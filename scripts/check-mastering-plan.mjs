@@ -128,7 +128,7 @@ for (const path of [
     "@evavo/storyteller-engine/mastering-plan",
     "createMasteringPlan",
     "proposeTransparentGainMastering",
-    "MasteringPlan",
+    "masteringPlanPublicView",
   ]) {
     if (runtime.includes(forbidden)) problems.push(`${path} exposes private mastering mutation: ${forbidden}`);
   }
