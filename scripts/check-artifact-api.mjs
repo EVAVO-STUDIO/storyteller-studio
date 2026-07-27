@@ -32,6 +32,7 @@ for (const path of [
   "apps/api/src/artifact-runtime.test.ts",
   "apps/api/src/artifact-routes.ts",
   "apps/api/src/artifact-routes.test.ts",
+  "apps/api/src/artifact-server.test.ts",
   "apps/api/src/server.ts",
 ]) requireFile(path);
 
@@ -103,6 +104,20 @@ requireTokens("apps/api/src/server.ts", [
   "releaseApiExposed: false",
 ]);
 
+requireTokens("apps/api/src/artifact-server.test.ts", [
+  "health reports artifact persistence separately without exposing its data directory",
+  "authenticated artifact list and item routes expose only redacted governed views",
+  "artifact reads require authentication before registry access",
+  "artifact reads fail closed when persistence is disabled",
+  "reject every write and release method even when persistence is disabled",
+  "production artifact file misconfiguration degrades health without exposing the private path",
+  "capabilities disclose read-only artifact posture without implying worker or release access",
+  "API_BEARER_TOKEN_REQUIRED",
+  "ARTIFACT_REGISTRY_NOT_CONFIGURED",
+  "ARTIFACT_WRITE_API_NOT_EXPOSED",
+  "ARTIFACT_REGISTRY_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED",
+]);
+
 forbidTokens("apps/api/src/artifact-routes.ts", [
   "createArtifactRecord(",
   "verifyArtifactIntegrity(",
@@ -143,6 +158,7 @@ console.log("storyteller_artifact_api_check_passed");
 console.log("- artifact persistence is disabled until selected explicitly");
 console.log("- production file persistence requires a one-host acknowledgement");
 console.log("- authenticated artifact HTTP routes are read-only");
+console.log("- reads require authentication before registry access");
 console.log("- write, verification, review and release APIs remain unavailable");
 console.log("- public artifact responses omit private storage and provider request locators");
 console.log("- API health reports disabled, ready or misconfigured artifact persistence honestly");
