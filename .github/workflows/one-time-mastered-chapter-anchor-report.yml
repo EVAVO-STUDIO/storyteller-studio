@@ -1,0 +1,64 @@
+name: One-time mastered chapter foundation anchor report
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastered-chapter-anchor-report.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record anchor counts
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("packages/storyteller/src/mastered-chapter.ts").read_text(encoding="utf-8")
+          anchors = {
+            "audio-metrics-import": '''import {
+            assertAudioEngineeringEvidence,
+            type AudioEngineeringEvidence,
+            type AudioMetrics,
+          } from "./audio-engineering.js";
+          ''',
+            "policy-and-core-imports": 'import type { GenerationAudioEngineeringPolicy } from "./generation-audio-engineering.js";\nimport type { Finding } from "./index.js";\nimport { stableHash } from "./index.js";\n',
+            "policy-schema": 'export const MASTERED_CHAPTER_SCHEMA_VERSION = "storyteller-mastered-chapter-v1" as const;\n\nexport interface MasteredChapterComparisonPolicy {\n',
+            "policy-required": '  comparisonPolicy?: MasteredChapterComparisonPolicy;\n',
+            "public-policy-metadata": '  comparisonPolicyFingerprint: string;\n',
+            "validation-constants": 'const HASH_PATTERN = /^[a-f0-9]{64}$/u;\nconst CURRENCY_DATE_LIMIT_MS = 10 * 365 * 24 * 60 * 60 * 1_000;\n',
+            "versioned-policy-start": 'function policyFingerprint(\n  value: Omit<MasteredChapterComparisonPolicy, "fingerprint">,\n): string {\n',
+            "rights-dates-start": '  for (const value of [rights.expiresAt, rights.deletionRequiredAt]) {\n',
+            "snapshot-revision": '    || record.revision !== snapshot.revision\n',
+            "input-policy-validation": '  assertMasteringPlan(input.plan);\n  assertMasteringRenderEvidence(input.render.evidence);\n  assertAudioEngineeringEvidence(input.sourceEngineeringEvidence);\n',
+            "engineering-profile-and-duration": '  if (\n    input.sourceEngineeringEvidence.fingerprint\n      !== input.plan.sourceEngineering.evidenceFingerprint\n',
+            "comparison-signature": 'function compareMastering(\n  plan: MasteringPlan,\n  observed: AudioEngineeringEvidence,\n  policy: MasteredChapterComparisonPolicy,\n): MasteredChapterComparison {\n',
+            "duration-comparison-start": '  const expectedDurationMs = plan.sourceEngineering.metrics.leadingSilenceMs\n',
+            "true-peak-required": '  const findings: Finding[] = [];\n  if (durationDriftMs > policy.durationToleranceMs) {\n',
+            "remove-duration-placeholder": 'function inputDurationFromPlan(\n  _plan: MasteringPlan,\n  observedFallbackMs: number,\n): number {\n  return observedFallbackMs;\n}\n\n',
+            "required-policy-use": '  const policy = input.comparisonPolicy ?? createMasteredChapterComparisonPolicy();\n  assertMasteredChapterComparisonPolicy(policy);\n',
+            "comparison-call": '  const comparison = compareMastering(input.plan, postEngineering.evidence, policy);\n',
+            "public-policy-fields": '    comparisonPolicyFingerprint: chain.comparisonPolicy.fingerprint,\n',
+          }
+          report = "\n".join(f"{label}={source.count(anchor)}" for label, anchor in anchors.items()) + "\n"
+          Path(".github/mastered-chapter-anchor-report.txt").write_text(report, encoding="utf-8", newline="\n")
+          Path(".github/workflows/one-time-mastered-chapter-anchor-report.yml").unlink(missing_ok=True)
+          Path(".github/mastered-chapter-anchor-report.trigger").unlink(missing_ok=True)
+          PY
+      - name: Commit report
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Record mastered chapter foundation anchor report"
+          git push origin HEAD:main
