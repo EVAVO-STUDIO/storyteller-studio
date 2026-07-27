@@ -44,6 +44,12 @@ jobs:
           set -o pipefail
           npm run verify:private-boundary 2>&1 | tee .verification/private-boundary.log
 
+      - name: Verify governed artifact lifecycle
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:artifacts 2>&1 | tee .verification/artifacts.log
+
       - name: Type-check repository
         shell: bash
         run: |
@@ -96,6 +102,7 @@ jobs:
             const logFiles = [
               ".verification/foundation.log",
               ".verification/private-boundary.log",
+              ".verification/artifacts.log",
               ".verification/typecheck.log",
               ".verification/engine-tests.log",
               ".verification/api-tests.log",
@@ -137,19 +144,19 @@ jobs:
                 }
               }
               if (!diagnostic) {
-                const failedTestLog = logs.find((log) => /engine-tests|api-tests|cli-tests/.test(log.file));
-                if (failedTestLog) {
-                  const fallback = failedTestLog.source
+                const failedLog = logs.find((log) => /artifacts|engine-tests|api-tests|cli-tests/.test(log.file));
+                if (failedLog) {
+                  const fallback = failedLog.source
                     .split(/\r?\n/)
                     .map((line) => line.trim())
                     .filter((line) => line && !line.startsWith(">") && !line.startsWith("storyteller_test_") && !line.startsWith("- packages/") && !line.startsWith("- apps/"))
                     .at(-1);
-                  diagnostic = fallback || "test-runner-failed-without-diagnostic";
+                  diagnostic = fallback || "verification-failed-without-diagnostic";
                 }
               }
             }
             const description = state === "success"
-              ? "Foundation, boundaries, typecheck, tests and builds passed"
+              ? "Foundation, boundaries, artifacts, typecheck, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
