@@ -49,7 +49,7 @@ export interface GenerationWorkerMaterial {
   direction: PerformanceDirection;
   pronunciations?: readonly CanonicalPronunciation[];
   mode?: ProviderExecutionMode;
-  format?: Exclude<ProviderAudioFormat, "pcm">;
+  format?: ProviderAudioFormat;
   sampleRateHz?: number;
   rights: ArtifactRightsSnapshot;
   intendedUse?: ProjectUse;
