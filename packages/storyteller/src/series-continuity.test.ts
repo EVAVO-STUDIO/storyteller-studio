@@ -157,7 +157,9 @@ test("compatible later-book voices remain inside the approved continuity envelop
   const assessment = assessBookContinuity(bible(), compatibleSnapshot());
   assert.equal(assessment.status, "compatible");
   assert.equal(assessment.score >= 88, true);
-  assert.equal(assessment.voiceScores.assignment_narrator > 85, true);
+  const narratorScore = assessment.voiceScores.assignment_narrator;
+  assert.equal(typeof narratorScore, "number");
+  assert.equal((narratorScore ?? 0) > 85, true);
 });
 
 test("silent narrator recasts are blocked even when the replacement sounds stable", () => {
