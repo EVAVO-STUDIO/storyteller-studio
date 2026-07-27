@@ -99,7 +99,9 @@ requireTokens("apps/api/src/server.ts", [
   "const artifactRegistry = artifactHealth()",
   "artifactRegistry,",
   'url.pathname.startsWith("/v1/artifacts")',
-  'registry: request.method === "GET" ? requireArtifactRuntime() : null',
+  'registry: request.method === "GET"',
+  "? requireArtifactRuntime()",
+  ": null,",
   "artifactWriteApiExposed: false",
   "releaseApiExposed: false",
 ]);
