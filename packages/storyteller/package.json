@@ -18,6 +18,7 @@
     "./private-object-store": "./src/private-object-store.ts",
     "./project-store": "./src/project-store.ts",
     "./provider-adapter": "./src/provider-adapter.ts",
-    "./series-continuity": "./src/series-continuity.ts"
+    "./series-continuity": "./src/series-continuity.ts",
+    "./worker-service": "./src/worker-service.ts"
   }
 }
