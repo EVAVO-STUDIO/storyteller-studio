@@ -49,6 +49,9 @@ export interface ChapterMasterArtifactChain {
   renderEvidence: StoredEnvelope<ArtifactRecord>;
   chapterMaster: StoredEnvelope<ArtifactRecord>;
   postRenderEngineering: AudioEngineeringArtifactResult;
+  expectedDurationMs: number;
+  observedDurationMs: number;
+  durationDriftMs: number;
   eligibleForReview: boolean;
   findingCodes: readonly string[];
   fingerprint: string;
@@ -213,6 +216,9 @@ function chainFingerprint(
       revision: value.postRenderEngineering.ingest.envelope.revision,
       fingerprint: value.postRenderEngineering.evidence.fingerprint,
     },
+    expectedDurationMs: value.expectedDurationMs,
+    observedDurationMs: value.observedDurationMs,
+    durationDriftMs: value.durationDriftMs,
     eligibleForReview: value.eligibleForReview,
     findingCodes: [...value.findingCodes],
   });
@@ -486,6 +492,9 @@ export async function ingestChapterMaster(
     renderEvidence: renderEvidence.envelope,
     chapterMaster: masterEnvelope,
     postRenderEngineering: engineering,
+    expectedDurationMs: input.plan.renderedDurationMs,
+    observedDurationMs: Math.round(engineering.evidence.probe.durationSeconds * 1_000),
+    durationDriftMs: comparison.durationDriftMs,
     eligibleForReview,
     findingCodes,
   };
@@ -511,24 +520,18 @@ export function chapterMasterPublicView(
     renderEvidence: chain.renderEvidence,
     chapterMaster: chain.chapterMaster,
     postRenderEngineering: chain.postRenderEngineering,
+    expectedDurationMs: chain.expectedDurationMs,
+    observedDurationMs: chain.observedDurationMs,
+    durationDriftMs: chain.durationDriftMs,
     eligibleForReview: chain.eligibleForReview,
     findingCodes: chain.findingCodes,
   }) !== chain.fingerprint) {
     throw new ChapterMasterError("CHAPTER_MASTER_CHAIN_FINGERPRINT_MISMATCH");
   }
   const evidence = chain.postRenderEngineering.evidence;
-  const observedDurationMs = Math.round(evidence.probe.durationSeconds * 1_000);
-  const expectedDurationMs = evidence.id
-    ? chain.renderEvidence.payload.kind === "audio-analysis"
-      ? Math.round(
-          JSON.parse(
-            new TextDecoder().decode(
-              new TextEncoder().encode("{}"),
-            ),
-          ).expectedDurationMs ?? observedDurationMs,
-        )
-      : observedDurationMs
-    : observedDurationMs;
+  requireInteger(chain.expectedDurationMs, 1, Number.MAX_SAFE_INTEGER, "CHAPTER_MASTER_EXPECTED_DURATION_INVALID");
+  requireInteger(chain.observedDurationMs, 1, Number.MAX_SAFE_INTEGER, "CHAPTER_MASTER_OBSERVED_DURATION_INVALID");
+  requireInteger(chain.durationDriftMs, 0, Number.MAX_SAFE_INTEGER, "CHAPTER_MASTER_DURATION_DRIFT_INVALID");
   const master = chain.chapterMaster.payload;
   return Object.freeze({
     planId: chain.planId,
@@ -540,9 +543,9 @@ export function chapterMasterPublicView(
     reviewStatus: master.review.status,
     engineeringProfileId: evidence.profile.profile.id,
     engineeringProfileVersion: evidence.profile.externalVersion,
-    observedDurationMs,
-    expectedDurationMs,
-    durationDriftMs: Math.abs(observedDurationMs - expectedDurationMs),
+    observedDurationMs: chain.observedDurationMs,
+    expectedDurationMs: chain.expectedDurationMs,
+    durationDriftMs: chain.durationDriftMs,
     eligibleForReview: chain.eligibleForReview,
     findingCodes: chain.findingCodes,
     fingerprint: chain.fingerprint,
