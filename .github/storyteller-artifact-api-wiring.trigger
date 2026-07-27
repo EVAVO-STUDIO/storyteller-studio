@@ -1,1 +1,1 @@
-wire authenticated redacted artifact reads with dedented exact matches
+wire authenticated redacted artifact reads using unique source anchors
