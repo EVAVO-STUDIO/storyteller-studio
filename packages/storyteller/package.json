@@ -6,10 +6,12 @@
   "description": "Provider-neutral long-form narration, continuity and quality engine.",
   "exports": {
     ".": "./src/index.ts",
+    "./artifact-ingest": "./src/artifact-ingest.ts",
     "./artifact-queue": "./src/artifact-queue.ts",
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
     "./generation-queue": "./src/generation-queue.ts",
+    "./private-object-store": "./src/private-object-store.ts",
     "./project-store": "./src/project-store.ts",
     "./provider-adapter": "./src/provider-adapter.ts",
     "./series-continuity": "./src/series-continuity.ts"
