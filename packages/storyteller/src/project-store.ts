@@ -3,6 +3,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { stableHash } from "./index.js";
 
 export type StoredEntityType =
+  | "artifact"
   | "project"
   | "series"
   | "manuscript-revision"
