@@ -1,1 +1,1 @@
-wire authenticated redacted artifact reads using unique source anchors
+wire artifact reads and publish exact wiring diagnostics
