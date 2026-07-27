@@ -4,7 +4,7 @@ The Storyteller worker is a dedicated non-HTTP process. It composes the durable 
 
 ## Disabled by default
 
-`STORYTELLER_WORKER_MODE` defaults to `disabled`. In disabled mode the process does not evaluate queue paths, provider credentials or execution settings and does not create persistence directories.
+`STORYTELLER_WORKER_MODE` defaults to `disabled`. In disabled mode the process does not evaluate queue paths, provider credentials, provider configuration or execution settings and does not create persistence directories.
 
 Enabled modes are:
 
@@ -38,13 +38,25 @@ The runtime derives three internal roots beneath the configured data directory:
 
 None of these paths are returned by public runtime summaries or written to normal API responses.
 
+## Provider registration
+
+Provider registration is explicit and conditional. The worker first resolves its own runtime mode. Only an enabled worker evaluates provider-specific configuration.
+
+ElevenLabs is currently the first concrete provider boundary. `STORYTELLER_ELEVENLABS_ENABLED` defaults to `false`. When false, the provider registry remains empty and does not parse model policies, pricing records, voice bindings, pronunciation dictionaries or data-policy records.
+
+When true, the provider is registered only after complete model, pricing, voice, privacy and credential configuration validates. The credential binding must map provider id `elevenlabs` to a server environment-variable name; possessing `ELEVENLABS_API_KEY` alone does not register the provider.
+
+The provider resolver rejects malformed or missing records, expired pricing, unsupported output controls, unapproved v3 production, non-premade local voice bindings and invalid privacy declarations before constructing the adapter.
+
 ## Provider preflight
 
 The worker refuses to poll the queue when no provider adapter is registered. Every registered adapter must have a server-side credential and must return a capability snapshot whose provider identity, adapter version and fingerprint match the executing adapter.
 
 Credential bindings map a provider identifier to an environment-variable name. The mapping may be configured through `STORYTELLER_WORKER_CREDENTIAL_BINDINGS`; secrets remain in their referenced server environment variables and are never copied into runtime summaries, queue state, artifacts or logs.
 
-The built-in provider registry is intentionally empty until a production adapter passes request, rights, privacy, cost, response-validation and quality review. Enabling the worker before that point fails with `WORKER_PROVIDER_ADAPTERS_REQUIRED` rather than pretending generation is available.
+For ElevenLabs, preflight inspects the configured model records and the remote voice category before queue polling. A missing credential, reduced model limit, unavailable model or remote category other than `premade` stops worker startup. A successful preflight on an empty queue reads model and voice metadata but performs no synthesis call.
+
+Enabling the worker without any valid provider still fails with `WORKER_PROVIDER_ADAPTERS_REQUIRED` rather than pretending generation is available.
 
 ## Required budget control
 
@@ -80,7 +92,8 @@ The worker validates bounded values for:
 - heartbeat interval;
 - provider timeout;
 - outcome history;
-- shutdown grace period.
+- shutdown grace period;
+- provider preflight and response limits.
 
 The heartbeat interval must remain below half the lease duration. Provider execution uses the same live clock as heartbeat renewal, budget settlement and terminal queue transitions.
 
@@ -106,7 +119,7 @@ The worker package imports no HTTP server and opens no listening port. The norma
 - the worker service;
 - generation material storage;
 - budget reservation or settlement;
-- provider execution;
+- provider configuration or execution;
 - lease claiming or heartbeat controls;
 - private object writes;
 - artifact verification or completion.
@@ -120,6 +133,8 @@ Process output is limited to redacted configuration and lifecycle summaries. It 
 - worker and project identifiers;
 - data-directory paths;
 - credential environment-variable names and values;
+- provider model-policy and pricing records;
+- voice and pronunciation-dictionary identifiers;
 - manuscript text and direction;
 - voice profile identifiers;
 - provider request identifiers;
