@@ -133,10 +133,10 @@ requireTokens("packages/storyteller/src/provider-adapter.ts", [
 
 requireTokens("packages/storyteller/src/series-continuity.ts", [
   "createSeriesContinuityBible",
-  "assessSeriesContinuity",
-  "promoteSeriesContinuity",
-  "selectSeriesRegressionSuite",
-  "SERIES_NARRATOR_RECAST_UNAPPROVED",
+  "assessBookContinuity",
+  "promoteBookContinuity",
+  "buildSeriesRegressionSuite",
+  "SERIES_VOICE_RECAST_UNAPPROVED",
 ]);
 
 requireTokens("packages/storyteller/src/generation-queue-contracts.ts", [
