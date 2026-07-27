@@ -32,25 +32,47 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Verify architecture foundation
-        run: npm run verify:foundation
+        shell: bash
+        run: |
+          mkdir -p .verification
+          set -o pipefail
+          npm run verify:foundation 2>&1 | tee .verification/foundation.log
 
       - name: Verify private application boundary
-        run: npm run verify:private-boundary
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:private-boundary 2>&1 | tee .verification/private-boundary.log
 
       - name: Type-check repository
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee .verification/typecheck.log
 
       - name: Test storyteller engine
-        run: npm run test:engine
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:engine 2>&1 | tee .verification/engine-tests.log
 
       - name: Test protected API
-        run: npm run test:api
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:api 2>&1 | tee .verification/api-tests.log
 
       - name: Test CLI workflows
-        run: npm run test:cli
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:cli 2>&1 | tee .verification/cli-tests.log
 
       - name: Build workspaces
-        run: npm run build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee .verification/build.log
 
       - name: Publish verification commit status
         if: always() && github.event_name == 'push'
@@ -59,15 +81,44 @@ jobs:
           STORYTELLER_JOB_STATUS: ${{ job.status }}
         with:
           script: |
+            const fs = require("node:fs");
             const state = process.env.STORYTELLER_JOB_STATUS === "success" ? "success" : "failure";
+            const logFiles = [
+              ".verification/foundation.log",
+              ".verification/private-boundary.log",
+              ".verification/typecheck.log",
+              ".verification/engine-tests.log",
+              ".verification/api-tests.log",
+              ".verification/cli-tests.log",
+              ".verification/build.log",
+            ];
+            let diagnostic = "";
+            if (state === "failure") {
+              for (const file of logFiles) {
+                if (!fs.existsSync(file)) continue;
+                const lines = fs.readFileSync(file, "utf8")
+                  .replace(/\u001b\[[0-9;]*m/g, "")
+                  .split(/\r?\n/)
+                  .map((line) => line.trim())
+                  .filter(Boolean);
+                const candidate = lines.find((line) =>
+                  /missing required|missing required contract|contains forbidden|error TS|AssertionError|not ok|ERR_|failed:/i.test(line),
+                );
+                if (candidate) {
+                  diagnostic = candidate;
+                  break;
+                }
+              }
+            }
+            const description = state === "success"
+              ? "Foundation, boundaries, typecheck, tests and builds passed"
+              : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state,
               context: "storyteller/verify",
-              description: state === "success"
-                ? "Foundation, boundaries, typecheck, tests and builds passed"
-                : "Storyteller Studio verification failed",
+              description,
               target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
