@@ -272,6 +272,8 @@ function buildReviewedSession(
         ),
       );
     }
+  }
+  for (const [index, candidate] of session.candidates.entries()) {
     session = selectCalibrationCandidate(session, {
       passageId: candidate.passageId,
       candidateId: candidate.id,
