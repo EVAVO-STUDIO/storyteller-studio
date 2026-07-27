@@ -313,6 +313,7 @@ test("transparent gain proposal blocks impossible windows and source repair requ
       "MASTERING_CHANNEL_CONVERSION_REQUIRED",
       "MASTERING_SAMPLE_RATE_CONVERSION_REQUIRED",
       "MASTERING_SOURCE_CLIPPING_REQUIRES_REPAIR",
+      "MASTERING_TRANSPARENT_GAIN_WINDOW_EMPTY",
     ],
   );
 });
