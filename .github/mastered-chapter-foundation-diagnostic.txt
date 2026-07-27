@@ -1,0 +1,17 @@
+status=failure
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:audio-metrics-import:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:policy-and-core-imports:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:policy-schema:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:policy-required:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:public-policy-metadata:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:validation-constants:1
+MASTERED_CHAPTER_FOUNDATION_SECTION:versioned-comparison-policy:1:1
+MASTERED_CHAPTER_FOUNDATION_SECTION:rights-validation:1:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:snapshot-revision:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:input-policy-validation:1
+MASTERED_CHAPTER_FOUNDATION_ANCHOR:engineering-profile-and-duration:0
+Traceback (most recent call last):
+  File "<stdin>", line 17, in <module>
+  File "mastered-chapter-foundation.py", line 297, in <module>
+  File "mastered-chapter-foundation.py", line 11, in replace_once
+SystemExit: MASTERED_CHAPTER_FOUNDATION_ANCHOR_INVALID:engineering-profile-and-duration:0
