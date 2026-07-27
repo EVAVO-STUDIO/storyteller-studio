@@ -102,11 +102,14 @@ jobs:
             if (state === "failure") {
               for (const log of logs) {
                 const lines = log.source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+                const structured = lines.find((line) => /^TEST_FAILURE_DIAGNOSTIC:/u.test(line));
                 const compilerOrTest = lines.find((line) =>
-                  /error TS\d+|AssertionError|not ok|[✖✘]|failureType|ERR_[A-Z_]+|TEST_[A-Z_]+|Could not find|(?:^|\s)Error:/i.test(line),
+                  /error TS\d+|AssertionError|not ok|[✖✘]|failureType|ERR_[A-Z_]+|Could not find|(?:^|\s)Error:/i.test(line),
                 );
-                if (compilerOrTest) {
-                  diagnostic = compilerOrTest;
+                const runnerFailure = lines.find((line) => /^TEST_(?:RUNNER|FILES|SCOPE)_[A-Z_]+:/u.test(line));
+                const candidate = structured || compilerOrTest || runnerFailure;
+                if (candidate) {
+                  diagnostic = candidate;
                   break;
                 }
               }
