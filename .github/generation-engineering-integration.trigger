@@ -1,1 +1,1 @@
-integrate independent engineering with stable line anchors
+integrate independent engineering after worker policy verification passed
