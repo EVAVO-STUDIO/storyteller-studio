@@ -76,6 +76,11 @@ export async function completeGenerationWithArtifacts(input: Readonly<{
   commercial?: boolean;
   totalEstimatedCost?: number;
   currency?: string;
+  beforeQueueComplete?: (input: Readonly<{
+    artifactIds: readonly string[];
+    candidateTakeIds: readonly string[];
+    admissionFingerprint: string;
+  }>) => Promise<void>;
   now?: Date;
 }>): Promise<ArtifactBackedCompletionResult> {
   if (!HASH_PATTERN.test(input.executionReportHash)) {
@@ -116,6 +121,11 @@ export async function completeGenerationWithArtifacts(input: Readonly<{
     assessment,
     candidateTakeIds,
   );
+  await input.beforeQueueComplete?.({
+    artifactIds: assessment.artifactIds,
+    candidateTakeIds,
+    admissionFingerprint,
+  });
   const envelope = await input.queue.complete(
     input.claim.item.id,
     input.claim.leaseToken,

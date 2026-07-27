@@ -3,6 +3,7 @@ import {
   runClaimedGenerationWorker,
   type ClaimedGenerationWorkerInput,
   type GenerationWorkerPublicView,
+  type GenerationWorkerQueueTransition,
   type GenerationWorkerResult,
 } from "./generation-worker.js";
 import {
@@ -18,6 +19,7 @@ export interface HeartbeatingGenerationWorkerInput
   > {
   signal?: AbortSignal;
   heartbeat?: GenerationLeaseHeartbeatOptions;
+  beforeQueueTransition?: (transition: GenerationWorkerQueueTransition) => Promise<void>;
 }
 
 export interface HeartbeatingGenerationWorkerResult {
@@ -94,6 +96,7 @@ export async function runGenerationWorkerWithHeartbeat(
   const {
     heartbeat: heartbeatOptions,
     signal: externalSignal,
+    beforeQueueTransition,
     ...workerInput
   } = input;
   const heartbeat = new GenerationLeaseHeartbeatController(
@@ -108,8 +111,9 @@ export async function runGenerationWorkerWithHeartbeat(
     const worker = await runClaimedGenerationWorker({
       ...workerInput,
       signal: combined.signal,
-      beforeTerminalTransition: async () => {
+      beforeTerminalTransition: async (transition) => {
         await heartbeat.stopForTerminalTransition();
+        await beforeQueueTransition?.(transition);
       },
     });
     heartbeat.assertHealthy();

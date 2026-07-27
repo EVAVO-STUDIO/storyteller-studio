@@ -61,6 +61,31 @@ export interface GenerationWorkerMaterial {
   }>;
 }
 
+export interface GenerationWorkerCostAccounting {
+  attemptedProviderCount: number;
+  successfulResultCount: number;
+  totalEstimatedCost?: number;
+  currency?: string;
+  blockedCode?: string;
+}
+
+export type GenerationWorkerQueueTransition =
+  | Readonly<{
+      kind: "block" | "retry";
+      codes: readonly string[];
+      accounting: GenerationWorkerCostAccounting;
+      at: string;
+    }>
+  | Readonly<{
+      kind: "complete";
+      codes: readonly [];
+      accounting: GenerationWorkerCostAccounting;
+      artifactIds: readonly string[];
+      candidateTakeIds: readonly string[];
+      admissionFingerprint: string;
+      at: string;
+    }>;
+
 export interface ClaimedGenerationWorkerInput {
   queue: FileGenerationQueue;
   claim: GenerationQueueClaim;
@@ -73,7 +98,7 @@ export interface ClaimedGenerationWorkerInput {
   verifierActorId?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
-  beforeTerminalTransition?: () => Promise<void>;
+  beforeTerminalTransition?: (transition: GenerationWorkerQueueTransition) => Promise<void>;
   clock?: () => Date;
   now?: Date;
 }
@@ -220,45 +245,51 @@ function safeReportEvidence(
 function executionAccounting(
   report: GenerationExecutionReport,
   policy: GenerationWorkerMaterial["costPolicy"],
-): Readonly<{
-  totalEstimatedCost?: number;
-  currency?: string;
-  blockedCode?: string;
-}> {
+): GenerationWorkerCostAccounting {
   let total = 0;
   let currency: string | undefined;
   let observedCosts = 0;
+  const attemptedProviderCount = report.attempts.filter(
+    (attempt) => attempt.status !== "skipped",
+  ).length;
+  const successfulResultCount = report.results.length;
+  const resultBase = { attemptedProviderCount, successfulResultCount };
 
   for (const result of report.results) {
     const cost = result.usage.estimatedCost;
     const resultCurrency = result.usage.currency;
     if (cost === undefined) continue;
     if (!Number.isFinite(cost) || cost < 0 || !resultCurrency || !CURRENCY_PATTERN.test(resultCurrency)) {
-      return { blockedCode: "GENERATION_COST_EVIDENCE_INVALID" };
+      return { ...resultBase, blockedCode: "GENERATION_COST_EVIDENCE_INVALID" };
     }
     if (currency && currency !== resultCurrency) {
-      return { blockedCode: "GENERATION_COST_CURRENCY_MISMATCH" };
+      return {
+        ...resultBase,
+        totalEstimatedCost: Number(total.toFixed(6)),
+        currency,
+        blockedCode: "GENERATION_COST_CURRENCY_MISMATCH",
+      };
     }
     currency = resultCurrency;
     total += cost;
     observedCosts += 1;
   }
 
-  if (policy) {
-    if (observedCosts !== report.results.length) {
-      return { blockedCode: "GENERATION_COST_EVIDENCE_MISSING" };
-    }
-    if (currency !== policy.currency) {
-      return { blockedCode: "GENERATION_COST_POLICY_CURRENCY_MISMATCH" };
-    }
-    if (total > policy.maximumTotalEstimatedCost) {
-      return { blockedCode: "GENERATION_COST_POLICY_EXCEEDED" };
-    }
-  }
-
-  return observedCosts > 0
+  const observed = observedCosts > 0
     ? { totalEstimatedCost: Number(total.toFixed(6)), currency }
     : {};
+  if (policy) {
+    if (observedCosts !== report.results.length) {
+      return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_EVIDENCE_MISSING" };
+    }
+    if (currency !== policy.currency) {
+      return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_POLICY_CURRENCY_MISMATCH" };
+    }
+    if (total > policy.maximumTotalEstimatedCost) {
+      return { ...resultBase, ...observed, blockedCode: "GENERATION_COST_POLICY_EXCEEDED" };
+    }
+  }
+  return { ...resultBase, ...observed };
 }
 
 function resultIdentity(
@@ -458,9 +489,15 @@ async function blockClaim(input: Readonly<{
   candidateArtifactIds: readonly string[];
   reportArtifactId?: string;
   reportHash?: string;
+  accounting: GenerationWorkerCostAccounting;
   now: Date;
 }>): Promise<GenerationWorkerResult> {
-  await input.worker.beforeTerminalTransition?.();
+  await input.worker.beforeTerminalTransition?.({
+    kind: "block",
+    codes: input.codes,
+    accounting: input.accounting,
+    at: input.now.toISOString(),
+  });
   const queueEnvelope = await input.worker.queue.block(
     input.worker.claim.item.id,
     input.worker.claim.leaseToken,
@@ -510,6 +547,7 @@ export async function runClaimedGenerationWorker(
     ...(input.signal ? { signal: input.signal } : {}),
   });
   throwIfWorkerAborted(input.signal);
+  const accounting = executionAccounting(report, input.material.costPolicy);
 
   const requestsById = new Map(requests.map((request) => [request.requestId, request]));
   const ingested: ArtifactIngestResult[] = [];
@@ -530,6 +568,7 @@ export async function runClaimedGenerationWorker(
     return blockClaim({
       worker: input,
       executionStatus: report.status,
+      accounting,
       codes: ["GENERATION_ARTIFACT_INGEST_FAILED"],
       message: "One or more provider results could not be admitted to private artifact storage.",
       artifacts: ingested.map((item) => item.envelope.payload),
@@ -549,6 +588,7 @@ export async function runClaimedGenerationWorker(
     return blockClaim({
       worker: input,
       executionStatus: report.status,
+      accounting,
       codes: ["GENERATION_ARTIFACT_QUARANTINED"],
       message: "One or more provider results failed artifact integrity verification and were quarantined.",
       artifacts,
@@ -572,6 +612,7 @@ export async function runClaimedGenerationWorker(
     return blockClaim({
       worker: input,
       executionStatus: report.status,
+      accounting,
       codes: ["GENERATION_REPORT_ARTIFACT_INVALID"],
       message: "Generation execution evidence failed artifact verification.",
       artifacts,
@@ -582,11 +623,11 @@ export async function runClaimedGenerationWorker(
     });
   }
 
-  const accounting = executionAccounting(report, input.material.costPolicy);
   if (accounting.blockedCode) {
     return blockClaim({
       worker: input,
       executionStatus: report.status,
+      accounting,
       codes: [accounting.blockedCode],
       message: "Generation cost evidence does not satisfy the configured production policy.",
       artifacts,
@@ -599,7 +640,13 @@ export async function runClaimedGenerationWorker(
 
   if (report.status !== "completed") {
     if (providerExecutionIsRetryable(report)) {
-      await input.beforeTerminalTransition?.();
+      const transitionTime = currentTime();
+      await input.beforeTerminalTransition?.({
+        kind: "retry",
+        codes: ["GENERATION_PROVIDER_EXECUTION_INCOMPLETE"],
+        accounting,
+        at: transitionTime.toISOString(),
+      });
       const queueEnvelope = await input.queue.fail(
         input.claim.item.id,
         input.claim.leaseToken,
@@ -607,7 +654,7 @@ export async function runClaimedGenerationWorker(
           code: "GENERATION_PROVIDER_EXECUTION_INCOMPLETE",
           message: "Provider execution did not produce the complete governed candidate set.",
           retryable: true,
-          now: currentTime(),
+          now: transitionTime,
         },
       );
       return {
@@ -622,6 +669,7 @@ export async function runClaimedGenerationWorker(
     return blockClaim({
       worker: input,
       executionStatus: report.status,
+      accounting,
       codes: ["GENERATION_PROVIDER_CONFIGURATION_BLOCKED"],
       message: "No approved and configured provider route produced the required candidate set.",
       artifacts,
@@ -633,7 +681,7 @@ export async function runClaimedGenerationWorker(
   }
 
   try {
-    await input.beforeTerminalTransition?.();
+    const completionTime = currentTime();
     const completion = await completeGenerationWithArtifacts({
       queue: input.queue,
       claim: input.claim,
@@ -647,7 +695,22 @@ export async function runClaimedGenerationWorker(
             currency: accounting.currency,
           }
         : {}),
-      now: currentTime(),
+      beforeQueueComplete: async ({
+        artifactIds,
+        candidateTakeIds,
+        admissionFingerprint,
+      }) => {
+        await input.beforeTerminalTransition?.({
+          kind: "complete",
+          codes: [],
+          accounting,
+          artifactIds,
+          candidateTakeIds,
+          admissionFingerprint,
+          at: completionTime.toISOString(),
+        });
+      },
+      now: completionTime,
     });
     return {
       queueEnvelope: completion.envelope,
@@ -666,6 +729,7 @@ export async function runClaimedGenerationWorker(
     return blockClaim({
       worker: input,
       executionStatus: report.status,
+      accounting,
       codes: codes.length > 0 ? codes : ["GENERATION_ARTIFACT_ADMISSION_BLOCKED"],
       message: "Verified artifacts did not satisfy the exact queue-completion governance gate.",
       artifacts,
