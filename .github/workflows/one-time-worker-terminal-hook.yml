@@ -106,6 +106,20 @@ jobs:
               ? fs.readFileSync(".terminal-hook.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
               : "worker terminal hook log unavailable";
             const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            for (const line of lines.filter((candidate) => candidate.startsWith("WORKER_TERMINAL_HOOK_ANCHOR:"))) {
+              const [, label, rawCount] = line.split(":");
+              const count = Number(rawCount);
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: count === 1 ? "success" : "failure",
+                context: `storyteller/terminal-hook/${label}/${count}`.slice(0, 100),
+                description: count === 1 ? `${label} matched exactly once` : `${label} matched ${count} times`,
+                target_url: targetUrl,
+              });
+            }
             const diagnostic = lines.find((line) =>
               /WORKER_TERMINAL_HOOK_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
             ) || lines.at(-1) || "worker terminal hook integration failed";
@@ -118,5 +132,5 @@ jobs:
               description: state === "success"
                 ? "Worker terminal transitions are coordinated"
                 : diagnostic.slice(0, 140),
-              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              target_url: targetUrl,
             });
