@@ -10,6 +10,7 @@
     "./artifact-queue": "./src/artifact-queue.ts",
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
+    "./audio-engineering": "./src/audio-engineering.ts",
     "./budget-ledger": "./src/budget-ledger.ts",
     "./calibration-admission": "./src/calibration-admission.ts",
     "./calibration-store": "./src/calibration-store.ts",
