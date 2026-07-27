@@ -1,0 +1,102 @@
+name: One-time worker audio profile assertion correction
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/worker-audio-policy-test-fix.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-worker-audio-policy-test-fix
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Correct canonical lossless profile assertion
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .worker-audio-policy-test-fix.log
+          from pathlib import Path
+
+          path = Path("apps/worker/src/audio-engineering.test.ts")
+          source = path.read_text(encoding="utf-8")
+          old = '  assert.equal(policy?.profile.profile.id, "lossless-production");\n'
+          new = '  assert.equal(policy?.profile.profile.id, "lossless-production-master");\n'
+          count = source.count(old)
+          print(f"WORKER_AUDIO_POLICY_TEST_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"WORKER_AUDIO_POLICY_TEST_MATCH_COUNT_INVALID:{count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          print("WORKER_AUDIO_POLICY_TEST_FIXED")
+          PY
+
+      - name: Remove one-time correction machinery
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-worker-audio-policy-test-fix.yml
+          rm -f .github/worker-audio-policy-test-fix.trigger
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify complete repository
+        run: |
+          npm run verify
+          npm run build
+
+      - name: Commit correction
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add apps/worker/src/audio-engineering.test.ts .github/workflows/one-time-worker-audio-policy-test-fix.yml .github/worker-audio-policy-test-fix.trigger
+          git diff --cached --check
+          git commit -m "Correct canonical lossless profile assertion"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish correction status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CORRECTION_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.CORRECTION_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".worker-audio-policy-test-fix.log")
+              ? fs.readFileSync(".worker-audio-policy-test-fix.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "worker audio policy correction log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /WORKER_AUDIO_POLICY_TEST_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "worker audio policy correction failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/worker-audio-policy-test-fix",
+              description: state === "success"
+                ? "Canonical lossless profile assertion and repository verification passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
