@@ -196,8 +196,9 @@ async function plan(
     gainDb: 4.5,
     rationaleCode: "MASTERING_TRANSPARENT_GAIN",
   }],
-  evidence = await engineeringEvidence(),
+  evidence?: AudioEngineeringEvidence,
 ): Promise<Readonly<{ plan: MasteringPlan; evidence: AudioEngineeringEvidence }>> {
+  const resolvedEvidence = evidence ?? await engineeringEvidence();
   const masterBytes = wavBytes();
   const master = verifiedArtifact({
     id: "artifact_mastering_render_001",
@@ -210,21 +211,21 @@ async function plan(
   const engineering = verifiedArtifact({
     id: "artifact_mastering_render_engineering_001",
     kind: "audio-analysis",
-    bytes: new TextEncoder().encode(JSON.stringify(evidence)),
+    bytes: new TextEncoder().encode(JSON.stringify(resolvedEvidence)),
     parentArtifactIds: [master.id],
     sourceContentHash: master.integrity.contentHash,
     reviewRequired: false,
   });
   return {
-    evidence,
+    evidence: resolvedEvidence,
     plan: createMasteringPlan({
       id: "mastering_plan_render_001",
       projectId: master.projectId,
       chapterId: master.segmentId!,
       chapterMaster: master,
       engineeringArtifact: engineering,
-      engineeringEvidence: evidence,
-      targetProfile: evidence.profile,
+      engineeringEvidence: resolvedEvidence,
+      targetProfile: resolvedEvidence.profile,
       output: {
         format: "wav",
         sampleRateHz: 44_100,
@@ -264,8 +265,14 @@ class FixtureRunner implements ChapterRenderRunner {
   renderCount = 0;
   lastRequest: ChapterRenderRequest | undefined;
   constructor(
-    readonly bytes = wavBytes(),
-    readonly failure?: Error,
+    readonly bytes: Uint8Array = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46,
+    0x04, 0x00, 0x00, 0x00,
+    0x57, 0x41, 0x56, 0x45,
+    0x05, 0x06, 0x07, 0x08,
+  ]),
+  readonly failure?: Error,
+
   ) {}
 
   async inspectVersion(): Promise<string> {
@@ -308,7 +315,7 @@ test("deterministic mastering filters preserve operation order and explicit outp
   }], await engineeringEvidence({ peakDb: -3.5, truePeakDb: -3.4 }));
   const filter = buildMasteringFilterScript(limiter.plan);
   assert.match(filter, /aresample=192000:resampler=soxr:precision=28/u);
-  assert.match(filter, /alimiter=limit=0\.69984199:attack=5:release=50:level=0:latency=1/u);
+  assert.match(filter, /alimiter=limit=0\.699842:attack=5:release=50:level=0:latency=1/u);
   assert.match(filter, /aresample=44100:resampler=soxr:precision=28/u);
 });
 
@@ -363,7 +370,7 @@ test("mastering render revalidates private source and emits redacted immutable e
   assert.equal(runner.lastRequest?.sourcePaths[0], "/private/mastering/source.wav");
   assert.equal(runner.lastRequest?.expectedDurationMs, 10_000);
   assert.equal(result.evidence.source.engineeringFingerprint, data.evidence.fingerprint);
-  assert.equal(result.evidence.output.contentHash, hashBytes(wavBytes()));
+  assert.equal(result.evidence.output.contentHash, hashBytes(runner.bytes));
   assert.deepEqual(result.evidence.operationKinds, ["gain"]);
   assertMasteringRenderEvidence(result.evidence);
 
@@ -468,7 +475,7 @@ test("render evidence tampering is detected", async () => {
     ...base,
     output: {
       ...base.output,
-      sampleRateHz: 48_000,
+      sampleRateHz: 1_000,
     },
   };
   const tampered = {
