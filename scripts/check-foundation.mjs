@@ -21,7 +21,10 @@ const requiredFiles = [
   "packages/storyteller/src/generation-queue.ts",
   "packages/storyteller/src/generation-queue.test.ts",
   "packages/cli/src/main.ts",
+  "apps/api/src/queue-runtime.ts",
+  "apps/api/src/queue-runtime.test.ts",
   "apps/api/src/server.ts",
+  "apps/api/src/server.test.ts",
   "apps/web/src/app/page.tsx",
   "apps/web/src/app/layout.tsx",
   "apps/web/src/app/robots.ts",
@@ -59,7 +62,7 @@ if (existsSync(fromRoot("package.json"))) {
   for (const workspace of ["apps/*", "packages/*"]) {
     if (!workspaces.has(workspace)) problems.push(`package.json is missing workspace: ${workspace}`);
   }
-  for (const script of ["dev:web", "dev:api", "storyteller", "typecheck", "test", "verify", "build"]) {
+  for (const script of ["dev:web", "dev:api", "storyteller", "typecheck", "test:engine", "test:api", "test", "verify", "build"]) {
     if (typeof packageJson.scripts?.[script] !== "string") problems.push(`package.json is missing script: ${script}`);
   }
 }
@@ -112,10 +115,11 @@ requireTokens("packages/storyteller/src/project-store.ts", [
 requireTokens("packages/storyteller/src/provider-adapter.ts", [
   "ProviderAdapterRegistry",
   "ProviderCapabilitySnapshot",
+  "CredentialResolver",
   "buildSynthesisRequest",
   "executeGenerationJob",
   "idempotencyKey",
-  "credentialReference",
+  "PROVIDER_CREDENTIAL_UNAVAILABLE",
 ]);
 
 requireTokens("packages/storyteller/src/series-continuity.ts", [
@@ -161,8 +165,24 @@ requireTokens("packages/storyteller/src/generation-queue.test.ts", [
   "queue reads fail closed for malformed persisted queue state",
 ]);
 
+requireTokens("apps/api/src/queue-runtime.ts", [
+  "resolveGenerationQueueRuntimeConfiguration",
+  "GENERATION_QUEUE_FILE_DRIVER_SINGLE_HOST_ACK_REQUIRED",
+  "generationQueueRuntimeSummary",
+  "generationQueuePublicView",
+  "workerApiExposed: false",
+  "outputArtifactCount",
+]);
+
+requireTokens("apps/api/src/queue-runtime.test.ts", [
+  "queue runtime is disabled unless a driver is explicitly configured",
+  "production file queue requires an explicit single-host acknowledgement",
+  "public queue views redact lease hashes, job routing and artifact references",
+]);
+
 requireTokens("apps/api/src/server.ts", [
   "API_AUTH_CONFIGURATION_MISSING",
+  "API_ACTOR_CONFIGURATION_MISSING",
   "API_DEVELOPMENT_LOOPBACK_ONLY",
   "timingSafeEqual",
   "STORYTELLER_MAX_REQUEST_BYTES",
@@ -171,7 +191,19 @@ requireTokens("apps/api/src/server.ts", [
   "/v1/providers/rank",
   "/v1/takes/evaluate",
   "/v1/generation/jobs",
+  "/v1/generation/queue",
   'execution: "not-started"',
+  'execution: hasRunnable ? "queued" : "blocked"',
+  "workerApiExposed: false",
+  "Cancellation is recorded and any in-flight worker lease is invalidated.",
+]);
+
+requireTokens("apps/api/src/server.test.ts", [
+  "queue routes fail closed when durable admission is not configured",
+  "queue admission, inspection and cancellation expose only redacted operator state",
+  "production queue cancellation requires a server-configured actor identity",
+  "untrusted_body_actor",
+  "/claim",
 ]);
 
 requireTokens("packages/cli/src/main.ts", [
@@ -256,5 +288,6 @@ console.log("storyteller_foundation_check_passed");
 console.log("- exact-source manuscript and performance contracts are present");
 console.log("- rights, provider, continuity, transcript and technical QA gates are present");
 console.log("- durable queue leases, retries, cancellation and artifact references are verified");
+console.log("- queue API admission and operator views remain redacted and fail closed");
 console.log("- API and CLI remain provider-neutral and fail closed before execution");
 console.log("- private web and EVAVO hub contracts remain source-ready but unreleased");
