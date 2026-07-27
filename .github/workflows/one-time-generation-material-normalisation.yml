@@ -33,49 +33,51 @@ jobs:
           set -o pipefail
           python3 - <<'PY' 2>&1 | tee .generation-material-normalisation.log
           from pathlib import Path
+          from textwrap import dedent
 
           path = Path("packages/storyteller/src/generation-material.ts")
           source = path.read_text(encoding="utf-8")
 
-          replacements = [
-              (
-                  '''  const seen = new Set<string>();
-          for (const value of values) {
-          ''',
-                  '''  const seen = new Set<string>();
-          const seenWrittenForms = new Set<string>();
-          for (const value of values) {
-          ''',
-                  "pronunciation-written-set",
-              ),
-              (
-                  '''    const fingerprint = pronunciationFingerprint(value);
-              if (seen.has(fingerprint)) {
-          ''',
-                  '''    const writtenFormKey = value.writtenForm.trim().toLocaleLowerCase("en-AU");
-              if (seenWrittenForms.has(writtenFormKey)) {
-                throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_PRONUNCIATION_WRITTEN_DUPLICATE");
-              }
-              seenWrittenForms.add(writtenFormKey);
-              const fingerprint = pronunciationFingerprint(value);
-              if (seen.has(fingerprint)) {
-          ''',
-                  "pronunciation-written-check",
-              ),
-              (
-                  '''  const intendedUse = material.intendedUse ?? "audiobook";
-          ''',
-                  '''  if (new Set(rights.allowedUses).size !== rights.allowedUses.length) {
-              throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_RIGHTS_USES_DUPLICATE");
-            }
-            const intendedUse = material.intendedUse ?? "audiobook";
-          ''',
-                  "rights-use-deduplication",
-              ),
-              (
-                  '''function materialFingerprintBase(input: Readonly<{
-          ''',
-                  '''function normaliseGenerationWorkerMaterial(
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              print(f"GENERATION_MATERIAL_NORMALISATION_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"GENERATION_MATERIAL_NORMALISATION_MATCH_COUNT_INVALID:{label}:{count}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '  const seen = new Set<string>();\n  for (const value of values) {\n',
+              '  const seen = new Set<string>();\n'
+              '  const seenWrittenForms = new Set<string>();\n'
+              '  for (const value of values) {\n',
+              "pronunciation-written-set",
+          )
+
+          replace_once(
+              '    const fingerprint = pronunciationFingerprint(value);\n'
+              '    if (seen.has(fingerprint)) {\n',
+              '    const writtenFormKey = value.writtenForm.trim().toLocaleLowerCase("en-AU");\n'
+              '    if (seenWrittenForms.has(writtenFormKey)) {\n'
+              '      throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_PRONUNCIATION_WRITTEN_DUPLICATE");\n'
+              '    }\n'
+              '    seenWrittenForms.add(writtenFormKey);\n'
+              '    const fingerprint = pronunciationFingerprint(value);\n'
+              '    if (seen.has(fingerprint)) {\n',
+              "pronunciation-written-check",
+          )
+
+          replace_once(
+              '  const intendedUse = material.intendedUse ?? "audiobook";\n',
+              '  if (new Set(rights.allowedUses).size !== rights.allowedUses.length) {\n'
+              '    throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_RIGHTS_USES_DUPLICATE");\n'
+              '  }\n'
+              '  const intendedUse = material.intendedUse ?? "audiobook";\n',
+              "rights-use-deduplication",
+          )
+
+          normalisation_helper = dedent('''\
+          function normaliseGenerationWorkerMaterial(
             material: GenerationWorkerMaterial,
           ): GenerationWorkerMaterial {
             return {
@@ -127,48 +129,39 @@ jobs:
                 : {}),
             };
           }
+          ''')
+          replace_once(
+              'function materialFingerprintBase(input: Readonly<{\n',
+              normalisation_helper + '\nfunction materialFingerprintBase(input: Readonly<{\n',
+              "normalisation-helper",
+          )
 
-          function materialFingerprintBase(input: Readonly<{
-          ''',
-                  "normalisation-helper",
-              ),
-              (
-                  '''  validateGenerationWorkerMaterial(job, material, now);
-            const base = materialFingerprintBase({ job, material });
-            return {
-          ''',
-                  '''  const normalisedMaterial = normaliseGenerationWorkerMaterial(material);
-            validateGenerationWorkerMaterial(job, normalisedMaterial, now);
-            const base = materialFingerprintBase({ job, material: normalisedMaterial });
-            return {
-          ''',
-                  "normalised-record-create",
-              ),
-              (
-                  '''    textHash: stableHash(material.text),
-              material,
-          ''',
-                  '''    textHash: stableHash(normalisedMaterial.text),
-              material: normalisedMaterial,
-          ''',
-                  "normalised-record-fields",
-              ),
-              (
-                  '''  if (record.projectId !== record.material.direction.segmentId && false) {
-              throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_UNREACHABLE_SCOPE_GUARD");
-            }
-          ''',
-                  '',
-                  "remove-unreachable-guard",
-              ),
-          ]
+          replace_once(
+              '  validateGenerationWorkerMaterial(job, material, now);\n'
+              '  const base = materialFingerprintBase({ job, material });\n'
+              '  return {\n',
+              '  const normalisedMaterial = normaliseGenerationWorkerMaterial(material);\n'
+              '  validateGenerationWorkerMaterial(job, normalisedMaterial, now);\n'
+              '  const base = materialFingerprintBase({ job, material: normalisedMaterial });\n'
+              '  return {\n',
+              "normalised-record-create",
+          )
 
-          for old, new, label in replacements:
-              count = source.count(old)
-              print(f"GENERATION_MATERIAL_NORMALISATION_ANCHOR:{label}:{count}")
-              if count != 1:
-                  raise SystemExit(f"GENERATION_MATERIAL_NORMALISATION_MATCH_COUNT_INVALID:{label}:{count}")
-              source = source.replace(old, new, 1)
+          replace_once(
+              '    textHash: stableHash(material.text),\n'
+              '    material,\n',
+              '    textHash: stableHash(normalisedMaterial.text),\n'
+              '    material: normalisedMaterial,\n',
+              "normalised-record-fields",
+          )
+
+          replace_once(
+              '  if (record.projectId !== record.material.direction.segmentId && false) {\n'
+              '    throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_UNREACHABLE_SCOPE_GUARD");\n'
+              '  }\n',
+              '',
+              "remove-unreachable-guard",
+          )
 
           path.write_text(source, encoding="utf-8", newline="\n")
           print("GENERATION_MATERIAL_NORMALISED")
