@@ -3,8 +3,10 @@ const workflow = [
   { label: "Story bible", detail: "Characters, places and pronunciations", state: "review" },
   { label: "Direction", detail: "Narrative stance and dramatic beats", state: "active" },
   { label: "Calibration", detail: "Narrator and character reference takes", state: "blocked" },
-  { label: "Production", detail: "Candidate takes and chapter assembly", state: "waiting" },
-  { label: "Mastering", detail: "Delivery profiles and release package", state: "waiting" },
+  { label: "Production", detail: "Candidate generation through a leased worker", state: "waiting" },
+  { label: "Artifact register", detail: "Integrity, provenance, rights and review state", state: "waiting" },
+  { label: "Mastering", detail: "Approved dependencies and chapter assembly", state: "waiting" },
+  { label: "Release", detail: "Final confirmation over the verified package", state: "waiting" },
 ];
 
 const directionValues = [
@@ -27,6 +29,71 @@ const qaGates = [
   ["Engineering", "Required", "Loudness, peak, noise, clipping and silence"],
 ];
 
+const artifactPosture = [
+  {
+    label: "Registry",
+    value: "Disabled by default",
+    detail: "A storage driver must be selected explicitly.",
+    tone: "safe",
+  },
+  {
+    label: "HTTP surface",
+    value: "Read only",
+    detail: "Authenticated status and evidence views only.",
+    tone: "safe",
+  },
+  {
+    label: "Worker writes",
+    value: "Internal only",
+    detail: "No normal browser or operator write endpoint.",
+    tone: "review",
+  },
+  {
+    label: "Release",
+    value: "Final confirmation",
+    detail: "Never implied by generation or review alone.",
+    tone: "blocked",
+  },
+];
+
+const artifactStages = [
+  {
+    index: "01",
+    label: "Register",
+    state: "Implemented",
+    tone: "ready",
+    detail: "Record SHA-256, byte count, format, private storage reference, provenance and rights.",
+  },
+  {
+    index: "02",
+    label: "Verify",
+    state: "Implemented",
+    tone: "ready",
+    detail: "Confirm immutable bytes, media structure, transcript fidelity, engineering and safety evidence.",
+  },
+  {
+    index: "03",
+    label: "Review",
+    state: "Gated",
+    tone: "review",
+    detail: "Human creative approval begins only after objective verification succeeds.",
+  },
+  {
+    index: "04",
+    label: "Assemble",
+    state: "Waiting",
+    tone: "waiting",
+    detail: "Build chapter masters from approved takes through a traceable dependency graph.",
+  },
+  {
+    index: "05",
+    label: "Release",
+    state: "Blocked",
+    tone: "blocked",
+    detail: "Require verified, reviewed and rights-valid dependencies plus a final confirmation.",
+  },
+];
+
 function StatePill({ state }: Readonly<{ state: string }>) {
   return <span className={`state state-${state}`}>{state}</span>;
 }
@@ -42,7 +109,7 @@ export default function StudioHomePage() {
           <span className="product-name">Storyteller Studio</span>
         </div>
         <div className="topbar-actions">
-          <span className="environment-badge">Source foundation</span>
+          <span className="environment-badge">Governed foundation</span>
           <button className="quiet-button" type="button" disabled title="Deployment and signed launch are not configured">
             Launch unavailable
           </button>
@@ -57,6 +124,7 @@ export default function StudioHomePage() {
           <a className="nav-item" href="#direction"><span>DR</span>Direction</a>
           <a className="nav-item" href="#voices"><span>VO</span>Voices</a>
           <a className="nav-item" href="#takes"><span>TK</span>Takes</a>
+          <a className="nav-item" href="#artifacts"><span>AR</span>Artifacts</a>
           <a className="nav-item" href="#visuals"><span>VI</span>Visual story</a>
           <a className="nav-item" href="#delivery"><span>DL</span>Delivery</a>
         </nav>
@@ -72,7 +140,7 @@ export default function StudioHomePage() {
       <main className="workspace" id="overview">
         <section className="project-heading">
           <div>
-            <p className="eyebrow">DEMONSTRATION WORKSPACE · NO PRIVATE MANUSCRIPT LOADED</p>
+            <p className="eyebrow">DEMONSTRATION WORKSPACE · NO PRIVATE MANUSCRIPT OR GENERATED MEDIA LOADED</p>
             <h1>Direct the performance.<br />Protect the story.</h1>
             <p className="project-summary">
               A review-first production workspace for narration that preserves the author’s language,
@@ -85,15 +153,15 @@ export default function StudioHomePage() {
               <strong>32%</strong>
             </div>
             <div className="progress-track" aria-hidden="true"><span style={{ width: "32%" }} /></div>
-            <p>Architecture is executable. Voice rights, provider configuration and human calibration remain deliberately unresolved.</p>
+            <p>Queue and artifact governance are executable. Voice rights, provider configuration, object storage and human calibration remain deliberately unresolved.</p>
           </div>
         </section>
 
         <section className="metric-grid" aria-label="Foundation capabilities">
           <article className="metric-card"><span>01</span><strong>Exact-source</strong><p>Stable offsets and immutable manuscript fingerprints.</p></article>
           <article className="metric-card"><span>02</span><strong>Series-aware</strong><p>Voice, pronunciation and performance anchors across books.</p></article>
-          <article className="metric-card"><span>03</span><strong>Provider-neutral</strong><p>Capability negotiation and explicit fallback routes.</p></article>
-          <article className="metric-card"><span>04</span><strong>Review-first</strong><p>Candidate takes, quality findings and non-destructive approval.</p></article>
+          <article className="metric-card"><span>03</span><strong>Artifact-governed</strong><p>Private media references, integrity checks and revisioned evidence.</p></article>
+          <article className="metric-card"><span>04</span><strong>Review-first</strong><p>Verification, human approval and final release remain separate.</p></article>
         </section>
 
         <section className="panel workflow-panel" id="manuscript">
@@ -162,6 +230,51 @@ export default function StudioHomePage() {
                 <p role="cell">{description}</p>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="panel artifact-panel" id="artifacts" aria-labelledby="artifact-heading">
+          <div className="section-heading">
+            <div>
+              <p className="section-kicker">GOVERNED PRODUCTION ARTIFACTS</p>
+              <h2 id="artifact-heading">A file exists only after its evidence exists</h2>
+            </div>
+            <p>
+              Generation intent, stored media, human approval and final release are separate states.
+              A provider response never becomes an approved audiobook by implication.
+            </p>
+          </div>
+
+          <div className="artifact-posture-grid" aria-label="Artifact runtime posture">
+            {artifactPosture.map((item) => (
+              <article className="artifact-posture-card" data-tone={item.tone} key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+
+          <ol className="artifact-flow" aria-label="Artifact lifecycle">
+            {artifactStages.map((item) => (
+              <li key={item.label}>
+                <div className="artifact-stage-top">
+                  <span className="artifact-stage-index">{item.index}</span>
+                  <span className="artifact-stage-state" data-tone={item.tone}>{item.state}</span>
+                </div>
+                <h3>{item.label}</h3>
+                <p>{item.detail}</p>
+              </li>
+            ))}
+          </ol>
+
+          <div className="artifact-guardrail">
+            <span className="artifact-guardrail-mark">!</span>
+            <div>
+              <strong>No generated media registered</strong>
+              <p>This demonstration exposes no private object keys, signed URLs, provider request identifiers or worker lease material.</p>
+            </div>
+            <span>Fail closed</span>
           </div>
         </section>
 
