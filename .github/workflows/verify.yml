@@ -31,8 +31,23 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Verify contracts and tests
-        run: npm run verify
+      - name: Verify architecture foundation
+        run: npm run verify:foundation
+
+      - name: Verify private application boundary
+        run: npm run verify:private-boundary
+
+      - name: Type-check repository
+        run: npm run typecheck
+
+      - name: Test storyteller engine
+        run: npm run test:engine
+
+      - name: Test protected API
+        run: npm run test:api
+
+      - name: Test CLI workflows
+        run: npm run test:cli
 
       - name: Build workspaces
         run: npm run build
@@ -52,7 +67,7 @@ jobs:
               state,
               context: "storyteller/verify",
               description: state === "success"
-                ? "Contracts, typecheck, tests and workspace builds passed"
+                ? "Foundation, boundaries, typecheck, tests and builds passed"
                 : "Storyteller Studio verification failed",
               target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
