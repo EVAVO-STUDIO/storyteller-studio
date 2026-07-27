@@ -1,0 +1,97 @@
+name: One-time worker provider documentation contract correction
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/worker-provider-doc-token.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-worker-provider-doc-token
+  cancel-in-progress: false
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update completed provider registration invariant
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .worker-provider-doc-token.log
+          from pathlib import Path
+
+          path = Path("scripts/check-worker-runtime.mjs")
+          source = path.read_text(encoding="utf-8")
+          old = '  "The built-in worker registry must remain empty when configuration is absent or invalid",\n'
+          new = '  "The built-in worker registry remains empty when configuration is absent or invalid",\n'
+          count = source.count(old)
+          print(f"WORKER_PROVIDER_DOC_TOKEN_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"WORKER_PROVIDER_DOC_TOKEN_MATCH_COUNT_INVALID:{count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          print("WORKER_PROVIDER_DOC_TOKEN_UPDATED")
+          PY
+
+      - name: Remove one-time correction machinery
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-worker-provider-doc-token.yml
+          rm -f .github/worker-provider-doc-token.trigger
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify provider and worker runtime contracts
+        run: npm run verify:elevenlabs && npm run verify:runtime
+
+      - name: Commit corrected documentation contract
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add scripts/check-worker-runtime.mjs .github/workflows/one-time-worker-provider-doc-token.yml .github/worker-provider-doc-token.trigger
+          git diff --cached --check
+          git commit -m "Align worker provider documentation contract"
+          git push origin HEAD:main
+
+      - name: Publish correction status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CORRECTION_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.CORRECTION_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".worker-provider-doc-token.log")
+              ? fs.readFileSync(".worker-provider-doc-token.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "worker provider documentation correction log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /WORKER_PROVIDER_DOC_TOKEN_MATCH_COUNT_INVALID|error TS\d+|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "worker provider documentation correction failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/worker-provider-doc-token",
+              description: state === "success"
+                ? "Worker provider documentation contracts passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
