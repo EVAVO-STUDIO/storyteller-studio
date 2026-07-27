@@ -219,7 +219,7 @@ test("calibration store creates, reads and idempotently reuses the same initial 
     });
     assert.equal(created.revision, 1);
     assert.equal(created.payload.fingerprint, session.fingerprint);
-    assert.equal(await store.create(session, {
+    assert.deepEqual(await store.create(session, {
       actorId: "director_calibration_store_001",
       now: t0,
     }), created);
