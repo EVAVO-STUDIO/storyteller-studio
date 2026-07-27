@@ -1,0 +1,168 @@
+name: One-time final mastering render verification fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastering-render-final-fix.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply complete mastering render fixture corrections
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .mastering-render-final-fix.log
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              print(f"MASTERING_RENDER_FINAL_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"MASTERING_RENDER_FINAL_ANCHOR_INVALID:{label}:{count}")
+              return source.replace(old, new, 1)
+
+          path = Path("packages/storyteller/src/mastering-render.test.ts")
+          source = path.read_text(encoding="utf-8")
+          source = replace_once(
+              source,
+              '''async function plan(
+            operations: readonly MasteringOperation[] = [{
+              kind: "gain",
+              gainDb: 4.5,
+              rationaleCode: "MASTERING_TRANSPARENT_GAIN",
+            }],
+            evidence = await engineeringEvidence(),
+          ): Promise<Readonly<{ plan: MasteringPlan; evidence: AudioEngineeringEvidence }>> {
+            const masterBytes = wavBytes();
+          ''',
+              '''async function plan(
+            operations: readonly MasteringOperation[] = [{
+              kind: "gain",
+              gainDb: 4.5,
+              rationaleCode: "MASTERING_TRANSPARENT_GAIN",
+            }],
+            evidence?: AudioEngineeringEvidence,
+          ): Promise<Readonly<{ plan: MasteringPlan; evidence: AudioEngineeringEvidence }>> {
+            const resolvedEvidence = evidence ?? await engineeringEvidence();
+            const masterBytes = wavBytes();
+          ''',
+              "async-plan-signature",
+          )
+          for old, new, label in [
+              ("JSON.stringify(evidence)", "JSON.stringify(resolvedEvidence)", "resolved-evidence-json"),
+              ("    evidence,\n    plan: createMasteringPlan", "    evidence: resolvedEvidence,\n    plan: createMasteringPlan", "resolved-evidence-return"),
+              ("      engineeringEvidence: evidence,\n      targetProfile: evidence.profile,", "      engineeringEvidence: resolvedEvidence,\n      targetProfile: resolvedEvidence.profile,", "resolved-evidence-plan"),
+              ("/alimiter=limit=0\\.69984199:attack=5:release=50:level=0:latency=1/u", "/alimiter=limit=0\\.699842:attack=5:release=50:level=0:latency=1/u", "limiter-rounding"),
+              ("  assert.equal(result.evidence.output.contentHash, hashBytes(wavBytes()));", "  assert.equal(result.evidence.output.contentHash, hashBytes(runner.bytes));", "output-hash"),
+              ("      sampleRateHz: 48_000,\n", "      sampleRateHz: 1_000,\n", "invalid-tamper-rate"),
+          ]:
+              source = replace_once(source, old, new, label)
+          source = replace_once(
+              source,
+              "    readonly bytes = wavBytes(),\n    readonly failure?: Error,",
+              '''    readonly bytes: Uint8Array = new Uint8Array([
+              0x52, 0x49, 0x46, 0x46,
+              0x04, 0x00, 0x00, 0x00,
+              0x57, 0x41, 0x56, 0x45,
+              0x05, 0x06, 0x07, 0x08,
+            ]),
+            readonly failure?: Error,
+          ''',
+              "distinct-typed-mastered-bytes",
+          )
+          path.write_text(source, encoding="utf-8", newline="\n")
+          for temporary in [
+              Path(".github/workflows/one-time-mastering-render-fixture-fix.yml"),
+              Path(".github/mastering-render-fixture-fix.trigger"),
+              Path(".github/workflows/one-time-mastering-render-test-hardening.yml"),
+              Path(".github/mastering-render-test-hardening.trigger"),
+              Path(".github/workflows/one-time-mastering-render-final-fix.yml"),
+              Path(".github/mastering-render-final-fix.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("MASTERING_RENDER_FINAL_FIX_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .mastering-render-final-verify.log
+          npm run build 2>&1 | tee .mastering-render-final-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastering-render-final-fix-${{ github.sha }}
+          path: |
+            .mastering-render-final-fix.log
+            .mastering-render-final-verify.log
+            .mastering-render-final-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit verified renderer
+        shell: bash
+        run: |
+          rm -f .mastering-render-final-fix.log .mastering-render-final-verify.log .mastering-render-final-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify governed mastering rendering"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".mastering-render-final-fix.log",
+              ".mastering-render-final-verify.log",
+              ".mastering-render-final-build.log",
+            ].filter((path) => fs.existsSync(path))
+              .map((path) => fs.readFileSync(path, "utf8"))
+              .join("\n")
+              .replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /MASTERING_RENDER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "mastering renderer failed verification";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/mastering-render-final-fix",
+              description: state === "success"
+                ? "Mastering renderer, all tests and builds passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
