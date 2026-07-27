@@ -120,16 +120,33 @@ Engineering eligibility does not imply:
 
 Those are separate governed gates.
 
+## Governed artifact integration
+
+`ingestAudioEngineeringArtifact` writes the candidate bytes to a private mode-`0600` temporary file, runs independent analysis, deletes the complete temporary directory and then serialises only the immutable evidence.
+
+The evidence is registered through the normal artifact pipeline as a verified `audio-analysis` artifact with:
+
+- the exact audio candidate as its parent;
+- the candidate audio content hash as source evidence;
+- the deterministic generation-request hash;
+- the same rights snapshot;
+- JSON and media-analysis verification checks;
+- no creative-review requirement.
+
+The engineering evidence may be technically ineligible while the evidence artifact itself is valid and verified. In that case the findings remain available for review, but `candidateEligible` remains false. This preserves rejected evidence without pretending the underlying take passed.
+
+Identical retries produce the same evidence and artifact identity. Scope validation occurs before temporary bytes are created. Analysis failure creates no artifact and still removes temporary media.
+
 ## Current boundary
 
-This slice creates and verifies independent engineering evidence. It does not yet automatically attach that evidence to an `audio-analysis` artifact or make it a required dependency of calibration and chapter assembly.
+Independent evidence can now become a governed artifact linked to its exact candidate take. It is not yet mandatory inside every worker generation job or calibration selection.
 
 The next integration must:
 
-1. analyse bytes after private object promotion;
-2. register the immutable evidence as a verified `audio-analysis` artifact;
-3. bind it to the exact audio candidate;
-4. require a passing analysis dependency before calibration selection;
+1. configure one explicit engineering policy in the private worker runtime;
+2. create an `audio-analysis` artifact for each generated candidate;
+3. block queue completion when required analysis is missing or ineligible;
+4. require the exact passing analysis artifact before calibration selection;
 5. reanalyse chapter masters after assembly and mastering;
 6. retain before-and-after mastering evidence;
 7. require a current delivery-profile snapshot at release.
