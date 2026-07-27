@@ -260,7 +260,7 @@ function validateConfiguration(configuration: ElevenLabsAdapterConfiguration): v
     throw new Error("ELEVENLABS_MODEL_POLICIES_INCOMPLETE");
   }
   const modes = new Set<ProviderExecutionMode>();
-  for (const policy of configuration.modelPolicies) {
+  for (const policy of configuration.modelPolicies as readonly ElevenLabsModelPolicy[]) {
     if (!EXECUTION_MODES.includes(policy.mode)) throw new Error("ELEVENLABS_MODEL_MODE_INVALID");
     if (modes.has(policy.mode)) throw new Error("ELEVENLABS_MODEL_MODE_DUPLICATE");
     modes.add(policy.mode);
@@ -310,7 +310,9 @@ function validateConfiguration(configuration: ElevenLabsAdapterConfiguration): v
       !Array.isArray(binding.allowedModes)
       || binding.allowedModes.length === 0
       || new Set(binding.allowedModes).size !== binding.allowedModes.length
-      || binding.allowedModes.some((mode) => !EXECUTION_MODES.includes(mode))
+      || (binding.allowedModes as readonly ProviderExecutionMode[]).some(
+        (mode: ProviderExecutionMode) => !EXECUTION_MODES.includes(mode),
+      )
     ) {
       throw new Error("ELEVENLABS_VOICE_ALLOWED_MODES_INVALID");
     }
