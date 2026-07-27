@@ -226,12 +226,18 @@ function validatePronunciations(values: readonly CanonicalPronunciation[]): void
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_PRONUNCIATIONS_INVALID");
   }
   const seen = new Set<string>();
+  const seenWrittenForms = new Set<string>();
   for (const value of values) {
     requireText(value.writtenForm, 300, "GENERATION_MATERIAL_PRONUNCIATION_WRITTEN_INVALID", true);
     if (value.ipa !== undefined) requireText(value.ipa, 500, "GENERATION_MATERIAL_PRONUNCIATION_IPA_INVALID", true);
     if (value.providerPhoneme !== undefined) requireText(value.providerPhoneme, 500, "GENERATION_MATERIAL_PRONUNCIATION_PHONEME_INVALID", true);
     if (value.spokenForm !== undefined) requireText(value.spokenForm, 500, "GENERATION_MATERIAL_PRONUNCIATION_SPOKEN_INVALID", true);
     requireInteger(value.approvedRevision, 1, 1_000_000, "GENERATION_MATERIAL_PRONUNCIATION_REVISION_INVALID");
+    const writtenFormKey = value.writtenForm.trim().toLocaleLowerCase("en-AU");
+    if (seenWrittenForms.has(writtenFormKey)) {
+      throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_PRONUNCIATION_WRITTEN_DUPLICATE");
+    }
+    seenWrittenForms.add(writtenFormKey);
     const fingerprint = pronunciationFingerprint(value);
     if (seen.has(fingerprint)) {
       throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_PRONUNCIATION_DUPLICATE");
@@ -253,6 +259,9 @@ function validateRights(
     || rights.allowedUses.some((use) => !PROJECT_USES.has(use))
   ) {
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_RIGHTS_USES_INVALID");
+  }
+  if (new Set(rights.allowedUses).size !== rights.allowedUses.length) {
+    throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_RIGHTS_USES_DUPLICATE");
   }
   const intendedUse = material.intendedUse ?? "audiobook";
   if (!PROJECT_USES.has(intendedUse)) {
@@ -327,6 +336,59 @@ export function validateGenerationWorkerMaterial(
   validateCostPolicy(material);
 }
 
+function normaliseGenerationWorkerMaterial(
+  material: GenerationWorkerMaterial,
+): GenerationWorkerMaterial {
+  return {
+    text: material.text,
+    immutableSourceHash: material.immutableSourceHash,
+    voiceProfileId: material.voiceProfileId,
+    voiceRevision: material.voiceRevision,
+    direction: {
+      ...material.direction,
+      notes: Object.freeze([...material.direction.notes]),
+    },
+    pronunciations: Object.freeze((material.pronunciations ?? []).map((value) => ({
+      writtenForm: value.writtenForm,
+      approvedRevision: value.approvedRevision,
+      ...(value.ipa !== undefined ? { ipa: value.ipa } : {}),
+      ...(value.providerPhoneme !== undefined
+        ? { providerPhoneme: value.providerPhoneme }
+        : {}),
+      ...(value.spokenForm !== undefined ? { spokenForm: value.spokenForm } : {}),
+    }))),
+    mode: material.mode ?? "production",
+    format: material.format ?? "wav",
+    sampleRateHz: material.sampleRateHz ?? 48_000,
+    rights: {
+      rightsEvidenceId: material.rights.rightsEvidenceId,
+      rightsFingerprint: material.rights.rightsFingerprint,
+      allowedUses: Object.freeze([...material.rights.allowedUses]),
+      commercialUseApproved: material.rights.commercialUseApproved,
+      ...(material.rights.expiresAt !== undefined
+        ? { expiresAt: material.rights.expiresAt }
+        : {}),
+      ...(material.rights.retainUntil !== undefined
+        ? { retainUntil: material.rights.retainUntil }
+        : {}),
+      ...(material.rights.deletionRequiredAt !== undefined
+        ? { deletionRequiredAt: material.rights.deletionRequiredAt }
+        : {}),
+    },
+    intendedUse: material.intendedUse ?? "audiobook",
+    commercial: material.commercial ?? true,
+    parentArtifactIds: Object.freeze([...(material.parentArtifactIds ?? [])]),
+    ...(material.costPolicy
+      ? {
+          costPolicy: {
+            currency: material.costPolicy.currency,
+            maximumTotalEstimatedCost: material.costPolicy.maximumTotalEstimatedCost,
+          },
+        }
+      : {}),
+  };
+}
+
 function materialFingerprintBase(input: Readonly<{
   job: GenerationJob;
   material: GenerationWorkerMaterial;
@@ -348,8 +410,9 @@ export function createGenerationMaterialRecord(
   material: GenerationWorkerMaterial,
   now = new Date(),
 ): GenerationMaterialRecord {
-  validateGenerationWorkerMaterial(job, material, now);
-  const base = materialFingerprintBase({ job, material });
+  const normalisedMaterial = normaliseGenerationWorkerMaterial(material);
+  validateGenerationWorkerMaterial(job, normalisedMaterial, now);
+  const base = materialFingerprintBase({ job, material: normalisedMaterial });
   return {
     schemaVersion: GENERATION_MATERIAL_SCHEMA_VERSION,
     id: generationMaterialEntityId(job.id),
@@ -358,8 +421,8 @@ export function createGenerationMaterialRecord(
     segmentId: job.segmentId,
     jobCacheKey: job.cacheKey,
     candidateCount: job.candidateCount,
-    textHash: stableHash(material.text),
-    material,
+    textHash: stableHash(normalisedMaterial.text),
+    material: normalisedMaterial,
     createdAt: now.toISOString(),
     fingerprint: stableHash(base),
   };
@@ -385,9 +448,6 @@ export function assertGenerationMaterialRecord(
   validateGenerationWorkerMaterial(job, record.material, createdAt);
   if (record.id !== expectedEntityId || record.id !== generationMaterialEntityId(record.jobId)) {
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_ENTITY_MISMATCH");
-  }
-  if (record.projectId !== record.material.direction.segmentId && false) {
-    throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_UNREACHABLE_SCOPE_GUARD");
   }
   if (record.textHash !== stableHash(record.material.text)) {
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_TEXT_HASH_INVALID");
