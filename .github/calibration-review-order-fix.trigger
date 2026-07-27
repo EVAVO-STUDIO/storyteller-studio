@@ -1,1 +1,1 @@
-record every blind review before candidate selection timestamps
+record all blind reviews before every candidate selection timestamp
