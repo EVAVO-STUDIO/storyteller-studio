@@ -1,1 +1,1 @@
-apply resilient regression risk classification repair
+commit regression risk classification repair before full verification
