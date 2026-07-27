@@ -12,6 +12,7 @@
     "./artifact-store": "./src/artifact-store.ts",
     "./generation-queue": "./src/generation-queue.ts",
     "./generation-worker": "./src/generation-worker.ts",
+    "./heartbeat-worker": "./src/heartbeat-worker.ts",
     "./lease-heartbeat": "./src/lease-heartbeat.ts",
     "./private-object-store": "./src/private-object-store.ts",
     "./project-store": "./src/project-store.ts",
