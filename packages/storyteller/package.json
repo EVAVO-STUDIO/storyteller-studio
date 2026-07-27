@@ -30,6 +30,7 @@
     "./heartbeat-worker": "./src/heartbeat-worker.ts",
     "./lease-heartbeat": "./src/lease-heartbeat.ts",
     "./mastering-plan": "./src/mastering-plan.ts",
+    "./mastering-render": "./src/mastering-render.ts",
     "./private-object-store": "./src/private-object-store.ts",
     "./project-store": "./src/project-store.ts",
     "./provider-adapter": "./src/provider-adapter.ts",
