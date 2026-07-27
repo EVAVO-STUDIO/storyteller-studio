@@ -227,15 +227,13 @@ test("policy templates reject unknown, missing, duplicate and future-reviewed de
 
 test("series metadata and word limits fail before an unusable script is admitted", () => {
   const creditPolicy = policy();
+  const { seriesTitle: _seriesTitle, ...missingSeriesTitle } = seriesMetadata();
   assert.throws(
     () => createBookCreditScript({
       id: "credit_series_missing_001",
       projectId: "project_credit_001",
       kind: "opening",
-      metadata: {
-        ...seriesMetadata(),
-        seriesTitle: undefined,
-      },
+      metadata: missingSeriesTitle,
       policy: creditPolicy,
       createdAt: t0,
     }),

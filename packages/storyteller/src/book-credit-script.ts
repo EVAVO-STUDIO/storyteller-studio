@@ -159,17 +159,15 @@ const ALLOWED_TOKENS: ReadonlySet<BookCreditToken> = new Set([
   "copyrightNotice",
   "productionCredit",
 ]);
-const REQUIRED_TEMPLATE_TOKENS: Readonly<
-  Record<BookCreditKind, readonly BookCreditToken[]>
-> = Object.freeze({
-  opening: Object.freeze(["title", "authorCredit", "narratorCredit"]),
+const REQUIRED_TEMPLATE_TOKENS = Object.freeze({
+  opening: Object.freeze(["title", "authorCredit", "narratorCredit"] as const),
   closing: Object.freeze([
     "title",
     "authorCredit",
     "narratorCredit",
     "copyrightNotice",
-  ]),
-});
+  ] as const),
+}) satisfies Readonly<Record<BookCreditKind, readonly BookCreditToken[]>>;
 const REQUIRED_REVIEW_CHECKS: Readonly<
   Record<BookCreditReviewRole, readonly string[]>
 > = Object.freeze({
