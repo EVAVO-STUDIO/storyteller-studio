@@ -74,6 +74,7 @@ export interface ClaimedGenerationWorkerInput {
   timeoutMs?: number;
   signal?: AbortSignal;
   beforeTerminalTransition?: () => Promise<void>;
+  clock?: () => Date;
   now?: Date;
 }
 
@@ -489,12 +490,16 @@ function providerExecutionIsRetryable(report: GenerationExecutionReport): boolea
   );
 }
 
+function generationWorkerNow(input: ClaimedGenerationWorkerInput): Date {
+  return input.clock?.() ?? input.now ?? new Date();
+}
+
 export async function runClaimedGenerationWorker(
   input: ClaimedGenerationWorkerInput,
 ): Promise<GenerationWorkerResult> {
   requireWorkerInput(input);
   throwIfWorkerAborted(input.signal);
-  const now = input.now ?? new Date();
+  const currentTime = () => generationWorkerNow(input);
   const requests = buildRequests(input.claim, input.material);
   const report = await executeGenerationJob({
     job: input.claim.item.job,
@@ -517,7 +522,7 @@ export async function runClaimedGenerationWorker(
         worker: input,
         request,
         result,
-        now,
+        now: currentTime(),
       }));
     }
   } catch {
@@ -531,7 +536,7 @@ export async function runClaimedGenerationWorker(
       candidateArtifactIds: ingested
         .filter((item) => item.envelope.payload.kind === "audio-candidate")
         .map((item) => item.envelope.payload.id),
-      now,
+      now: currentTime(),
     });
   }
 
@@ -548,7 +553,7 @@ export async function runClaimedGenerationWorker(
       message: "One or more provider results failed artifact integrity verification and were quarantined.",
       artifacts,
       candidateArtifactIds,
-      now,
+      now: currentTime(),
     });
   }
 
@@ -559,7 +564,7 @@ export async function runClaimedGenerationWorker(
     artifactIds: artifacts.map((artifact) => artifact.id),
     candidateArtifactIds,
     requests,
-    now,
+    now: currentTime(),
   });
   artifacts.push(reportArtifact.ingest.envelope.payload);
   throwIfWorkerAborted(input.signal);
@@ -573,7 +578,7 @@ export async function runClaimedGenerationWorker(
       candidateArtifactIds,
       reportArtifactId: reportArtifact.ingest.envelope.payload.id,
       reportHash: reportArtifact.reportHash,
-      now,
+      now: currentTime(),
     });
   }
 
@@ -588,7 +593,7 @@ export async function runClaimedGenerationWorker(
       candidateArtifactIds,
       reportArtifactId: reportArtifact.ingest.envelope.payload.id,
       reportHash: reportArtifact.reportHash,
-      now,
+      now: currentTime(),
     });
   }
 
@@ -602,7 +607,7 @@ export async function runClaimedGenerationWorker(
           code: "GENERATION_PROVIDER_EXECUTION_INCOMPLETE",
           message: "Provider execution did not produce the complete governed candidate set.",
           retryable: true,
-          now,
+          now: currentTime(),
         },
       );
       return {
@@ -623,7 +628,7 @@ export async function runClaimedGenerationWorker(
       candidateArtifactIds,
       reportArtifactId: reportArtifact.ingest.envelope.payload.id,
       reportHash: reportArtifact.reportHash,
-      now,
+      now: currentTime(),
     });
   }
 
@@ -642,7 +647,7 @@ export async function runClaimedGenerationWorker(
             currency: accounting.currency,
           }
         : {}),
-      now,
+      now: currentTime(),
     });
     return {
       queueEnvelope: completion.envelope,
@@ -667,7 +672,7 @@ export async function runClaimedGenerationWorker(
       candidateArtifactIds,
       reportArtifactId: reportArtifact.ingest.envelope.payload.id,
       reportHash: reportArtifact.reportHash,
-      now,
+      now: currentTime(),
     });
   }
 }
