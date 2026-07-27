@@ -1,0 +1,19 @@
+{
+  "requiredFeatures": [
+    "batch-long-form",
+    "pronunciation-dictionary",
+    "word-timestamps"
+  ],
+  "preferredFeatures": [
+    "style-instructions",
+    "speech-to-speech",
+    "regional-processing"
+  ],
+  "maximumSegmentCharacters": 1200,
+  "requiredRegion": "australia",
+  "prohibitInputStorage": true,
+  "prohibitTrainingUse": true,
+  "requireCloneConsentEnforcement": true,
+  "maximumUnitCost": 1.5,
+  "maximumLatencyMs": 10000
+}
