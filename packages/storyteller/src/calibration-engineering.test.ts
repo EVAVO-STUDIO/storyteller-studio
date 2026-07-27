@@ -68,7 +68,7 @@ const alternateWavBytes = new Uint8Array([
 const rights: ArtifactRightsSnapshot = Object.freeze({
   rightsEvidenceId: "rights_calibration_engineering_001",
   rightsFingerprint: "d".repeat(64),
-  allowedUses: Object.freeze(["audiobook"]),
+  allowedUses: Object.freeze(["audiobook"] as const),
   commercialUseApproved: true,
   expiresAt: "2028-07-27T00:00:00.000Z",
 });
@@ -401,7 +401,7 @@ test("verified scope-matched audio, transcript and independent engineering admit
       "elevenlabs",
       "eleven_multilingual_v2",
       capabilityFingerprint,
-      session().text,
+      segment().text,
     ]) assert.equal(serialised.includes(forbidden), false);
   });
 });
