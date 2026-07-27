@@ -201,7 +201,12 @@ export function budgetReservationId(input: Readonly<{
   requireIdentifier(input.jobId, "BUDGET_JOB_ID_INVALID");
   requireIdentifier(input.queueItemId, "BUDGET_QUEUE_ITEM_ID_INVALID");
   requireAttempt(input.attempt);
-  return `reservation_${stableHash(input).slice(0, 32)}`;
+  return `reservation_${stableHash({
+  accountId: input.accountId,
+  jobId: input.jobId,
+  queueItemId: input.queueItemId,
+  attempt: input.attempt,
+}).slice(0, 32)}`;
 }
 
 function reservationFingerprint(
