@@ -1,0 +1,138 @@
+name: One-time robust calibration review order correction
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-calibration-review-order-fix-v2
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Correct monotonic review and selection order
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .calibration-review-order-fix-v2.log
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/calibration-workflow.test.ts")
+          source = path.read_text(encoding="utf-8")
+          old = '''  for (const [index, candidate] of session.candidates.entries()) {
+            for (const [reviewerOffset, reviewerId] of ["reviewer_alpha", "reviewer_beta"].entries()) {
+              const reviewIndex = index * 2 + reviewerOffset + 1;
+              session = recordCalibrationReview(
+                session,
+                reviewFor(
+                  candidate.id,
+                  reviewerId,
+                  reviewIndex,
+                  reviewOverride(candidate.id, reviewerId, reviewIndex),
+                ),
+              );
+            }
+            session = selectCalibrationCandidate(session, {
+              passageId: candidate.passageId,
+              candidateId: candidate.id,
+              selectedBy: "director_calibration_001",
+              selectedAt: new Date(t0.getTime() + 60_000 + index * 1_000).toISOString(),
+            });
+          }
+'''
+          new = '''  for (const [index, candidate] of session.candidates.entries()) {
+            for (const [reviewerOffset, reviewerId] of ["reviewer_alpha", "reviewer_beta"].entries()) {
+              const reviewIndex = index * 2 + reviewerOffset + 1;
+              session = recordCalibrationReview(
+                session,
+                reviewFor(
+                  candidate.id,
+                  reviewerId,
+                  reviewIndex,
+                  reviewOverride(candidate.id, reviewerId, reviewIndex),
+                ),
+              );
+            }
+          }
+          for (const [index, candidate] of session.candidates.entries()) {
+            session = selectCalibrationCandidate(session, {
+              passageId: candidate.passageId,
+              candidateId: candidate.id,
+              selectedBy: "director_calibration_001",
+              selectedAt: new Date(t0.getTime() + 60_000 + index * 1_000).toISOString(),
+            });
+          }
+'''
+          count = source.count(old)
+          print(f"CALIBRATION_REVIEW_ORDER_V2_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"CALIBRATION_REVIEW_ORDER_V2_MATCH_COUNT_INVALID:{count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+          print("CALIBRATION_REVIEW_ORDER_V2_FIXED")
+          PY
+
+      - name: Remove one-time correction machinery
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-calibration-review-order-fix.yml
+          rm -f .github/calibration-review-order-fix.trigger
+          rm -f .github/workflows/one-time-calibration-review-order-fix-v2.yml
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify calibration workflow tests
+        run: npm run typecheck && npm run test:engine
+
+      - name: Commit calibration review order correction
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/calibration-workflow.test.ts .github/workflows/one-time-calibration-review-order-fix.yml .github/calibration-review-order-fix.trigger .github/workflows/one-time-calibration-review-order-fix-v2.yml
+          git diff --cached --check
+          git commit -m "Fix calibration review fixture ordering"
+          git push origin HEAD:main
+
+      - name: Publish correction status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          CORRECTION_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.CORRECTION_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".calibration-review-order-fix-v2.log")
+              ? fs.readFileSync(".calibration-review-order-fix-v2.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "calibration review order correction log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /CALIBRATION_REVIEW_ORDER_V2_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "calibration review order correction failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/calibration-review-order-v2",
+              description: state === "success"
+                ? "Calibration review and selection ordering passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
