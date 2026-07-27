@@ -1,0 +1,170 @@
+name: One-time ElevenLabs CLI integration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/elevenlabs-cli-integration.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: storyteller-elevenlabs-cli-integration
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add offline provider configuration commands
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .elevenlabs-cli-integration.log
+          from pathlib import Path
+
+          path = Path("packages/cli/src/main.ts")
+          source = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              print(f"ELEVENLABS_CLI_INTEGRATION_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"ELEVENLABS_CLI_INTEGRATION_MATCH_COUNT_INVALID:{label}:{count}")
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '} from "@evavo/storyteller-engine";\nimport {\n  FileGenerationQueue,\n',
+              '} from "@evavo/storyteller-engine";\n'
+              'import type { ElevenLabsModelId } from "@evavo/storyteller-engine/elevenlabs-adapter";\n'
+              'import {\n  FileGenerationQueue,\n',
+              "model-type-import",
+          )
+
+          replace_once(
+              '} from "@evavo/storyteller-engine/project-store";\n\nexport type ParsedArguments',
+              '} from "@evavo/storyteller-engine/project-store";\n'
+              'import {\n'
+              '  createElevenLabsPricingForConfiguration,\n'
+              '  validateElevenLabsConfigurationDocument,\n'
+              '} from "./elevenlabs-config.js";\n\n'
+              'export type ParsedArguments',
+              "configuration-tool-import",
+          )
+
+          replace_once(
+              '  process.stdout.write(`  jobs           Create deterministic generation job intents from a project manifest.\\n`);\n',
+              '  process.stdout.write(`  jobs           Create deterministic generation job intents from a project manifest.\\n`);\n'
+              '  process.stdout.write(`  elevenlabs-pricing  Create an immutable, expiring pricing snapshot without provider access.\\n`);\n'
+              '  process.stdout.write(`  elevenlabs-validate Validate a complete ElevenLabs configuration offline.\\n`);\n',
+              "help-commands",
+          )
+
+          replace_once(
+              '  process.stdout.write(`  npm run storyteller -- queue-enqueue --project project.json --data-dir ./storage\\n`);\n',
+              '  process.stdout.write(`  npm run storyteller -- elevenlabs-pricing --model eleven_multilingual_v2 --currency AUD --micros-per-thousand 120000 --effective-from 2026-07-01T00:00:00Z --expires-at 2026-08-31T00:00:00Z --source-reference elevenlabs-pricing-2026-07 --output pricing.json\\n`);\n'
+              '  process.stdout.write(`  npm run storyteller -- elevenlabs-validate --input elevenlabs.json --validation-at 2026-07-27T00:00:00Z --output elevenlabs-summary.json\\n`);\n'
+              '  process.stdout.write(`  npm run storyteller -- queue-enqueue --project project.json --data-dir ./storage\\n`);\n',
+              "help-examples",
+          )
+
+          command_block = '''    case "elevenlabs-pricing": {
+              const rate = numberFlag(args, "micros-per-thousand");
+              if (rate === undefined) throw new Error("CLI_FLAG_REQUIRED:micros-per-thousand");
+              if (!Number.isSafeInteger(rate) || rate < 1) {
+                throw new Error("CLI_FLAG_INTEGER_INVALID:micros-per-thousand");
+              }
+              const result = createElevenLabsPricingForConfiguration({
+                modelId: stringFlag(args, "model", true)! as ElevenLabsModelId,
+                currency: stringFlag(args, "currency", true)!,
+                microsPerThousandCharacters: rate,
+                effectiveFrom: stringFlag(args, "effective-from", true)!,
+                expiresAt: stringFlag(args, "expires-at", true)!,
+                sourceReference: stringFlag(args, "source-reference", true)!,
+              });
+              emit(result, output, force);
+              return 0;
+            }
+
+            case "elevenlabs-validate": {
+              const document = readJson<unknown>(stringFlag(args, "input", true)!);
+              const result = validateElevenLabsConfigurationDocument(
+                document,
+                dateFlag(args, "validation-at") ?? new Date(),
+              );
+              emit(result, output, force);
+              return 0;
+            }
+
+          '''
+          replace_once(
+              '    case "queue-enqueue": {\n',
+              command_block + '    case "queue-enqueue": {\n',
+              "command-cases",
+          )
+
+          path.write_text(source, encoding="utf-8", newline="\n")
+          print("ELEVENLABS_CLI_INTEGRATED")
+          PY
+
+      - name: Remove one-time integration machinery
+        shell: bash
+        run: |
+          rm -f .github/workflows/one-time-elevenlabs-cli-integration.yml
+          rm -f .github/elevenlabs-cli-integration.trigger
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify CLI integration
+        run: npm run typecheck && npm run test:cli
+
+      - name: Commit offline provider commands
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/cli/src/main.ts .github/workflows/one-time-elevenlabs-cli-integration.yml .github/elevenlabs-cli-integration.trigger
+          git diff --cached --check
+          git commit -m "Add offline ElevenLabs configuration commands"
+          git push origin HEAD:main
+
+      - name: Publish integration status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          INTEGRATION_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.INTEGRATION_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".elevenlabs-cli-integration.log")
+              ? fs.readFileSync(".elevenlabs-cli-integration.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "ElevenLabs CLI integration log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /ELEVENLABS_CLI_INTEGRATION_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "ElevenLabs CLI integration failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/elevenlabs-cli-integration",
+              description: state === "success"
+                ? "Offline ElevenLabs configuration CLI passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
