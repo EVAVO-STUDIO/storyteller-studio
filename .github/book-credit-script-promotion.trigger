@@ -1,1 +1,1 @@
-run the line-stable exact credit script promotion and verify every gate
+run the typed semantic credit template promotion and verify every gate
