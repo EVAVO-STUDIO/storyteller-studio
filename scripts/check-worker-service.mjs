@@ -42,6 +42,7 @@ for (const path of [
   "packages/storyteller/src/worker-service.ts",
   "packages/storyteller/src/worker-service.test.ts",
   "packages/storyteller/src/worker-service-clock.test.ts",
+  "packages/storyteller/src/worker-service-budget.test.ts",
   "packages/storyteller/package.json",
   "docs/WORKER_SERVICE.md",
 ]) requireFile(path);
@@ -60,6 +61,17 @@ requireTokens("packages/storyteller/src/worker-service.ts", [
   "validateGenerationWorkerMaterial",
   "runGenerationWorkerWithHeartbeat",
   "GenerationLeaseOwnershipLostError",
+  "FileGenerationBudgetController",
+  "GenerationBudgetSession",
+  "isGenerationBudgetAdmissionError",
+  "budgetController",
+  "requireBudget",
+  "GENERATION_WORKER_SERVICE_BUDGET_CONTROLLER_REQUIRED",
+  "GENERATION_BUDGET_ADMISSION_FAILED",
+  "beforeQueueTransition",
+  "GENERATION_BUDGET_LEASE_OWNERSHIP_LOST",
+  "GENERATION_BUDGET_WORKER_ABORTED",
+  "GENERATION_BUDGET_WORKER_RUNTIME_FAILED",
   "heartbeatScheduler",
   "clock: this.#now",
   "scheduler: this.#heartbeatScheduler",
@@ -89,10 +101,25 @@ requireTokens("packages/storyteller/src/worker-service-clock.test.ts", [
   "test-worker-service-clock-secret",
 ]);
 
+requireTokens("packages/storyteller/src/worker-service-budget.test.ts", [
+  "required budget controller must be configured before the service can start",
+  "worker reserves the maximum before provider invocation and commits actual cost before completion",
+  "missing budget account blocks before provider invocation",
+  "insufficient available budget blocks before provider invocation",
+  "provider configuration block releases the reservation before queue block",
+  "attempted provider failure conservatively commits the reservation before retry",
+  "forced abort conservatively settles the reservation and leaves the claim recoverable",
+  "duringProvider.reservedMicros",
+  "adapter.startedCount",
+  "BUDGET_INSUFFICIENT_AVAILABLE_FUNDS",
+  "GENERATION_PROVIDER_EXECUTION_INCOMPLETE",
+]);
+
 requireTokens("docs/WORKER_SERVICE.md", [
   "Claim polling",
   "Bounded concurrency",
   "Material resolution",
+  "Budget reservation and settlement",
   "Provider execution",
   "Live transition time",
   "Outcome classification",
@@ -101,6 +128,10 @@ requireTokens("docs/WORKER_SERVICE.md", [
   "Public snapshot",
   "No HTTP execution surface",
   "Production migration",
+  "requireBudget: true",
+  "After material resolution and before provider invocation",
+  "after artifact admission and before queue completion",
+  "settled conservatively",
 ]);
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
@@ -113,6 +144,19 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
 const serviceSource = existsSync(fromRoot("packages/storyteller/src/worker-service.ts"))
   ? read("packages/storyteller/src/worker-service.ts")
   : "";
+const materialResolveIndex = serviceSource.indexOf("material = await this.#dependencies.materials.resolve(claim)");
+const budgetReserveIndex = serviceSource.indexOf("budgetSession = await controller.reserve(");
+const providerRunIndex = serviceSource.indexOf("const result = await runGenerationWorkerWithHeartbeat(");
+if (
+  materialResolveIndex < 0
+  || budgetReserveIndex < 0
+  || providerRunIndex < 0
+  || materialResolveIndex >= budgetReserveIndex
+  || budgetReserveIndex >= providerRunIndex
+) {
+  problems.push("worker service must resolve material, reserve budget, then invoke the provider worker in order");
+}
+
 const snapshotStart = serviceSource.indexOf("  snapshot(): GenerationWorkerServiceSnapshot");
 const snapshotEnd = serviceSource.indexOf("  outcomes(): readonly WorkerJobOutcome[]", snapshotStart);
 if (snapshotStart < 0 || snapshotEnd <= snapshotStart) {
@@ -131,6 +175,8 @@ if (snapshotStart < 0 || snapshotEnd <= snapshotStart) {
     "objectKey",
     "container",
     "versionId",
+    "reservationId",
+    "budgetController",
   ]) {
     if (snapshotSource.includes(forbidden)) {
       problems.push(`worker-service public snapshot exposes forbidden field: ${forbidden}`);
@@ -154,6 +200,8 @@ if (publicViewStart < 0) {
     "versionId",
     "providerRequestId",
     "credential",
+    "reservationId",
+    "budgetController",
   ]) {
     if (publicView.includes(forbidden)) {
       problems.push(`worker-service public view exposes forbidden field: ${forbidden}`);
@@ -170,6 +218,7 @@ for (const path of [
     "GenerationWorkerService",
     "worker-service",
     "FileGenerationMaterialStore",
+    "FileGenerationBudgetController",
     "runGenerationWorkerWithHeartbeat",
     "runClaimedGenerationWorker",
     "claimNext(",
@@ -185,6 +234,10 @@ for (const path of [
   ".github/worker-live-clock.trigger",
   ".github/workflows/one-time-worker-service-clock.yml",
   ".github/worker-service-clock.trigger",
+  ".github/workflows/one-time-worker-budget-integration.yml",
+  ".github/worker-budget-integration.trigger",
+  ".github/workflows/one-time-empty-result-cost-policy-fix.yml",
+  ".github/empty-result-cost-policy-fix.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {
     problems.push(`completed one-time worker migration file remains in the repository: ${path}`);
@@ -200,8 +253,11 @@ if (problems.length > 0) {
 console.log("storyteller_worker_service_check_passed");
 console.log("- queue polling is bounded by priority, availability, project scope and concurrency");
 console.log("- executable material is resolved and revalidated only after an exclusive claim");
-console.log("- heartbeat renewal and terminal transitions share the live service clock");
-console.log("- graceful drain stops claims while forced abort leaves recovery to lease expiry");
-console.log("- service snapshots and outcomes omit manuscript, voice, credential, storage and lease secrets");
+console.log("- the private runtime reserves budget before provider execution");
+console.log("- budget settles after artifact admission and before queue completion");
+console.log("- configuration blocks release capacity while attempted spend settles conservatively");
+console.log("- heartbeat renewal, settlement and terminal transitions share the live service clock");
+console.log("- graceful drain stops claims while forced abort leaves queue recovery to lease expiry");
+console.log("- service snapshots omit manuscript, voice, credential, storage, budget and lease secrets");
 console.log("- normal API and browser runtime surfaces expose no worker service");
 console.log("- completed one-time migration workflows have been removed");
