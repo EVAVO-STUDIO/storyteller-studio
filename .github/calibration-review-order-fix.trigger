@@ -1,1 +1,1 @@
-record all blind reviews before every candidate selection timestamp
+apply the robust all-push calibration review ordering migration
