@@ -403,7 +403,7 @@ test("approval fails for missing selections, weak review coverage and low sustai
   const low = buildReviewedSession(
     () => ({}),
     (_candidateId, reviewerId) => reviewerId === "reviewer_beta"
-      ? { scores: highScores({ sustainedListenability: 2.5 }) }
+      ? { scores: highScores({ sustainedListenability: 2.0 }) }
       : {},
   );
   const lowAssessment = assessCalibrationSession(low);
