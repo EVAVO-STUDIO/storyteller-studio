@@ -2,7 +2,7 @@ const workflow = [
   { label: "Manuscript", detail: "Immutable source and chapter map", state: "ready" },
   { label: "Story bible", detail: "Characters, places and pronunciations", state: "review" },
   { label: "Direction", detail: "Narrative stance and dramatic beats", state: "active" },
-  { label: "Calibration", detail: "Narrator and character reference takes", state: "blocked" },
+  { label: "Calibration", detail: "Varied passages, blind review and continuity lock", state: "review" },
   { label: "Production", detail: "Candidate generation through a leased worker", state: "waiting" },
   { label: "Artifact register", detail: "Integrity, provenance, rights and review state", state: "waiting" },
   { label: "Mastering", detail: "Approved dependencies and chapter assembly", state: "waiting" },
@@ -27,6 +27,82 @@ const qaGates = [
   ["Final word", "Required", "End-of-segment truncation detection"],
   ["Continuity", "Review", "Pitch, rate, pause, energy and embedding drift"],
   ["Engineering", "Required", "Loudness, peak, noise, clipping and silence"],
+];
+
+const calibrationPosture = [
+  {
+    label: "Passages",
+    value: "Varied by risk",
+    detail: "Quiet intimacy, dialogue, long syntax, pressure, exposition, endings and pronunciation.",
+    tone: "ready",
+  },
+  {
+    label: "Reviews",
+    value: "Blind + independent",
+    detail: "Revise and reject decisions cannot be averaged away by stronger scores.",
+    tone: "review",
+  },
+  {
+    label: "Continuity",
+    value: "One approved lock",
+    detail: "Voice revision, provider, model and capability snapshot must remain consistent.",
+    tone: "ready",
+  },
+  {
+    label: "HTTP surface",
+    value: "Redacted reads only",
+    detail: "No candidate, review, selection, approval or rejection mutation endpoint.",
+    tone: "private",
+  },
+];
+
+const calibrationStages = [
+  {
+    index: "01",
+    label: "Propose passages",
+    state: "Implemented",
+    tone: "ready",
+    detail: "Select distinct manuscript risks without copying prose into the calibration record.",
+  },
+  {
+    index: "02",
+    label: "Generate candidates",
+    state: "Blocked",
+    tone: "blocked",
+    detail: "Requires rights-valid material, provider preflight, budget reservation and private storage.",
+  },
+  {
+    index: "03",
+    label: "Blind review",
+    state: "Internal",
+    tone: "review",
+    detail: "Independent human reviewers score long-form performance dimensions and explicit decisions.",
+  },
+  {
+    index: "04",
+    label: "Select references",
+    state: "Human",
+    tone: "review",
+    detail: "Choose one eligible take for every required passage; assignment never implies approval.",
+  },
+  {
+    index: "05",
+    label: "Approve continuity",
+    state: "Waiting",
+    tone: "blocked",
+    detail: "A named human locks the approved voice revision and provider capability evidence.",
+  },
+];
+
+const calibrationDimensions = [
+  ["Listener relationship", "Required"],
+  ["Textual truth", "Required"],
+  ["Clarity + rhythm", "Per-dimension floor"],
+  ["Emotional truth", "Without display"],
+  ["Restraint", "Independent score"],
+  ["Sustained listenability", "Long-form gate"],
+  ["Differentiation", "Intent before accent"],
+  ["Pronunciation", "Approved canon"],
 ];
 
 const artifactPosture = [
@@ -110,7 +186,12 @@ export default function StudioHomePage() {
         </div>
         <div className="topbar-actions">
           <span className="environment-badge">Governed foundation</span>
-          <button className="quiet-button" type="button" disabled title="Deployment and signed launch are not configured">
+          <button
+            className="quiet-button"
+            type="button"
+            disabled
+            title="Deployment and signed launch are not configured"
+          >
             Launch unavailable
           </button>
         </div>
@@ -123,6 +204,7 @@ export default function StudioHomePage() {
           <a className="nav-item" href="#manuscript"><span>MS</span>Manuscript</a>
           <a className="nav-item" href="#direction"><span>DR</span>Direction</a>
           <a className="nav-item" href="#voices"><span>VO</span>Voices</a>
+          <a className="nav-item" href="#calibration"><span>CA</span>Calibration</a>
           <a className="nav-item" href="#takes"><span>TK</span>Takes</a>
           <a className="nav-item" href="#artifacts"><span>AR</span>Artifacts</a>
           <a className="nav-item" href="#visuals"><span>VI</span>Visual story</a>
@@ -150,18 +232,18 @@ export default function StudioHomePage() {
           <div className="readiness-card" aria-label="Project readiness">
             <div className="readiness-topline">
               <span>Production readiness</span>
-              <strong>32%</strong>
+              <strong>41%</strong>
             </div>
-            <div className="progress-track" aria-hidden="true"><span style={{ width: "32%" }} /></div>
-            <p>Queue and artifact governance are executable. Voice rights, provider configuration, object storage and human calibration remain deliberately unresolved.</p>
+            <div className="progress-track" aria-hidden="true"><span style={{ width: "41%" }} /></div>
+            <p>Queue, artifacts and calibration governance are executable. Voice rights, a live provider, object storage and an actual human-approved session remain deliberately unresolved.</p>
           </div>
         </section>
 
         <section className="metric-grid" aria-label="Foundation capabilities">
           <article className="metric-card"><span>01</span><strong>Exact-source</strong><p>Stable offsets and immutable manuscript fingerprints.</p></article>
           <article className="metric-card"><span>02</span><strong>Series-aware</strong><p>Voice, pronunciation and performance anchors across books.</p></article>
-          <article className="metric-card"><span>03</span><strong>Artifact-governed</strong><p>Private media references, integrity checks and revisioned evidence.</p></article>
-          <article className="metric-card"><span>04</span><strong>Review-first</strong><p>Verification, human approval and final release remain separate.</p></article>
+          <article className="metric-card"><span>03</span><strong>Calibration-gated</strong><p>Varied passages, blind review and sustained-listening approval.</p></article>
+          <article className="metric-card"><span>04</span><strong>Artifact-governed</strong><p>Verification, human approval and final release remain separate.</p></article>
         </section>
 
         <section className="panel workflow-panel" id="manuscript">
@@ -216,6 +298,62 @@ export default function StudioHomePage() {
             </div>
           </aside>
         </div>
+
+        <section className="panel calibration-panel" id="calibration" aria-labelledby="calibration-heading">
+          <div className="section-heading">
+            <div>
+              <p className="section-kicker">NARRATION CALIBRATION</p>
+              <h2 id="calibration-heading">Prove the voice over time, not in ten seconds</h2>
+            </div>
+            <p>
+              A technically clean sample can still become repetitive, overperformed or tiring across a chapter.
+              Calibration evaluates varied prose, independent human judgement and one consistent production configuration.
+            </p>
+          </div>
+
+          <div className="calibration-posture-grid" aria-label="Calibration governance posture">
+            {calibrationPosture.map((item) => (
+              <article className="calibration-posture-card" data-tone={item.tone} key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+
+          <div className="calibration-body">
+            <ol className="calibration-flow" aria-label="Calibration lifecycle">
+              {calibrationStages.map((item) => (
+                <li key={item.label}>
+                  <span className="calibration-flow-index">{item.index}</span>
+                  <div><strong>{item.label}</strong><p>{item.detail}</p></div>
+                  <span className="calibration-flow-state" data-tone={item.tone}>{item.state}</span>
+                </li>
+              ))}
+            </ol>
+
+            <aside className="calibration-dimensions" aria-labelledby="calibration-dimensions-heading">
+              <div className="calibration-dimensions-header">
+                <span>HUMAN SCORECARD</span>
+                <h3 id="calibration-dimensions-heading">No single naturalness score</h3>
+              </div>
+              <ul className="calibration-dimension-list">
+                {calibrationDimensions.map(([label, rule]) => (
+                  <li key={label}><strong>{label}</strong><span>{rule}</span></li>
+                ))}
+              </ul>
+            </aside>
+          </div>
+
+          <div className="calibration-guardrail">
+            <span className="calibration-guardrail-mark">!</span>
+            <div>
+              <strong>No calibration session loaded</strong>
+              <p>The authenticated read API is available when configured. Candidate, review, selection and approval mutations remain internal and require explicit human confirmation.</p>
+            </div>
+            <span>Read only</span>
+          </div>
+        </section>
 
         <section className="panel" id="takes">
           <div className="section-heading">
