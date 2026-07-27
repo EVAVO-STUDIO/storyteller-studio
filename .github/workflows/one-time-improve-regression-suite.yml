@@ -1,0 +1,93 @@
+name: One-time regression suite repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/storyteller-regression-suite-repair.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: storyteller-regression-suite-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Improve regression risk classification
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/series-continuity.ts")
+          source = path.read_text(encoding="utf-8")
+          old = '''  for (const segment of substantive) {
+            const punctuationPressure = (segment.text.match(/[!?…—]/gu)?.length ?? 0) / Math.max(1, segment.wordCount);
+            if (segment.kind === "dialogue") {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "dialogue" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "dialogue", reason: "Checks recurring character distinction, intention and dialogue transitions.", priority: 92 + Math.min(7, Math.round(punctuationPressure * 100)) });
+            }
+            if (segment.wordCount >= 90) {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "long-syntax" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "long-syntax", reason: "Checks breath architecture, clarity and sentence-shape continuity.", priority: 82 + Math.min(12, Math.floor(segment.wordCount / 40)) });
+            }
+            if (segment.kind === "narration" && punctuationPressure < 0.025) {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "quiet-narration" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "quiet-narration", reason: "Checks listener relationship and natural variation without dramatic prompts.", priority: 76 + Math.min(8, Math.floor(segment.wordCount / 35)) });
+            }
+            if (punctuationPressure >= 0.035) {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "high-pressure" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "high-pressure", reason: "Checks urgency, emotional control and avoidance of synthetic overstatement.", priority: 88 + Math.min(10, Math.round(punctuationPressure * 100)) });
+            }
+          }
+'''
+          new = '''  for (const segment of substantive) {
+            const punctuationPressure = (segment.text.match(/[!?…—]/gu)?.length ?? 0) / Math.max(1, segment.wordCount);
+            const syntaxTurnCount = segment.text.match(/[,;:—]/gu)?.length ?? 0;
+            if (segment.kind === "dialogue") {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "dialogue" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "dialogue", reason: "Checks recurring character distinction, intention and dialogue transitions.", priority: 92 + Math.min(7, Math.round(punctuationPressure * 100)) });
+            }
+            if (
+              segment.wordCount >= 90
+              || (segment.kind === "narration" && segment.wordCount >= 24 && syntaxTurnCount >= 2)
+            ) {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "long-syntax" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "long-syntax", reason: "Checks breath architecture, clarity and sentence-shape continuity.", priority: 82 + Math.min(12, Math.floor(segment.wordCount / 40) + syntaxTurnCount) });
+            }
+            if (segment.kind === "narration" && punctuationPressure < 0.025) {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "quiet-narration" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "quiet-narration", reason: "Checks listener relationship and natural variation without dramatic prompts.", priority: 76 + Math.min(8, Math.floor(segment.wordCount / 35)) });
+            }
+            if (punctuationPressure >= 0.035 || (segment.kind === "dialogue" && segment.wordCount <= 24)) {
+              candidates.push({ id: `regression_${stableHash({ segment: segment.id, category: "high-pressure" }).slice(0, 18)}`, segmentId: segment.id, chapterId: segment.chapterId, category: "high-pressure", reason: "Checks urgency, emotional control and avoidance of synthetic overstatement.", priority: 88 + Math.min(10, Math.round(punctuationPressure * 100) + (segment.kind === "dialogue" ? 1 : 0)) });
+            }
+          }
+'''
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"REGRESSION_SUITE_REPAIR_MATCH_COUNT_INVALID:{count}")
+          path.write_text(source.replace(old, new), encoding="utf-8", newline="\n")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify engine suite
+        run: npm run test:engine
+
+      - name: Commit the repair directly to main
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/series-continuity.ts
+          git diff --cached --check
+          git commit -m "Improve series regression calibration coverage"
+          git push origin HEAD:main
