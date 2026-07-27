@@ -1,1 +1,1 @@
-govern lossless mastering output profiles with scope-specific verified edits
+govern lossless mastering output profiles after checker selector hardening
