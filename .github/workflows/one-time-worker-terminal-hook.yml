@@ -1,0 +1,84 @@
+name: One-time worker terminal hook integration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/worker-terminal-hook.trigger"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: storyteller-worker-terminal-hook
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add terminal-transition coordination hook
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/generation-worker.ts")
+          source = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  '  signal?: AbortSignal;\n  now?: Date;\n',
+                  '  signal?: AbortSignal;\n  beforeTerminalTransition?: () => Promise<void>;\n  now?: Date;\n',
+                  "input-contract",
+              ),
+              (
+                  '}): Promise<GenerationWorkerResult> {\n  const queueEnvelope = await input.worker.queue.block(\n',
+                  '}): Promise<GenerationWorkerResult> {\n  await input.worker.beforeTerminalTransition?.();\n  const queueEnvelope = await input.worker.queue.block(\n',
+                  "block-transition",
+              ),
+              (
+                  '    if (providerExecutionIsRetryable(report)) {\n      const queueEnvelope = await input.queue.fail(\n',
+                  '    if (providerExecutionIsRetryable(report)) {\n      await input.beforeTerminalTransition?.();\n      const queueEnvelope = await input.queue.fail(\n',
+                  "retry-transition",
+              ),
+              (
+                  '  try {\n    const completion = await completeGenerationWithArtifacts({\n',
+                  '  try {\n    await input.beforeTerminalTransition?.();\n    const completion = await completeGenerationWithArtifacts({\n',
+                  "completion-transition",
+              ),
+          ]
+
+          for old, new, label in replacements:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"WORKER_TERMINAL_HOOK_MATCH_COUNT_INVALID:{label}:{count}")
+              source = source.replace(old, new, 1)
+
+          path.write_text(source, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify worker integration
+        run: npm run typecheck && npm run test:engine
+
+      - name: Commit terminal-transition coordination
+        shell: bash
+        run: |
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/generation-worker.ts
+          git diff --cached --check
+          git commit -m "Coordinate worker terminal transitions"
+          git push origin HEAD:main
