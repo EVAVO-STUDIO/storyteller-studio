@@ -10,6 +10,7 @@ The product is not intended to be another one-click text-to-speech wrapper. It t
 - **HTTP API** for deterministic project planning, provider capability negotiation, take evaluation and production orchestration.
 - **CLI** for local and automated manuscript planning, manifest validation, provider ranking and quality checks.
 - **Provider SDK** boundary so no voice, language, image or rendering provider becomes the product architecture.
+- **Durable generation queue** with idempotent intents, exclusive worker leases, bounded retries, cancellation and artifact-reference-only completion records.
 - **Series continuity model** that preserves narrator, character, pronunciation and performance decisions across books without hiding drift.
 - **Visual story engine** that works at scene and dramatic-beat level rather than producing a generic literal image for every sentence.
 
@@ -21,10 +22,11 @@ The product is not intended to be another one-click text-to-speech wrapper. It t
 4. Verify voice rights, consent, intended uses, territories and expiry before generation.
 5. Negotiate provider capabilities against the project rather than assuming a preferred vendor can do everything.
 6. Generate calibration passages and multiple candidate takes for difficult material.
-7. Evaluate transcript fidelity, final-word coverage, audio engineering limits, continuity drift and human direction notes.
-8. Approve takes non-destructively and retain complete provenance.
-9. Assemble chapters, master against an explicit delivery profile and validate the final package.
-10. Optionally build an art-directed scene plan, continuity bible and restrained motion treatment for a visual companion.
+7. Enqueue approved generation intents with stable idempotency keys, bounded attempts and fail-closed worker leases.
+8. Evaluate transcript fidelity, final-word coverage, audio engineering limits, continuity drift and human direction notes.
+9. Approve takes non-destructively and retain complete provenance.
+10. Assemble chapters, master against an explicit delivery profile and validate the final package.
+11. Optionally build an art-directed scene plan, continuity bible and restrained motion treatment for a visual companion.
 
 ## Creative position
 
@@ -38,7 +40,7 @@ apps/
   web/                 Responsive review-oriented studio shell
 packages/
   cli/                 Command-line workflow
-  storyteller/         Provider-neutral domain and quality engine
+  storyteller/         Provider-neutral domain, queue and quality engine
 scripts/               Executable architecture and security checks
 docs/                  Architecture, research, rights and delivery records
 ```
@@ -71,6 +73,8 @@ npm run storyteller -- help
 
 ## Current status
 
-The repository contains the first executable architecture slice: exact-source manuscript segmentation, performance planning, rights and consent gates, provider capability ranking, continuity drift scoring, transcript and engineering QA, candidate-take selection, visual beat planning, API and CLI surfaces, a protected web shell and EVAVO hub metadata.
+The repository contains an executable architecture foundation: exact-source manuscript segmentation, performance planning, rights and consent gates, provider capability ranking, continuity drift scoring, transcript and engineering QA, candidate-take selection, a durable file-backed generation queue, visual beat planning, API and CLI surfaces, a protected web shell and fail-closed EVAVO hub metadata.
+
+The queue is suitable for local production, tests and a single isolated worker. It deliberately preserves a migration boundary for transactional PostgreSQL claims and private object storage before multi-instance production execution is enabled.
 
 No external voice provider is enabled by default and no generated media is represented as production-approved without the required evidence and review.
