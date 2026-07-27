@@ -36,6 +36,14 @@ jobs:
                   raise SystemExit(f"MASTERED_CHAPTER_KIND_ANCHOR_INVALID:{label}:{count}")
               path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
 
+          def replace_first(path: Path, old: str, new: str, label: str, expected_count: int) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(f"MASTERED_CHAPTER_KIND_ANCHOR:{label}:{count}")
+              if count != expected_count:
+                  raise SystemExit(f"MASTERED_CHAPTER_KIND_ANCHOR_INVALID:{label}:{count}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+
           registry = Path("packages/storyteller/src/artifact-registry.ts")
           replace_once(
               registry,
@@ -43,11 +51,12 @@ jobs:
               '  | "chapter-master"\n  | "mastered-chapter"\n  | "release-package";\n',
               "kind-union",
           )
-          replace_once(
+          replace_first(
               registry,
               '  "chapter-master",\n  "release-package",\n',
               '  "chapter-master",\n  "mastered-chapter",\n  "release-package",\n',
               "kind-set",
+              2,
           )
           replace_once(
               registry,
