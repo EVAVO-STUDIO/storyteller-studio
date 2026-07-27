@@ -51,6 +51,8 @@ for (const path of [
   "packages/storyteller/src/artifact-queue.test.ts",
   "packages/storyteller/src/artifact-registry.ts",
   "packages/storyteller/src/artifact-registry.test.ts",
+  "packages/storyteller/src/artifact-store.ts",
+  "packages/storyteller/src/artifact-store.test.ts",
   "packages/storyteller/package.json",
   "docs/ARTIFACT_REGISTRY.md",
 ]) requireFile(path);
@@ -110,6 +112,27 @@ requireTokens("packages/storyteller/src/artifact-queue.test.ts", [
   "claim.leaseToken",
 ]);
 
+requireTokens("packages/storyteller/src/artifact-store.ts", [
+  "FileArtifactRegistry",
+  "ArtifactStoreConflictError",
+  "ArtifactStoreIntegrityError",
+  "immutableArtifactFingerprint",
+  "ARTIFACT_STORE_REVISION_CHAIN_INVALID",
+  "ARTIFACT_STORE_IMMUTABLE_FIELDS_CHANGED",
+  "ARTIFACT_STORE_REVISION_MISMATCH",
+  "publicViews",
+  "appendAuditEvent",
+]);
+
+requireTokens("packages/storyteller/src/artifact-store.test.ts", [
+  "creates, reads and lists validated artifact envelopes",
+  "transitions keep store and domain revisions aligned",
+  "stale transitions are rejected",
+  "outside the fingerprint chain",
+  "public artifact listings redact private object and provider request locators",
+  "audit events contain governed state but no private storage locator",
+]);
+
 requireTokens("docs/ARTIFACT_REGISTRY.md", [
   "Generation intent",
   "Production artifact",
@@ -118,6 +141,7 @@ requireTokens("docs/ARTIFACT_REGISTRY.md", [
   "Verification before review",
   "Queue-completion gate",
   "Release gate",
+  "PostgreSQL for revisioned artifact metadata",
   "private object storage",
   "never auto-release from a worker",
 ]);
@@ -127,6 +151,7 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   for (const [exportPath, sourcePath] of [
     ["./artifact-queue", "./src/artifact-queue.ts"],
     ["./artifact-registry", "./src/artifact-registry.ts"],
+    ["./artifact-store", "./src/artifact-store.ts"],
   ]) {
     if (packageJson.exports?.[exportPath] !== sourcePath) {
       problems.push(`storyteller package does not export ${exportPath} from ${sourcePath}`);
@@ -180,6 +205,27 @@ if (completionPublicViewStart < 0) {
   }
 }
 
+const storeSource = existsSync(fromRoot("packages/storyteller/src/artifact-store.ts"))
+  ? read("packages/storyteller/src/artifact-store.ts")
+  : "";
+const auditStart = storeSource.indexOf("async #audit");
+if (auditStart < 0) {
+  problems.push("artifact store audit boundary is missing");
+} else {
+  const auditSource = storeSource.slice(auditStart);
+  for (const forbidden of [
+    "objectKey",
+    "container",
+    "versionId",
+    "providerRequestId",
+    "leaseToken",
+  ]) {
+    if (auditSource.includes(forbidden)) {
+      problems.push(`artifact store audit exposes forbidden field: ${forbidden}`);
+    }
+  }
+}
+
 forbidTokensInFiles(collectTextFiles("apps/web/src"), [
   "ARTIFACT_STORAGE_OBJECT_KEY",
   "providerRequestId",
@@ -198,5 +244,6 @@ console.log("- immutable hash, byte-count, provenance and rights evidence are re
 console.log("- verification precedes review and failed bytes are quarantined");
 console.log("- queue completion requires an exact verified candidate bundle");
 console.log("- queue persistence receives only governed artifact and candidate identifiers");
+console.log("- artifact revisions remain aligned with integrity-checked store envelopes");
 console.log("- release traverses verified, approved and rights-valid dependencies");
-console.log("- public views omit private storage, provider and worker lease material");
+console.log("- public views and audit events omit private storage, provider and worker lease material");
