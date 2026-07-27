@@ -1,0 +1,38 @@
+{
+  "id": "take_example_001",
+  "sourceText": "The final lamp went dark.",
+  "transcript": "The final lamp went dark.",
+  "deliveryProfile": {
+    "id": "acx-audiobook",
+    "label": "ACX delivery",
+    "rmsDbMin": -23,
+    "rmsDbMax": -18,
+    "peakDbMax": -3,
+    "noiseFloorDbMax": -60,
+    "minimumSampleRateHz": 44100,
+    "minimumBitRateKbps": 192,
+    "channels": 1,
+    "notes": [
+      "Revalidate distributor requirements at release time."
+    ]
+  },
+  "audio": {
+    "rmsDb": -20.2,
+    "peakDb": -3.4,
+    "noiseFloorDb": -68,
+    "sampleRateHz": 44100,
+    "bitRateKbps": 192,
+    "channels": 1,
+    "clippedSampleCount": 0,
+    "leadingSilenceMs": 700,
+    "trailingSilenceMs": 1200
+  },
+  "continuity": {
+    "score": 94,
+    "drift": 0.06,
+    "severity": "stable",
+    "findings": []
+  },
+  "expressionReviewerScore": 91,
+  "rightsValid": true
+}
