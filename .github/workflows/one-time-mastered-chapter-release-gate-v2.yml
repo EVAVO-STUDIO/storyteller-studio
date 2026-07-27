@@ -1,0 +1,354 @@
+name: One-time line-stable mastered chapter release gate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/mastered-chapter-release-gate-v2.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Require mastered chapters for audiobook release
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .mastered-chapter-release-gate-v2.log
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              print(f"MASTERED_RELEASE_V2_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"MASTERED_RELEASE_V2_ANCHOR_INVALID:{label}:{count}")
+              return source.replace(old, new, 1)
+
+          registry_path = Path("packages/storyteller/src/artifact-registry.ts")
+          registry = registry_path.read_text(encoding="utf-8")
+          for old, new, label in [
+              ('byId.get(id)?.kind === "chapter-master"', 'byId.get(id)?.kind === "mastered-chapter"', "release-kind"),
+              ('code: "ARTIFACT_RELEASE_CHAPTER_MASTER_REQUIRED"', 'code: "ARTIFACT_RELEASE_MASTERED_CHAPTER_REQUIRED"', "release-code"),
+              ('message: "Audiobook release package must depend on at least one verified chapter master."', 'message: "Audiobook release package must depend on at least one verified and approved mastered chapter."', "release-message"),
+          ]:
+              registry = replace_once(registry, old, new, label)
+          registry_path.write_text(registry, encoding="utf-8", newline="\n")
+
+          tests_path = Path("packages/storyteller/src/artifact-registry.test.ts")
+          tests = tests_path.read_text(encoding="utf-8")
+          start_marker = 'test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {'
+          end_marker = 'test("expired rights block queue completion and final release", () => {'
+          start = tests.find(start_marker)
+          end = tests.find(end_marker, start + 1)
+          print(f"MASTERED_RELEASE_V2_SECTION:{start}:{end}")
+          if start < 0 or end < 0 or end <= start:
+              raise SystemExit("MASTERED_RELEASE_V2_TEST_SECTION_INVALID")
+          replacement = r'''test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {
+            const first = approve(verify(createCandidate("artifact_take_008", "take_008", "8")));
+            const second = approve(verify(createCandidate("artifact_take_009", "take_009", "9")));
+
+            const chapterPending = createArtifactRecord({
+              id: "artifact_chapter_master_001",
+              kind: "chapter-master",
+              projectId: job.projectId,
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/chapters/chapter_001/master.wav`,
+                versionId: "chapter-version-001",
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "a".repeat(64),
+                byteCount: 960_000,
+                mimeType: "audio/wav",
+                format: "wav",
+              },
+              provenance: {
+                createdByActorId: "assembler_artifact_001",
+                sourceContentHash: "d".repeat(64),
+                parentArtifactIds: [first.id, second.id],
+              },
+              rights: rights(),
+            }, t1);
+            const chapter = approve(verify(chapterPending, t2), t3);
+
+            const masteredPending = createArtifactRecord({
+              id: "artifact_mastered_release_001",
+              kind: "mastered-chapter",
+              projectId: job.projectId,
+              segmentId: "chapter_001",
+              takeId: "mastered_release_take_001",
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/chapters/chapter_001/mastered-release.wav`,
+                versionId: "mastered-version-001",
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "c".repeat(64),
+                byteCount: 960_000,
+                mimeType: "audio/wav",
+                format: "wav",
+              },
+              provenance: {
+                createdByActorId: "mastering_release_001",
+                sourceContentHash: chapter.integrity.contentHash,
+                generationRequestHash: "4".repeat(64),
+                parentArtifactIds: [chapter.id],
+              },
+              rights: rights(),
+            }, new Date(t3.getTime() + 100));
+            const mastered = approve(
+              verify(masteredPending, new Date(t3.getTime() + 200)),
+              new Date(t3.getTime() + 300),
+            );
+
+            const releasePending = createArtifactRecord({
+              id: "artifact_release_001",
+              kind: "release-package",
+              projectId: job.projectId,
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/releases/release_001.zip`,
+                versionId: "release-version-001",
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "b".repeat(64),
+                byteCount: 1_200_000,
+                mimeType: "application/zip",
+                format: "zip",
+              },
+              provenance: {
+                createdByActorId: "release_artifact_001",
+                sourceContentHash: "d".repeat(64),
+                parentArtifactIds: [mastered.id],
+              },
+              rights: rights(),
+            }, t2);
+            const releaseVerified = verify(releasePending, t3);
+
+            const blocked = assessArtifactRelease(
+              [first, second, chapter, mastered, releaseVerified],
+              releaseVerified.id,
+              { finalConfirmationId: "confirmation_release_001", now: t3 },
+            );
+            assert.equal(blocked.ok, false);
+            assert.equal(blocked.findings.some((finding) => finding.code === "ARTIFACT_RELEASE_REVIEW_PENDING"), true);
+
+            const releaseApproved = recordArtifactReview(releaseVerified, {
+              decision: "approved",
+              reviewerId: "reviewer_release_001",
+              notes: "Package order, metadata, checksums and approved mastered chapters were reviewed.",
+              decidedAt: new Date(t3.getTime() + 1_000),
+            });
+            const assessment = assessArtifactRelease(
+              [first, second, chapter, mastered, releaseApproved],
+              releaseApproved.id,
+              { finalConfirmationId: "confirmation_release_001", now: new Date(t3.getTime() + 2_000) },
+            );
+            assert.equal(assessment.ok, true);
+            assert.equal(assessment.artifactIds.includes(chapter.id), true);
+            assert.equal(assessment.artifactIds.includes(mastered.id), true);
+
+            const released = confirmArtifactRelease(
+              [first, second, chapter, mastered, releaseApproved],
+              releaseApproved.id,
+              {
+                finalConfirmationId: "confirmation_release_001",
+                releasedByActorId: "owner_release_001",
+                releasedAt: new Date(t3.getTime() + 3_000),
+              },
+            );
+            assert.equal(released.release.status, "released");
+            assert.equal(released.release.finalConfirmationId, "confirmation_release_001");
+            assert.equal(released.revision, releaseApproved.revision + 1);
+          });
+
+          test("a pre-master chapter alone cannot satisfy audiobook release", () => {
+            const candidate = approve(verify(createCandidate("artifact_take_pre_master_only", "take_pre_master_only", "5")));
+            const chapter = approve(verify(createArtifactRecord({
+              id: "artifact_pre_master_only_001",
+              kind: "chapter-master",
+              projectId: job.projectId,
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/chapters/chapter_pre_master_only/master.wav`,
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "6".repeat(64),
+                byteCount: 960_000,
+                mimeType: "audio/wav",
+                format: "wav",
+              },
+              provenance: {
+                createdByActorId: "assembler_pre_master_only_001",
+                sourceContentHash: "d".repeat(64),
+                parentArtifactIds: [candidate.id],
+              },
+              rights: rights(),
+            }, t1), t2), t3);
+            const release = approve(verify(createArtifactRecord({
+              id: "artifact_release_pre_master_only_001",
+              kind: "release-package",
+              projectId: job.projectId,
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/releases/pre-master-only.zip`,
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "7".repeat(64),
+                byteCount: 1_200_000,
+                mimeType: "application/zip",
+                format: "zip",
+              },
+              provenance: {
+                createdByActorId: "release_pre_master_only_001",
+                sourceContentHash: chapter.integrity.contentHash,
+                parentArtifactIds: [chapter.id],
+              },
+              rights: rights(),
+            }, t1), t2), t3);
+            const assessment = assessArtifactRelease(
+              [candidate, chapter, release],
+              release.id,
+              { finalConfirmationId: "confirmation_pre_master_only_001", now: t3 },
+            );
+            assert.equal(assessment.ok, false);
+            assert.equal(
+              assessment.findings.some((finding) =>
+                finding.code === "ARTIFACT_RELEASE_MASTERED_CHAPTER_REQUIRED"
+              ),
+              true,
+            );
+          });
+
+          '''
+          tests = tests[:start] + replacement + tests[end:]
+          tests_path.write_text(tests, encoding="utf-8", newline="\n")
+
+          checker_path = Path("scripts/check-artifact-registry.mjs")
+          checker = checker_path.read_text(encoding="utf-8")
+          checker = replace_once(
+              checker,
+              '  "ARTIFACT_RELEASE_REVIEW_PENDING",\n',
+              '  "ARTIFACT_RELEASE_REVIEW_PENDING",\n  "ARTIFACT_RELEASE_MASTERED_CHAPTER_REQUIRED",\n',
+              "checker-release-code",
+          )
+          checker = replace_once(
+              checker,
+              '  "release remains blocked until every dependency is verified, reviewed and rights-valid",\n',
+              '  "release remains blocked until every dependency is verified, reviewed and rights-valid",\n  "a pre-master chapter alone cannot satisfy audiobook release",\n',
+              "checker-release-test",
+          )
+          checker_path.write_text(checker, encoding="utf-8", newline="\n")
+
+          for temporary in [
+              Path(".github/workflows/one-time-mastered-chapter-release-gate.yml"),
+              Path(".github/mastered-chapter-release-gate.trigger"),
+              Path(".github/workflows/one-time-mastered-chapter-release-gate-v2.yml"),
+              Path(".github/mastered-chapter-release-gate-v2.trigger"),
+              Path(".github/workflows/one-time-mastered-chapter-doc-selector.yml"),
+              Path(".github/mastered-chapter-doc-selector.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("MASTERED_CHAPTER_RELEASE_GATE_V2_PROMOTED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .mastered-release-v2-verify.log
+          npm run build 2>&1 | tee .mastered-release-v2-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mastered-chapter-release-v2-${{ github.sha }}
+          path: |
+            .mastered-chapter-release-gate-v2.log
+            .mastered-release-v2-verify.log
+            .mastered-release-v2-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit release gate
+        shell: bash
+        run: |
+          rm -f .mastered-chapter-release-gate-v2.log .mastered-release-v2-verify.log .mastered-release-v2-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Require mastered chapters for audiobook release"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".mastered-chapter-release-gate-v2.log",
+              ".mastered-release-v2-verify.log",
+              ".mastered-release-v2-build.log",
+            ].filter((path) => fs.existsSync(path))
+              .map((path) => fs.readFileSync(path, "utf8"))
+              .join("\n")
+              .replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /MASTERED_RELEASE_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "mastered chapter release gate failed verification";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/mastered-chapter-release-gate-v2",
+              description: state === "success"
+                ? "Mastered chapter release gate, tests and builds passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
