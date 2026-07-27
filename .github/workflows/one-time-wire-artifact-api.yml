@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 concurrency:
   group: storyteller-artifact-api-wiring
@@ -29,7 +30,8 @@ jobs:
       - name: Wire the read-only artifact runtime into the API
         shell: bash
         run: |
-          python3 - <<'PY'
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .artifact-api-wiring.log
           from pathlib import Path
 
           path = Path("apps/api/src/server.ts")
@@ -173,13 +175,22 @@ jobs:
           PY
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        shell: bash
+        run: |
+          set -o pipefail
+          npm install --no-audit --no-fund 2>&1 | tee -a .artifact-api-wiring.log
 
       - name: Type-check the API wiring
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee -a .artifact-api-wiring.log
 
       - name: Test API routes
-        run: npm run test:api
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:api 2>&1 | tee -a .artifact-api-wiring.log
 
       - name: Commit the wiring directly to main
         shell: bash
@@ -190,3 +201,31 @@ jobs:
           git diff --cached --check
           git commit -m "Wire redacted artifact reads into API"
           git push origin HEAD:main
+
+      - name: Publish artifact API wiring status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          WIRING_JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.WIRING_JOB_STATUS === "success" ? "success" : "failure";
+            const source = fs.existsSync(".artifact-api-wiring.log")
+              ? fs.readFileSync(".artifact-api-wiring.log", "utf8").replace(/\u001b\[[0-9;]*m/g, "")
+              : "artifact API wiring log unavailable";
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /ARTIFACT_API_WIRING_MATCH_COUNT_INVALID|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line),
+            ) || lines.at(-1) || "artifact API wiring failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/artifact-api-wiring",
+              description: state === "success"
+                ? "Artifact API wiring typecheck and tests passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
