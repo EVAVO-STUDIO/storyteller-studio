@@ -77,23 +77,27 @@ jobs:
                   "  return envelope as unknown as StoredEnvelope<"
                   "AudiobookRetailPackageInspectionEvidence>;",
               ),
+              (
+                  "    || fingerprint !== build.packageManifest.fingerprint",
+                  "    || stableHash(value) !== build.packageManifest.fingerprint",
+              ),
+              (
+                  "      fingerprint: canonical.value.fingerprint,",
+                  "      fingerprint: input.build.packageManifest.fingerprint,",
+              ),
           ]
-          for old_assertion, new_assertion in replacements:
-              assertion_count = inspection.count(old_assertion)
+          for old_value, new_value in replacements:
+              replacement_count = inspection.count(old_value)
               print(
-                  "AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_TYPE_ASSERTION_FIX:"
-                  f"{assertion_count}"
+                  "AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_SOURCE_FIX:"
+                  f"{replacement_count}"
               )
-              if assertion_count != 1:
+              if replacement_count != 1:
                   raise SystemExit(
-                      "AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_TYPE_ASSERTION_FIX_INVALID:"
-                      f"{assertion_count}"
+                      "AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_SOURCE_FIX_INVALID:"
+                      f"{replacement_count}"
                   )
-              inspection = inspection.replace(
-                  old_assertion,
-                  new_assertion,
-                  1,
-              )
+              inspection = inspection.replace(old_value, new_value, 1)
           inspection_path.write_text(
               inspection,
               encoding="utf-8",
