@@ -40,6 +40,22 @@ jobs:
               line[10:] if line.startswith("          ") else line
               for line in lines
           ) + "\n"
+          old = (
+              "/BOOK_CREDIT_DELIVERY_REVIEW_SCOPE_MISMATCH|"
+              "BOOK_CREDIT_DELIVERY_DURATION_EVIDENCE_MISMATCH/u"
+          )
+          new = (
+              "/BOOK_CREDIT_TAKE_REVIEW_DURATION_MISMATCH|"
+              "BOOK_CREDIT_DELIVERY_REVIEW_SCOPE_MISMATCH|"
+              "BOOK_CREDIT_DELIVERY_DURATION_EVIDENCE_MISMATCH/u"
+          )
+          count = code.count(old)
+          print(f"BOOK_CREDIT_DELIVERY_V2_EXPECTATION:{count}")
+          if count != 1:
+              raise SystemExit(
+                  f"BOOK_CREDIT_DELIVERY_V2_EXPECTATION_INVALID:{count}"
+              )
+          code = code.replace(old, new, 1)
           exec(compile(code, "book-credit-delivery-promotion-v2.py", "exec"), {})
           for temporary in [
               Path(".github/workflows/one-time-book-credit-delivery-promotion-v2.yml"),
