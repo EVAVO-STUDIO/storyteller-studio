@@ -58,12 +58,8 @@ jobs:
           )
           replace_once(
               source_path,
-              '''  if (receipt.creditKind !== "opening" && receipt.creditKind !== "closing") {
-            throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_KIND_INVALID");
-          }
-          ''',
-              '''  if (receipt.creditKind !== "opening" && receipt.creditKind !== "closing") {
-            throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_KIND_INVALID");
+              '    throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_KIND_INVALID");\n  }\n',
+              '''    throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_KIND_INVALID");
           }
           if (!QUEUE_STATUSES.has(receipt.queueStatus)) {
             throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_STATUS_INVALID");
