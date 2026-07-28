@@ -1,0 +1,197 @@
+name: One-time audiobook retail package-inspection promotion v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/audiobook-retail-package-inspection-v2.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply isolated retail package-inspection slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch=work/audiobook-retail-package-inspection-20260729
+          git fetch origin "$branch"
+          git checkout "origin/$branch" -- \
+            docs/AUDIOBOOK_RETAIL_PACKAGE_INSPECTION.md \
+            package.json \
+            packages/storyteller/package.json \
+            packages/storyteller/src/audiobook-retail-package-inspection.test.ts \
+            packages/storyteller/src/audiobook-retail-package-inspection.ts \
+            scripts/check-audiobook-retail-package-inspection.mjs
+
+          python3 - <<'PY' 2>&1 | tee .audiobook-retail-package-inspection-patch.log
+          from pathlib import Path
+
+          project_store = Path("packages/storyteller/src/project-store.ts")
+          source = project_store.read_text(encoding="utf-8")
+          old = '  | "audiobook-retail-package-manifest"\n  | "chapter-assembly"'
+          new = (
+              '  | "audiobook-retail-package-manifest"\n'
+              '  | "audiobook-retail-package-inspection"\n'
+              '  | "chapter-assembly"'
+          )
+          count = source.count(old)
+          print(f"AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_ENTITY_FIX:{count}")
+          if count != 1:
+              raise SystemExit(
+                  f"AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_ENTITY_FIX_INVALID:{count}"
+              )
+          project_store.write_text(
+              source.replace(old, new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          for temporary in [
+              Path(
+                  ".github/workflows/"
+                  "one-time-audiobook-retail-package-inspection-v2-promotion.yml"
+              ),
+              Path(".github/audiobook-retail-package-inspection-v2.trigger"),
+              Path(
+                  ".github/workflows/"
+                  "one-time-audiobook-retail-package-inspection-promotion.yml"
+              ),
+              Path(".github/audiobook-retail-package-inspection.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+
+          print("AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_PATCH_APPLIED")
+          PY
+
+          git add \
+            docs/AUDIOBOOK_RETAIL_PACKAGE_INSPECTION.md \
+            package.json \
+            packages/storyteller/package.json \
+            packages/storyteller/src/audiobook-retail-package-inspection.test.ts \
+            packages/storyteller/src/audiobook-retail-package-inspection.ts \
+            packages/storyteller/src/project-store.ts \
+            scripts/check-audiobook-retail-package-inspection.mjs
+
+          expected=$(cat <<'EOF'
+          docs/AUDIOBOOK_RETAIL_PACKAGE_INSPECTION.md
+          package.json
+          packages/storyteller/package.json
+          packages/storyteller/src/audiobook-retail-package-inspection.test.ts
+          packages/storyteller/src/audiobook-retail-package-inspection.ts
+          packages/storyteller/src/project-store.ts
+          scripts/check-audiobook-retail-package-inspection.mjs
+          EOF
+          )
+          expected=$(printf '%s\n' "$expected" | sed 's/^          //')
+          changed=$(git diff --cached --name-only | sort)
+          if [ "$changed" != "$expected" ]; then
+            echo AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_FILE_SCOPE_INVALID
+            printf 'expected:\n%s\nchanged:\n%s\n' "$expected" "$changed"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:audiobook-retail-package-inspection 2>&1 | tee .audiobook-retail-package-inspection-check.log
+          npm run typecheck 2>&1 | tee .audiobook-retail-package-inspection-typecheck.log
+          node --import tsx --test \
+            packages/storyteller/src/audiobook-retail-package-inspection.test.ts \
+            2>&1 | tee .audiobook-retail-package-inspection-test.log
+          npm run verify 2>&1 | tee .audiobook-retail-package-inspection-verify.log
+          npm run build 2>&1 | tee .audiobook-retail-package-inspection-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-retail-package-inspection-v2-${{ github.sha }}
+          path: |
+            .audiobook-retail-package-inspection-patch.log
+            .audiobook-retail-package-inspection-check.log
+            .audiobook-retail-package-inspection-typecheck.log
+            .audiobook-retail-package-inspection-test.log
+            .audiobook-retail-package-inspection-verify.log
+            .audiobook-retail-package-inspection-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .audiobook-retail-package-inspection-patch.log \
+            .audiobook-retail-package-inspection-check.log \
+            .audiobook-retail-package-inspection-typecheck.log \
+            .audiobook-retail-package-inspection-test.log \
+            .audiobook-retail-package-inspection-verify.log \
+            .audiobook-retail-package-inspection-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Add independent audiobook retail package inspection"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-retail-package-inspection-patch.log",
+              ".audiobook-retail-package-inspection-check.log",
+              ".audiobook-retail-package-inspection-typecheck.log",
+              ".audiobook-retail-package-inspection-test.log",
+              ".audiobook-retail-package-inspection-verify.log",
+              ".audiobook-retail-package-inspection-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+|check failed/i.test(line)) || lines.find((line) => /AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_[A-Z0-9_]+/i.test(line)) || lines.at(-1) || "audiobook retail package-inspection promotion failed";
+            const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-retail-package-inspection-v2",
+              description: state === "success" ? "Package-inspection tests, contracts and builds passed" : diagnostic.slice(0, 140),
+              target_url: targetUrl,
+            });
+            if (state === "failure") {
+              const slug = diagnostic.replace(/[^A-Za-z0-9._/-]+/g, "-").replace(/-+/g, "-").replace(/^[-./]+|[-./]+$/g, "").slice(0, 62) || "unknown";
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state: "failure",
+                context: `storyteller/failure/${slug}`,
+                description: diagnostic.slice(0, 140),
+                target_url: targetUrl,
+              });
+            }
