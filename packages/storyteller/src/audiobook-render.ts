@@ -47,6 +47,7 @@ export interface AudiobookRenderEvidence {
   sequenceFingerprint: string;
   sources: readonly AudiobookRenderSourceEvidence[];
   expectedDurationMs: number;
+  estimatedPcmByteCount: number;
   output: Readonly<{
     format: "wav";
     sampleRateHz: number;
@@ -79,6 +80,7 @@ export interface AudiobookRenderPublicView {
   sequenceFingerprint: string;
   sourceCount: number;
   expectedDurationMs: number;
+  estimatedPcmByteCount: number;
   output: AudiobookRenderEvidence["output"];
   toolVersionFingerprint: string;
   filterFingerprint: string;
@@ -112,8 +114,10 @@ const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const DEFAULT_TIMEOUT_MS = 60 * 60_000;
-const DEFAULT_MAXIMUM_OUTPUT_BYTES = 4 * 1024 * 1024 * 1024;
-const ABSOLUTE_MAXIMUM_OUTPUT_BYTES = 8 * 1024 * 1024 * 1024;
+const RIFF_HEADER_RESERVE_BYTES = 4_096;
+export const RIFF_MAXIMUM_OUTPUT_BYTES = 0xffff_ffff;
+const DEFAULT_MAXIMUM_OUTPUT_BYTES = RIFF_MAXIMUM_OUTPUT_BYTES;
+const ABSOLUTE_MAXIMUM_OUTPUT_BYTES = RIFF_MAXIMUM_OUTPUT_BYTES;
 
 function hashBytes(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -129,6 +133,34 @@ function requireInteger(
     throw new AudiobookRenderError(code);
   }
   return value;
+}
+
+function estimatePcmByteCount(input: Readonly<{
+  durationMs: number;
+  sampleRateHz: number;
+  channels: 1 | 2;
+  bitDepth: 16 | 24 | 32;
+}>): number {
+  const frames = Math.ceil((input.durationMs * input.sampleRateHz) / 1_000);
+  const bytesPerSample = input.bitDepth / 8;
+  return requireInteger(
+    frames * input.channels * bytesPerSample + RIFF_HEADER_RESERVE_BYTES,
+    1,
+    Number.MAX_SAFE_INTEGER,
+    "AUDIOBOOK_RENDER_ESTIMATED_SIZE_INVALID",
+  );
+}
+
+export function estimateAudiobookPcmByteCount(
+  sequence: AudiobookSequence,
+): number {
+  assertAudiobookSequence(sequence);
+  return estimatePcmByteCount({
+    durationMs: sequence.totalDurationMs,
+    sampleRateHz: sequence.output.sampleRateHz,
+    channels: sequence.output.channels,
+    bitDepth: sequence.output.bitDepth,
+  });
 }
 
 function safeExecutableName(value: string): string {
@@ -172,6 +204,7 @@ function commandFingerprint(
     filterFingerprint: stableHash(filterScript),
     output: sequence.output,
     expectedDurationMs: sequence.totalDurationMs,
+    estimatedPcmByteCount: estimateAudiobookPcmByteCount(sequence),
     shell: false,
   });
 }
@@ -236,7 +269,13 @@ export function assertAudiobookRenderEvidence(
     15 * 24 * 60 * 60 * 1_000,
     "AUDIOBOOK_RENDER_DURATION_INVALID",
   );
-  if (evidence.output.format !== "wav") {
+  requireInteger(
+  evidence.estimatedPcmByteCount,
+  1,
+  RIFF_MAXIMUM_OUTPUT_BYTES,
+  "AUDIOBOOK_RENDER_ESTIMATED_SIZE_INVALID",
+);
+if (evidence.output.format !== "wav") {
     throw new AudiobookRenderError("AUDIOBOOK_RENDER_OUTPUT_FORMAT_INVALID");
   }
   requireInteger(
@@ -263,7 +302,16 @@ export function assertAudiobookRenderEvidence(
   if (evidence.output.mediaSignature !== "riff-wave") {
     throw new AudiobookRenderError("AUDIOBOOK_RENDER_OUTPUT_SIGNATURE_INVALID");
   }
-  safeExecutableName(evidence.tool.executableName);
+  const expectedEstimate = estimatePcmByteCount({
+  durationMs: evidence.expectedDurationMs,
+  sampleRateHz: evidence.output.sampleRateHz,
+  channels: evidence.output.channels,
+  bitDepth: evidence.output.bitDepth,
+});
+if (evidence.estimatedPcmByteCount !== expectedEstimate) {
+  throw new AudiobookRenderError("AUDIOBOOK_RENDER_ESTIMATED_SIZE_MISMATCH");
+}
+safeExecutableName(evidence.tool.executableName);
   const checkedVersion = versionLine(evidence.tool.versionLine);
   if (
     !HASH_PATTERN.test(evidence.tool.versionFingerprint)
@@ -307,7 +355,11 @@ export async function renderAudiobookSequence(
     ABSOLUTE_MAXIMUM_OUTPUT_BYTES,
     "AUDIOBOOK_RENDER_OUTPUT_LIMIT_INVALID",
   );
-  const renderedAt = input.renderedAt ?? new Date();
+  const estimatedPcmByteCount = estimateAudiobookPcmByteCount(input.sequence);
+if (estimatedPcmByteCount > maximumOutputBytes) {
+  throw new AudiobookRenderError("AUDIOBOOK_RENDER_RIFF_CAPACITY_EXCEEDED");
+}
+const renderedAt = input.renderedAt ?? new Date();
   if (Number.isNaN(renderedAt.getTime())) {
     throw new AudiobookRenderError("AUDIOBOOK_RENDER_DATE_INVALID");
   }
@@ -355,8 +407,13 @@ export async function renderAudiobookSequence(
     ) {
       throw new AudiobookRenderError("AUDIOBOOK_RENDER_OUTPUT_SIZE_INVALID");
     }
-    const media = detectArtifactMedia(bytes);
-    if (
+    let media: ReturnType<typeof detectArtifactMedia>;
+try {
+  media = detectArtifactMedia(bytes);
+} catch {
+  throw new AudiobookRenderError("AUDIOBOOK_RENDER_OUTPUT_MEDIA_INVALID");
+}
+if (
       media.format !== "wav"
       || media.mimeType !== "audio/wav"
       || media.signature !== "riff-wave"
@@ -382,6 +439,7 @@ export async function renderAudiobookSequence(
         byteCount: entry.artifact.byteCount,
       }))),
       expectedDurationMs: input.sequence.totalDurationMs,
+      estimatedPcmByteCount,
       output: Object.freeze({
         format: "wav",
         sampleRateHz: input.sequence.output.sampleRateHz,
@@ -428,6 +486,7 @@ export function audiobookRenderPublicView(
     sequenceFingerprint: evidence.sequenceFingerprint,
     sourceCount: evidence.sources.length,
     expectedDurationMs: evidence.expectedDurationMs,
+    estimatedPcmByteCount: evidence.estimatedPcmByteCount,
     output: evidence.output,
     toolVersionFingerprint: evidence.tool.versionFingerprint,
     filterFingerprint: evidence.filterFingerprint,

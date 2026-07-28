@@ -190,15 +190,17 @@ test("complete audiobook rendering preserves manifest order and emits governed W
     buildAudiobookFilterScript(plan),
     "[0:a][1:a][2:a]concat=n=3:v=0:a=1[out]\n",
   );
+  const request = runner.request as ChapterRenderRequest | undefined;
+  assert.ok(request);
   assert.deepEqual(
-    runner.request?.sourcePaths,
+    request.sourcePaths,
     plan.components.map((entry) => `/private/storyteller/${entry.artifact.id}.wav`),
   );
-  assert.equal(runner.request?.filterScript, buildAudiobookFilterScript(plan));
-  assert.equal(runner.request?.sampleRateHz, 44_100);
-  assert.equal(runner.request?.channels, 1);
-  assert.equal(runner.request?.bitDepth, 24);
-  assert.equal(runner.request?.expectedDurationMs, 71_000);
+  assert.equal(request.filterScript, buildAudiobookFilterScript(plan));
+  assert.equal(request.sampleRateHz, 44_100);
+  assert.equal(request.channels, 1);
+  assert.equal(request.bitDepth, 24);
+  assert.equal(request.expectedDurationMs, 71_000);
   assert.deepEqual(resolver.disposed, plan.components.map((entry) => entry.artifact.id));
   assert.equal(result.evidence.sources.length, 3);
   assert.equal(result.evidence.expectedDurationMs, 71_000);
