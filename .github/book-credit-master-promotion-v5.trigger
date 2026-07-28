@@ -1,1 +1,1 @@
-run the normalized governed audiobook credit master promotion and verify all repository gates
+run the fully normalized governed audiobook credit master promotion and verify all repository gates
