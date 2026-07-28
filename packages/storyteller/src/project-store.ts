@@ -24,6 +24,7 @@ export type StoredEntityType =
   | "book-credit-take-review"
   | "audiobook-sequence"
   | "audiobook-reference-master-review"
+  | "audiobook-retail-track-review"
   | "chapter-assembly"
   | "release-package";
 
@@ -338,43 +339,41 @@ export class FileProjectStore {
     if (!Number.isSafeInteger(envelope.revision) || envelope.revision < 1) throw new StoreIntegrityError("STORE_REVISION_INVALID");
     assertJsonSafe(envelope.payload);
     if (stableHash(envelope.payload) !== envelope.contentHash) throw new StoreIntegrityError("STORE_CONTENT_HASH_MISMATCH");
-    const { envelopeHash, ...partial } = envelope;
-    if (canonicalEnvelopeHash(partial) !== envelopeHash) throw new StoreIntegrityError("STORE_ENVELOPE_HASH_MISMATCH");
+    if (canonicalEnvelopeHash({ ...envelope, envelopeHash: undefined } as never) !== envelope.envelopeHash) {
+      const { envelopeHash: _hash, ...partial } = envelope;
+      if (canonicalEnvelopeHash(partial) !== envelope.envelopeHash) throw new StoreIntegrityError("STORE_ENVELOPE_HASH_MISMATCH");
+    }
   }
 
-  async #writeAtomic<T extends Record<string, unknown>>(path: string, envelope: StoredEnvelope<T>): Promise<void> {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const temporary = `${path}.${process.pid}.${stableHash({ path, envelopeHash: envelope.envelopeHash }).slice(0, 12)}.tmp`;
-    const handle = await open(temporary, "wx", 0o600);
+  async #acquireLock(lockPath: string): Promise<() => Promise<void>> {
+    const startedAt = Date.now();
+    while (true) {
+      try {
+        await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+        const handle = await open(lockPath, "wx", 0o600);
+        return async () => {
+          await handle.close();
+          await rm(lockPath, { force: true });
+        };
+      } catch (error) {
+        if (errorCode(error) !== "EEXIST") throw error;
+        if (Date.now() - startedAt > this.#lockTimeoutMs) throw new StoreConflictError("STORE_LOCK_TIMEOUT");
+        await sleep(25);
+      }
+    }
+  }
+
+  async #writeAtomic(path: string, value: unknown): Promise<void> {
+    const directory = dirname(path);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const temporaryPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+    const handle = await open(temporaryPath, "wx", 0o600);
     try {
-      await handle.writeFile(`${JSON.stringify(envelope, null, 2)}\n`, "utf8");
+      await handle.writeFile(`${JSON.stringify(value)}\n`, "utf8");
       await handle.sync();
     } finally {
       await handle.close();
     }
-    try {
-      await rename(temporary, path);
-    } catch (error) {
-      await rm(temporary, { force: true });
-      throw error;
-    }
-  }
-
-  async #acquireLock(path: string): Promise<() => Promise<void>> {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const startedAt = Date.now();
-    while (true) {
-      try {
-        const handle = await open(path, "wx", 0o600);
-        return async () => {
-          await handle.close();
-          await rm(path, { force: true });
-        };
-      } catch (error) {
-        if (errorCode(error) !== "EEXIST") throw error;
-        if (Date.now() - startedAt >= this.#lockTimeoutMs) throw new StoreConflictError("STORE_LOCK_TIMEOUT");
-        await sleep(20 + Math.floor(Math.random() * 30));
-      }
-    }
+    await rename(temporaryPath, path);
   }
 }
