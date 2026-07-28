@@ -1,0 +1,137 @@
+name: One-time complete audiobook render promotion v5
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/audiobook-render-promotion-v5.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply renderer promotion and media-error boundary
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .audiobook-render-v5.log
+          from pathlib import Path
+
+          workflow = Path(
+              ".github/workflows/one-time-audiobook-render-promotion-v4.yml"
+          ).read_text(encoding="utf-8")
+          start_marker = "          python3 - <<'PY' 2>&1 | tee .audiobook-render-v4.log\n"
+          end_marker = "          PY\n\n      - name: Install dependencies"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          lines = workflow[start:end].splitlines()
+          code = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in lines
+          ) + "\n"
+          exec(compile(code, "audiobook-render-promotion-v5.py", "exec"), {})
+
+          source_path = Path("packages/storyteller/src/audiobook-render.ts")
+          source = source_path.read_text(encoding="utf-8")
+          old = "    const media = detectArtifactMedia(bytes);\n    if (\n"
+          new = '''    let media: ReturnType<typeof detectArtifactMedia>;
+          try {
+            media = detectArtifactMedia(bytes);
+          } catch {
+            throw new AudiobookRenderError("AUDIOBOOK_RENDER_OUTPUT_MEDIA_INVALID");
+          }
+          if (
+          '''
+          count = source.count(old)
+          print(f"AUDIOBOOK_RENDER_V5_MEDIA_BOUNDARY:{count}")
+          if count != 1:
+              raise SystemExit(
+                  f"AUDIOBOOK_RENDER_V5_MEDIA_BOUNDARY_INVALID:{count}"
+              )
+          source_path.write_text(
+              source.replace(old, new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          for temporary in [
+              Path(".github/workflows/one-time-audiobook-render-promotion-v5.yml"),
+              Path(".github/audiobook-render-promotion-v5.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("AUDIOBOOK_RENDER_V5_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .audiobook-render-v5-verify.log
+          npm run build 2>&1 | tee .audiobook-render-v5-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-render-promotion-v5-${{ github.sha }}
+          path: |
+            .audiobook-render-v5.log
+            .audiobook-render-v5-verify.log
+            .audiobook-render-v5-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f .audiobook-render-v5.log .audiobook-render-v5-verify.log .audiobook-render-v5-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify shell-free complete audiobook rendering"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-render-v5.log",
+              ".audiobook-render-v5-verify.log",
+              ".audiobook-render-v5-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /AUDIOBOOK_RENDER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "audiobook render v5 promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-render-promotion-v5",
+              description: state === "success" ? "Complete render, tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
