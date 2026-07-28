@@ -1,0 +1,133 @@
+name: One-time complete audiobook sequence promotion v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/audiobook-sequence-promotion-v2.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply complete audiobook sequence promotion and typed fixture correction
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .audiobook-sequence-v2.log
+          from pathlib import Path
+
+          workflow = Path(
+              ".github/workflows/one-time-audiobook-sequence-promotion.yml"
+          ).read_text(encoding="utf-8")
+          start_marker = "          python3 - <<'PY' 2>&1 | tee .audiobook-sequence-promotion.log\n"
+          end_marker = "          PY\n\n      - name: Install dependencies"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          lines = workflow[start:end].splitlines()
+          code = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in lines
+          ) + "\n"
+          exec(compile(code, "audiobook-sequence-promotion-v2.py", "exec"), {})
+
+          test_path = Path("packages/storyteller/src/audiobook-sequence.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+          old = "  outputOverride?: Partial<typeof output>;\n"
+          new = (
+              '  outputOverride?: Partial<{ format: "wav"; sampleRateHz: number; '
+              'channels: 1 | 2; bitDepth: 16 | 24 | 32 }>;\n'
+          )
+          count = tests.count(old)
+          print(f"AUDIOBOOK_SEQUENCE_V2_OUTPUT_OVERRIDE:{count}")
+          if count != 1:
+              raise SystemExit(
+                  f"AUDIOBOOK_SEQUENCE_V2_OUTPUT_OVERRIDE_INVALID:{count}"
+              )
+          test_path.write_text(
+              tests.replace(old, new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          for temporary in [
+              Path(".github/workflows/one-time-audiobook-sequence-promotion-v2.yml"),
+              Path(".github/audiobook-sequence-promotion-v2.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("AUDIOBOOK_SEQUENCE_V2_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .audiobook-sequence-v2-verify.log
+          npm run build 2>&1 | tee .audiobook-sequence-v2-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-sequence-promotion-v2-${{ github.sha }}
+          path: |
+            .audiobook-sequence-v2.log
+            .audiobook-sequence-v2-verify.log
+            .audiobook-sequence-v2-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f .audiobook-sequence-v2.log .audiobook-sequence-v2-verify.log .audiobook-sequence-v2-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify governed complete audiobook sequence"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-sequence-v2.log",
+              ".audiobook-sequence-v2-verify.log",
+              ".audiobook-sequence-v2-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /AUDIOBOOK_SEQUENCE_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "audiobook sequence v2 promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-sequence-promotion-v2",
+              description: state === "success" ? "Complete sequence, tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
