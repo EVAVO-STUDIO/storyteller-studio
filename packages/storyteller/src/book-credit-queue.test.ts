@@ -334,15 +334,14 @@ test("queue receipts reject recomputed structural tampering", async () => {
     const prepared = await preparedFixture({ planStore, materialStore, calibrationStore });
     const { receipt } = await enqueuePreparedBookCreditGeneration({ prepared, queue, now: t5 });
     const { fingerprint: _fingerprint, ...base } = receipt;
-    const tamperedBase = {
-      ...base,
-      priority: 99,
-    };
-    const tampered = {
-      ...tamperedBase,
-      fingerprint: stableHash(tamperedBase),
-    } as typeof receipt;
-    assert.doesNotThrow(() => assertBookCreditQueueReceipt(tampered));
+  const fingerprintTampered = {
+    ...receipt,
+    priority: 99,
+  };
+  assert.throws(
+    () => assertBookCreditQueueReceipt(fingerprintTampered),
+    /BOOK_CREDIT_QUEUE_FINGERPRINT_INVALID/u,
+  );
 
     const structurallyInvalidBase = {
       ...base,

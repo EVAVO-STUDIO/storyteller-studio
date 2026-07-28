@@ -14,6 +14,7 @@
     "./audio-engineering-artifact": "./src/audio-engineering-artifact.ts",
     "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
     "./book-credit-generation": "./src/book-credit-generation.ts",
+    "./book-credit-queue": "./src/book-credit-queue.ts",
     "./book-credit-script": "./src/book-credit-script.ts",
     "./budget-ledger": "./src/budget-ledger.ts",
     "./calibration-admission": "./src/calibration-admission.ts",

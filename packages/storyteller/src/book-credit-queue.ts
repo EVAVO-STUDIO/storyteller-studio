@@ -73,6 +73,15 @@ export class BookCreditQueueError extends Error {
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const QUEUE_STATUSES: ReadonlySet<GenerationQueueStatus> = new Set([
+  "queued",
+  "leased",
+  "retry-wait",
+  "completed",
+  "blocked",
+  "failed",
+  "cancelled",
+]);
 
 function requireIdentifier(value: string, code: string): string {
   if (!SAFE_IDENTIFIER.test(value)) throw new BookCreditQueueError(code);
@@ -241,7 +250,13 @@ export function assertBookCreditQueueReceipt(receipt: BookCreditQueueReceipt): v
   ] as const) requireHash(value, code);
   if (receipt.creditKind !== "opening" && receipt.creditKind !== "closing") {
     throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_KIND_INVALID");
-  }
+}
+if (!QUEUE_STATUSES.has(receipt.queueStatus)) {
+  throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_STATUS_INVALID");
+}
+if (receipt.queueItemId !== generationQueueEntityId(receipt.jobId)) {
+  throw new BookCreditQueueError("BOOK_CREDIT_QUEUE_ITEM_SCOPE_MISMATCH");
+}
   requireInteger(
     receipt.queueRevision,
     1,
