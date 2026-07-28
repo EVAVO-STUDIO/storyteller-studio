@@ -117,7 +117,7 @@ function delivery(input: Readonly<{
   kind: "opening" | "closing";
   artifact: ArtifactRecord;
   durationMs: number;
-  outputOverride?: Partial<typeof output>;
+  outputOverride?: Partial<{ format: "wav"; sampleRateHz: number; channels: 1 | 2; bitDepth: 16 | 24 | 32 }>;
 }>): BookCreditDeliverySnapshot {
   const partial: Omit<BookCreditDeliverySnapshot, "fingerprint"> = {
     schemaVersion: BOOK_CREDIT_DELIVERY_SCHEMA_VERSION,

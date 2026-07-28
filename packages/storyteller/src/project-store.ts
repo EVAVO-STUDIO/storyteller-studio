@@ -22,6 +22,7 @@ export type StoredEntityType =
   | "book-credit-generation"
   | "book-credit-take"
   | "book-credit-take-review"
+  | "audiobook-sequence"
   | "chapter-assembly"
   | "release-package";
 
