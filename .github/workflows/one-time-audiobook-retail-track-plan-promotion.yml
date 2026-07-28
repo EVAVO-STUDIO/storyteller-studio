@@ -61,6 +61,42 @@ jobs:
                   + ",".join(sorted(changed))
               )
 
+          test_path = Path(
+              "packages/storyteller/src/audiobook-retail-track-plan.test.ts"
+          )
+          tests = test_path.read_text(encoding="utf-8")
+          lines = tests.splitlines()
+          corrected = []
+          insertions = 0
+          for index, line in enumerate(lines):
+              corrected.append(line)
+              if (
+                  line.strip() == "...fixture,"
+                  and index + 1 < len(lines)
+                  and lines[index + 1].strip().startswith("now:")
+                  and "assertAudiobookRetailTrackPlanMatchesSources"
+                      in "\n".join(lines[max(0, index - 10):index + 1])
+              ):
+                  indentation = line[:len(line) - len(line.lstrip())]
+                  corrected.append(
+                      f"{indentation}referenceChain: fixture.chain,"
+                  )
+                  insertions += 1
+          print(
+              "AUDIOBOOK_RETAIL_TRACK_PLAN_REFERENCE_CHAIN_FIX:"
+              f"{insertions}"
+          )
+          if insertions != 3:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_TRACK_PLAN_REFERENCE_CHAIN_FIX_INVALID:"
+                  f"{insertions}"
+              )
+          test_path.write_text(
+              "\n".join(corrected) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
           for temporary in [
               Path(
                   ".github/workflows/"
