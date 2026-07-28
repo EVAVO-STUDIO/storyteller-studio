@@ -100,6 +100,31 @@ jobs:
           code = code.replace(draft_old, draft_new, 1)
 
           exec(compile(code, "book-credit-master-promotion-v5.py", "exec"), {})
+
+          test_path = Path("packages/storyteller/src/book-credit-master.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+          expectation_updates = [
+              (
+                  "/ARTIFACT_FINGERPRINT_MISMATCH|BOOK_CREDIT_MASTER_AUDIO_SNAPSHOT_MISMATCH/u,",
+                  "/ARTIFACT_VERIFIED_STATE_INVALID|ARTIFACT_FINGERPRINT_MISMATCH|BOOK_CREDIT_MASTER_AUDIO_SNAPSHOT_MISMATCH/u,",
+                  "source-tamper-fail-fast",
+              ),
+              (
+                  "/BOOK_CREDIT_MASTER_ARTIFACT_ENVELOPE_INVALID|BOOK_CREDIT_MASTER_CHAIN_SCOPE_MISMATCH/u,",
+                  "/ARTIFACT_FINGERPRINT_MISMATCH|BOOK_CREDIT_MASTER_ARTIFACT_ENVELOPE_INVALID|BOOK_CREDIT_MASTER_CHAIN_SCOPE_MISMATCH/u,",
+                  "chain-tamper-fail-fast",
+              ),
+          ]
+          for old, new, label in expectation_updates:
+              count = tests.count(old)
+              print(f"BOOK_CREDIT_MASTER_V5_EXPECTATION:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(
+                      f"BOOK_CREDIT_MASTER_V5_EXPECTATION_INVALID:{label}:{count}"
+                  )
+              tests = tests.replace(old, new, 1)
+          test_path.write_text(tests, encoding="utf-8", newline="\n")
+
           for temporary in [
               Path(".github/workflows/one-time-book-credit-master-promotion-v5.yml"),
               Path(".github/book-credit-master-promotion-v5.trigger"),
