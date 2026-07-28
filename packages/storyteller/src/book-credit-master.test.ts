@@ -679,3 +679,98 @@ test("credit-master chain rejects recomputed envelope and parent tampering", asy
     );
   });
 });
+
+
+test("approved credit master produces an immutable delivery snapshot", async () => {
+  const {
+    assertBookCreditDeliverySnapshot,
+    bookCreditDeliveryPublicView,
+    createBookCreditDeliverySnapshot,
+  } = await import("./book-credit-delivery.js");
+
+  await withStores(async ({ objectStore, registry }) => {
+    const fixture = await approvedFixture({ objectStore, registry });
+    const chain = await promoteBookCreditMaster(objectStore, registry, {
+      session: fixture.session,
+      sourceAudio: fixture.first.audio.envelope.payload,
+      transcriptArtifact: fixture.first.transcript.envelope.payload,
+      engineeringArtifact: fixture.first.engineering.envelope.payload,
+      sourceBytes: wavBytes(1),
+      rights,
+      actorId: "credit_delivery_operator_001",
+      verifierActorId: "credit_delivery_verifier_001",
+      now: t13,
+    });
+    const snapshot = createBookCreditDeliverySnapshot({
+      chain,
+      reviewSession: fixture.session,
+      now: new Date(t13.getTime() + 1_000),
+    });
+
+    assert.equal(snapshot.creditKind, "opening");
+    assert.equal(snapshot.durationMs, 10_000);
+    assert.deepEqual(snapshot.output, {
+      format: "wav",
+      sampleRateHz: 44_100,
+      channels: 1,
+      bitDepth: 24,
+    });
+    assert.equal(snapshot.engineeringProfileId, "acx-audiobook");
+    assert.equal(snapshot.status, "ready-for-book-assembly");
+    assert.doesNotThrow(() => assertBookCreditDeliverySnapshot(snapshot));
+
+    const publicView = bookCreditDeliveryPublicView(snapshot);
+    const serialised = JSON.stringify(publicView);
+    for (const forbidden of [
+      snapshot.creditMaster.id,
+      snapshot.creditMaster.contentHash,
+      snapshot.rightsFingerprint,
+      snapshot.reviewApprovalFingerprint,
+      snapshot.selectedTakeRecordId,
+      fixture.session.id,
+      rights.rightsEvidenceId,
+      rights.rightsFingerprint,
+      "elevenlabs",
+    ]) assert.equal(serialised.includes(forbidden), false);
+
+    const selected = fixture.session.candidates[0]!;
+    const { fingerprint: _candidateFingerprint, ...candidateBase } = selected;
+    const candidatePartial = {
+      ...candidateBase,
+      durationMs: selected.durationMs + 1,
+    };
+    const candidateTampered = {
+      ...candidatePartial,
+      fingerprint: stableHash(candidatePartial),
+    };
+    const { fingerprint: _sessionFingerprint, ...sessionBase } = fixture.session;
+    const sessionPartial = {
+      ...sessionBase,
+      candidates: Object.freeze([
+        candidateTampered,
+        ...fixture.session.candidates.slice(1),
+      ]),
+    };
+    const sessionTampered = {
+      ...sessionPartial,
+      fingerprint: stableHash(sessionPartial),
+    } as typeof fixture.session;
+    assert.throws(
+      () => createBookCreditDeliverySnapshot({
+        chain,
+        reviewSession: sessionTampered,
+        now: new Date(t13.getTime() + 1_000),
+      }),
+      /BOOK_CREDIT_TAKE_REVIEW_DURATION_MISMATCH|BOOK_CREDIT_DELIVERY_REVIEW_SCOPE_MISMATCH|BOOK_CREDIT_DELIVERY_DURATION_EVIDENCE_MISMATCH/u,
+    );
+
+    assert.throws(
+      () => createBookCreditDeliverySnapshot({
+        chain,
+        reviewSession: fixture.session,
+        now: new Date("2029-07-27T00:00:00.000Z"),
+      }),
+      /BOOK_CREDIT_DELIVERY_RIGHTS_EXPIRED/u,
+    );
+  });
+});

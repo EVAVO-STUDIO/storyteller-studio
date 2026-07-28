@@ -13,6 +13,7 @@
     "./audio-engineering": "./src/audio-engineering.ts",
     "./audio-engineering-artifact": "./src/audio-engineering-artifact.ts",
     "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
+    "./book-credit-delivery": "./src/book-credit-delivery.ts",
     "./book-credit-generation": "./src/book-credit-generation.ts",
     "./book-credit-master": "./src/book-credit-master.ts",
     "./book-credit-queue": "./src/book-credit-queue.ts",
