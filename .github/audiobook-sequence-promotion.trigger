@@ -1,1 +1,1 @@
-promote the governed complete audiobook sequence and verify every repository gate
+execute the registered governed complete audiobook sequence promotion and verify every repository gate
