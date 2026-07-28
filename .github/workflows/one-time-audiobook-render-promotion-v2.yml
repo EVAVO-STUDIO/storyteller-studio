@@ -1,0 +1,245 @@
+name: One-time complete audiobook render promotion v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/audiobook-render-promotion-v2.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Promote line-stable shell-free audiobook rendering
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .audiobook-render-v2.log
+          import json
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(f"AUDIOBOOK_RENDER_V2_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"AUDIOBOOK_RENDER_V2_ANCHOR_INVALID:{label}:{count}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          source_path = Path("packages/storyteller/src/audiobook-render.ts")
+          replace_once(
+              source_path,
+              "  expectedDurationMs: number;\n  output: Readonly<{\n",
+              "  expectedDurationMs: number;\n  estimatedPcmByteCount: number;\n  output: Readonly<{\n",
+              "evidence-estimate",
+          )
+          replace_once(
+              source_path,
+              "  expectedDurationMs: number;\n  output: AudiobookRenderEvidence[\"output\"];\n",
+              "  expectedDurationMs: number;\n  estimatedPcmByteCount: number;\n  output: AudiobookRenderEvidence[\"output\"];\n",
+              "public-estimate",
+          )
+          replace_once(
+              source_path,
+              "const DEFAULT_TIMEOUT_MS = 60 * 60_000;\nconst DEFAULT_MAXIMUM_OUTPUT_BYTES = 4 * 1024 * 1024 * 1024;\nconst ABSOLUTE_MAXIMUM_OUTPUT_BYTES = 8 * 1024 * 1024 * 1024;\n",
+              "const DEFAULT_TIMEOUT_MS = 60 * 60_000;\nconst RIFF_HEADER_RESERVE_BYTES = 4_096;\nexport const RIFF_MAXIMUM_OUTPUT_BYTES = 0xffff_ffff;\nconst DEFAULT_MAXIMUM_OUTPUT_BYTES = RIFF_MAXIMUM_OUTPUT_BYTES;\nconst ABSOLUTE_MAXIMUM_OUTPUT_BYTES = RIFF_MAXIMUM_OUTPUT_BYTES;\n",
+              "riff-limit",
+          )
+          estimator = '''function estimatePcmByteCount(input: Readonly<{
+            durationMs: number;
+            sampleRateHz: number;
+            channels: 1 | 2;
+            bitDepth: 16 | 24 | 32;
+          }>): number {
+            const frames = Math.ceil((input.durationMs * input.sampleRateHz) / 1_000);
+            const bytesPerSample = input.bitDepth / 8;
+            return requireInteger(
+              frames * input.channels * bytesPerSample + RIFF_HEADER_RESERVE_BYTES,
+              1,
+              Number.MAX_SAFE_INTEGER,
+              "AUDIOBOOK_RENDER_ESTIMATED_SIZE_INVALID",
+            );
+          }
+
+          export function estimateAudiobookPcmByteCount(
+            sequence: AudiobookSequence,
+          ): number {
+            assertAudiobookSequence(sequence);
+            return estimatePcmByteCount({
+              durationMs: sequence.totalDurationMs,
+              sampleRateHz: sequence.output.sampleRateHz,
+              channels: sequence.output.channels,
+              bitDepth: sequence.output.bitDepth,
+            });
+          }
+
+          '''
+          replace_once(
+              source_path,
+              "function safeExecutableName(value: string): string {\n",
+              estimator + "function safeExecutableName(value: string): string {\n",
+              "estimator",
+          )
+          replace_once(
+              source_path,
+              "    expectedDurationMs: sequence.totalDurationMs,\n    shell: false,\n",
+              "    expectedDurationMs: sequence.totalDurationMs,\n    estimatedPcmByteCount: estimateAudiobookPcmByteCount(sequence),\n    shell: false,\n",
+              "command-estimate",
+          )
+          replace_once(
+              source_path,
+              '  if (evidence.output.format !== "wav") {\n',
+              '''  requireInteger(
+            evidence.estimatedPcmByteCount,
+            1,
+            RIFF_MAXIMUM_OUTPUT_BYTES,
+            "AUDIOBOOK_RENDER_ESTIMATED_SIZE_INVALID",
+          );
+          if (evidence.output.format !== "wav") {
+          ''',
+              "validate-estimate",
+          )
+          replace_once(
+              source_path,
+              "  safeExecutableName(evidence.tool.executableName);\n",
+              '''  const expectedEstimate = estimatePcmByteCount({
+            durationMs: evidence.expectedDurationMs,
+            sampleRateHz: evidence.output.sampleRateHz,
+            channels: evidence.output.channels,
+            bitDepth: evidence.output.bitDepth,
+          });
+          if (evidence.estimatedPcmByteCount !== expectedEstimate) {
+            throw new AudiobookRenderError("AUDIOBOOK_RENDER_ESTIMATED_SIZE_MISMATCH");
+          }
+          safeExecutableName(evidence.tool.executableName);
+          ''',
+              "recompute-estimate",
+          )
+          replace_once(
+              source_path,
+              "  const renderedAt = input.renderedAt ?? new Date();\n",
+              '''  const estimatedPcmByteCount = estimateAudiobookPcmByteCount(input.sequence);
+          if (estimatedPcmByteCount > maximumOutputBytes) {
+            throw new AudiobookRenderError("AUDIOBOOK_RENDER_RIFF_CAPACITY_EXCEEDED");
+          }
+          const renderedAt = input.renderedAt ?? new Date();
+          ''',
+              "capacity-preflight",
+          )
+          replace_once(
+              source_path,
+              "      expectedDurationMs: input.sequence.totalDurationMs,\n      output: Object.freeze({\n",
+              "      expectedDurationMs: input.sequence.totalDurationMs,\n      estimatedPcmByteCount,\n      output: Object.freeze({\n",
+              "evidence-record",
+          )
+          replace_once(
+              source_path,
+              "    expectedDurationMs: evidence.expectedDurationMs,\n    output: evidence.output,\n",
+              "    expectedDurationMs: evidence.expectedDurationMs,\n    estimatedPcmByteCount: evidence.estimatedPcmByteCount,\n    output: evidence.output,\n",
+              "public-record",
+          )
+
+          engine_path = Path("packages/storyteller/package.json")
+          engine = json.loads(engine_path.read_text(encoding="utf-8"))
+          engine["exports"]["./audiobook-render"] = "./src/audiobook-render.ts"
+          engine["exports"] = dict(sorted(engine["exports"].items()))
+          engine_path.write_text(json.dumps(engine, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+          root_path = Path("package.json")
+          root = json.loads(root_path.read_text(encoding="utf-8"))
+          scripts = root["scripts"]
+          scripts["verify:audiobook-render"] = "node scripts/check-audiobook-render.mjs"
+          marker = "npm run verify:audiobook-sequence"
+          if "npm run verify:audiobook-render" not in scripts["verify:artifacts"]:
+              if marker not in scripts["verify:artifacts"]:
+                  raise SystemExit("AUDIOBOOK_RENDER_VERIFY_MARKER_MISSING")
+              scripts["verify:artifacts"] = scripts["verify:artifacts"].replace(
+                  marker,
+                  f"{marker} && npm run verify:audiobook-render",
+                  1,
+              )
+          root_path.write_text(json.dumps(root, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+          for temporary in [
+              Path(".github/workflows/one-time-audiobook-render-promotion.yml"),
+              Path(".github/audiobook-render-promotion.trigger"),
+              Path(".github/workflows/one-time-audiobook-render-promotion-v2.yml"),
+              Path(".github/audiobook-render-promotion-v2.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("AUDIOBOOK_RENDER_V2_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .audiobook-render-v2-verify.log
+          npm run build 2>&1 | tee .audiobook-render-v2-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-render-promotion-v2-${{ github.sha }}
+          path: |
+            .audiobook-render-v2.log
+            .audiobook-render-v2-verify.log
+            .audiobook-render-v2-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f .audiobook-render-v2.log .audiobook-render-v2-verify.log .audiobook-render-v2-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify shell-free complete audiobook rendering"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-render-v2.log",
+              ".audiobook-render-v2-verify.log",
+              ".audiobook-render-v2-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /AUDIOBOOK_RENDER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "audiobook render v2 promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-render-promotion-v2",
+              description: state === "success" ? "Complete render, tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
