@@ -58,6 +58,48 @@ jobs:
               newline="\n",
           )
 
+          inspection_path = Path(
+              "packages/storyteller/src/"
+              "audiobook-retail-package-inspection.ts"
+          )
+          inspection = inspection_path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "  const evidence = envelope.payload\n"
+                  "    as unknown as AudiobookRetailPackageInspectionEvidence;",
+                  "  const evidence = envelope.payload as unknown as "
+                  "AudiobookRetailPackageInspectionEvidence;",
+              ),
+              (
+                  "  return envelope\n"
+                  "    as unknown as StoredEnvelope<"
+                  "AudiobookRetailPackageInspectionEvidence>;",
+                  "  return envelope as unknown as StoredEnvelope<"
+                  "AudiobookRetailPackageInspectionEvidence>;",
+              ),
+          ]
+          for old_assertion, new_assertion in replacements:
+              assertion_count = inspection.count(old_assertion)
+              print(
+                  "AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_TYPE_ASSERTION_FIX:"
+                  f"{assertion_count}"
+              )
+              if assertion_count != 1:
+                  raise SystemExit(
+                      "AUDIOBOOK_RETAIL_PACKAGE_INSPECTION_TYPE_ASSERTION_FIX_INVALID:"
+                      f"{assertion_count}"
+                  )
+              inspection = inspection.replace(
+                  old_assertion,
+                  new_assertion,
+                  1,
+              )
+          inspection_path.write_text(
+              inspection,
+              encoding="utf-8",
+              newline="\n",
+          )
+
           for temporary in [
               Path(
                   ".github/workflows/"
