@@ -88,9 +88,31 @@ jobs:
               raise SystemExit(
                   "AUDIOBOOK_RETAIL_TRACK_ENCODE_FIXTURE_BLOCK_INVALID"
               )
-          corrected = lines[:start] + lines[end + 1:]
+          lines = lines[:start] + lines[end + 1:]
+
+          duplicate = [
+              '      case "ffprobe-version":',
+              '        throw new Error("unreachable duplicate ffprobe call");',
+          ]
+          duplicate_start = None
+          for index in range(len(lines) - len(duplicate) + 1):
+              if lines[index:index + len(duplicate)] == duplicate:
+                  duplicate_start = index
+                  break
+          print(
+              "AUDIOBOOK_RETAIL_TRACK_ENCODE_DUPLICATE_CASE:"
+              f"{duplicate_start}"
+          )
+          if duplicate_start is None:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_TRACK_ENCODE_DUPLICATE_CASE_INVALID"
+              )
+          lines = (
+              lines[:duplicate_start]
+              + lines[duplicate_start + len(duplicate):]
+          )
           test_path.write_text(
-              "\n".join(corrected) + "\n",
+              "\n".join(lines) + "\n",
               encoding="utf-8",
               newline="\n",
           )
