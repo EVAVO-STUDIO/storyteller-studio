@@ -44,7 +44,7 @@ jobs:
           new = '"export function assertBookCreditMasterChain("'
           count = code.count(old)
           print(f"BOOK_CREDIT_MASTER_V5_ASSERT_BOUNDARY:{count}")
-          if count != 2:
+          if count != 4:
               raise SystemExit(f"BOOK_CREDIT_MASTER_V5_ASSERT_BOUNDARY_INVALID:{count}")
           code = code.replace(old, new)
           exec(compile(code, "book-credit-master-promotion-v5.py", "exec"), {})
