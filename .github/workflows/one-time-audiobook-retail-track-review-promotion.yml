@@ -123,6 +123,18 @@ jobs:
               '"node scripts/check-audiobook-retail-track-review.mjs"\n',
           )
 
+          test_path = Path(
+              "packages/storyteller/src/audiobook-retail-track-review.test.ts"
+          )
+          replace_exact(
+              test_path,
+              '      "retail_release_manager_001",\n'
+              '      chain.tracks[0]!.artifact.payload.id,\n'
+              '      chain.tracks[0]!.fileName,\n',
+              '      chain.tracks[0]!.artifact.payload.id,\n'
+              '      chain.tracks[0]!.fileName,\n',
+          )
+
           final_expected = {
               *initial_expected,
               "package.json",
