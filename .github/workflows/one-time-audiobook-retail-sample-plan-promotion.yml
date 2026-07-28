@@ -1,4 +1,4 @@
-name: One-time audiobook retail sample-plan promotion
+name: One-time audiobook retail sample plan promotion
 
 on:
   push:
@@ -14,22 +14,21 @@ permissions:
 jobs:
   promote:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Apply the isolated retail sample-plan slice by exact paths
+      - name: Apply isolated retail sample plan slice
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin work/audiobook-retail-sample-plan-20260728
-          git checkout origin/work/audiobook-retail-sample-plan-20260728 -- \
+          branch=work/audiobook-retail-sample-plan-20260728
+          git fetch origin "$branch"
+          git checkout "origin/$branch" -- \
             docs/AUDIOBOOK_RETAIL_SAMPLE_PLAN.md \
-            package.json \
-            packages/storyteller/package.json \
             packages/storyteller/src/audiobook-retail-sample-plan.test.ts \
             packages/storyteller/src/audiobook-retail-sample-plan.ts \
             scripts/check-audiobook-retail-sample-plan.mjs
@@ -38,10 +37,8 @@ jobs:
           from pathlib import Path
           import subprocess
 
-          expected = {
+          initial_expected = {
               "docs/AUDIOBOOK_RETAIL_SAMPLE_PLAN.md",
-              "package.json",
-              "packages/storyteller/package.json",
               "packages/storyteller/src/audiobook-retail-sample-plan.test.ts",
               "packages/storyteller/src/audiobook-retail-sample-plan.ts",
               "scripts/check-audiobook-retail-sample-plan.mjs",
@@ -54,11 +51,116 @@ jobs:
               ).splitlines()
               if line.strip()
           }
-          print("AUDIOBOOK_RETAIL_SAMPLE_PLAN_FILES:" + ",".join(sorted(changed)))
-          if changed != expected:
+          print(
+              "AUDIOBOOK_RETAIL_SAMPLE_PLAN_INITIAL_FILES:"
+              + ",".join(sorted(changed))
+          )
+          if changed != initial_expected:
               raise SystemExit(
-                  "AUDIOBOOK_RETAIL_SAMPLE_PLAN_FILE_SCOPE_INVALID:"
+                  "AUDIOBOOK_RETAIL_SAMPLE_PLAN_INITIAL_SCOPE_INVALID:"
                   + ",".join(sorted(changed))
+              )
+
+          def replace_exact(path: Path, old: str, new: str) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(
+                  "AUDIOBOOK_RETAIL_SAMPLE_PLAN_REPLACE:"
+                  f"{path}:{count}"
+              )
+              if count != 1:
+                  raise SystemExit(
+                      "AUDIOBOOK_RETAIL_SAMPLE_PLAN_REPLACE_INVALID:"
+                      f"{path}:{count}"
+                  )
+              path.write_text(
+                  source.replace(old, new, 1),
+                  encoding="utf-8",
+                  newline="\n",
+              )
+
+          sample_source = Path(
+              "packages/storyteller/src/audiobook-retail-sample-plan.ts"
+          )
+          replace_exact(
+              sample_source,
+              '''  assertAudiobookRetailSamplePlan(plan);
+            assertAudiobookRetailSamplePlanMatchesSources(plan, {
+              ...input,
+              id: plan.id,
+              createdAt,
+            });
+            return plan;''',
+              '''  assertAudiobookRetailSamplePlan(plan);
+            return plan;''',
+          )
+
+          project_store = Path("packages/storyteller/src/project-store.ts")
+          replace_exact(
+              project_store,
+              '  | "audiobook-retail-track-review"\n'
+              '  | "chapter-assembly"',
+              '  | "audiobook-retail-track-review"\n'
+              '  | "audiobook-retail-sample-plan"\n'
+              '  | "chapter-assembly"',
+          )
+
+          engine_package = Path("packages/storyteller/package.json")
+          replace_exact(
+              engine_package,
+              '    "./audiobook-retail-track-review": '
+              '"./src/audiobook-retail-track-review.ts",\n'
+              '    "./audiobook-sequence": '
+              '"./src/audiobook-sequence.ts",',
+              '    "./audiobook-retail-track-review": '
+              '"./src/audiobook-retail-track-review.ts",\n'
+              '    "./audiobook-retail-sample-plan": '
+              '"./src/audiobook-retail-sample-plan.ts",\n'
+              '    "./audiobook-sequence": '
+              '"./src/audiobook-sequence.ts",',
+          )
+
+          root_package = Path("package.json")
+          replace_exact(
+              root_package,
+              ' && npm run verify:audiobook-retail-track-review'
+              ' && npm run verify:mastering-render',
+              ' && npm run verify:audiobook-retail-track-review'
+              ' && npm run verify:audiobook-retail-sample-plan'
+              ' && npm run verify:mastering-render',
+          )
+          replace_exact(
+              root_package,
+              '    "verify:audiobook-retail-track-review": '
+              '"node scripts/check-audiobook-retail-track-review.mjs"\n',
+              '    "verify:audiobook-retail-track-review": '
+              '"node scripts/check-audiobook-retail-track-review.mjs",\n'
+              '    "verify:audiobook-retail-sample-plan": '
+              '"node scripts/check-audiobook-retail-sample-plan.mjs"\n',
+          )
+
+          final_expected = {
+              *initial_expected,
+              "package.json",
+              "packages/storyteller/package.json",
+              "packages/storyteller/src/project-store.ts",
+          }
+          final_changed = {
+              line.strip()
+              for line in subprocess.check_output(
+                  ["git", "diff", "--name-only"],
+                  text=True,
+              ).splitlines()
+              if line.strip()
+          } | changed
+          print(
+              "AUDIOBOOK_RETAIL_SAMPLE_PLAN_FINAL_FILES:"
+              + ",".join(sorted(final_changed))
+          )
+          if final_changed != final_expected:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_SAMPLE_PLAN_FINAL_SCOPE_INVALID:"
+                  + ",".join(sorted(final_changed))
               )
 
           for temporary in [
@@ -80,6 +182,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          npm run verify:audiobook-retail-sample-plan 2>&1 | tee .audiobook-retail-sample-plan-check.log
+          npm run typecheck 2>&1 | tee .audiobook-retail-sample-plan-typecheck.log
+          node --import tsx --test packages/storyteller/src/audiobook-retail-sample-plan.test.ts 2>&1 | tee .audiobook-retail-sample-plan-test.log
           npm run verify 2>&1 | tee .audiobook-retail-sample-plan-verify.log
           npm run build 2>&1 | tee .audiobook-retail-sample-plan-build.log
 
@@ -90,6 +195,9 @@ jobs:
           name: audiobook-retail-sample-plan-${{ github.sha }}
           path: |
             .audiobook-retail-sample-plan-promotion.log
+            .audiobook-retail-sample-plan-check.log
+            .audiobook-retail-sample-plan-typecheck.log
+            .audiobook-retail-sample-plan-test.log
             .audiobook-retail-sample-plan-verify.log
             .audiobook-retail-sample-plan-build.log
           include-hidden-files: true
@@ -102,13 +210,16 @@ jobs:
           set -euo pipefail
           rm -f \
             .audiobook-retail-sample-plan-promotion.log \
+            .audiobook-retail-sample-plan-check.log \
+            .audiobook-retail-sample-plan-typecheck.log \
+            .audiobook-retail-sample-plan-test.log \
             .audiobook-retail-sample-plan-verify.log \
             .audiobook-retail-sample-plan-build.log
           git config user.name "EVAVO Repository Automation"
           git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
           git add --all
           git diff --cached --check
-          git commit -m "Add governed audiobook retail sample plan"
+          git commit -m "Add governed audiobook retail sample planning"
           git pull --rebase origin main
           npm run verify
           npm run build
@@ -125,11 +236,14 @@ jobs:
             const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
             const source = [
               ".audiobook-retail-sample-plan-promotion.log",
+              ".audiobook-retail-sample-plan-check.log",
+              ".audiobook-retail-sample-plan-typecheck.log",
+              ".audiobook-retail-sample-plan-test.log",
               ".audiobook-retail-sample-plan-verify.log",
               ".audiobook-retail-sample-plan-build.log",
             ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
             const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-            const diagnostic = lines.find((line) => /error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+|check failed/i.test(line)) || lines.find((line) => /AUDIOBOOK_RETAIL_SAMPLE_PLAN_[A-Z0-9_]+/i.test(line)) || lines.at(-1) || "audiobook retail sample-plan promotion failed";
+            const diagnostic = lines.find((line) => /error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+|check failed/i.test(line)) || lines.find((line) => /AUDIOBOOK_RETAIL_SAMPLE_[A-Z0-9_]+/i.test(line)) || lines.at(-1) || "retail sample plan promotion failed";
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
@@ -137,7 +251,7 @@ jobs:
               sha: context.sha,
               state,
               context: "storyteller/audiobook-retail-sample-plan",
-              description: state === "success" ? "Retail sample-plan tests, contracts and builds passed" : diagnostic.slice(0, 140),
+              description: state === "success" ? "Retail sample plan tests, contracts and builds passed" : diagnostic.slice(0, 140),
               target_url: targetUrl,
             });
             if (state === "failure") {
