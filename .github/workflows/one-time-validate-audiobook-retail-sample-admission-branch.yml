@@ -1,0 +1,280 @@
+name: One-time validate audiobook retail sample admission branch
+
+on:
+  push:
+    branches:
+      - work/audiobook-retail-sample-admission-20260728
+    paths:
+      - ".github/audiobook-retail-sample-admission-branch.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/audiobook-retail-sample-admission-20260728
+          fetch-depth: 0
+
+      - name: Register the retail sample artifact kind
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' 2>&1 | tee .audiobook-retail-sample-admission-patch.log
+          from pathlib import Path
+
+          def replace_exact(path: Path, old: str, new: str, expected: int = 1) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(f"AUDIOBOOK_RETAIL_SAMPLE_REPLACE:{path}:{count}:{expected}")
+              if count != expected:
+                  raise SystemExit(
+                      f"AUDIOBOOK_RETAIL_SAMPLE_REPLACE_INVALID:{path}:{count}:{expected}"
+                  )
+              path.write_text(
+                  source.replace(old, new),
+                  encoding="utf-8",
+                  newline="\n",
+              )
+
+          registry = Path("packages/storyteller/src/artifact-registry.ts")
+          replace_exact(
+              registry,
+              '  | "audiobook-retail-track"\n  | "release-package";',
+              '  | "audiobook-retail-track"\n  | "audiobook-retail-sample"\n  | "release-package";',
+          )
+          replace_exact(
+              registry,
+              '  "audiobook-retail-track",\n  "release-package",',
+              '  "audiobook-retail-track",\n  "audiobook-retail-sample",\n  "release-package",',
+              expected=2,
+          )
+          replace_exact(
+              registry,
+              '  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter" || kind === "credit-master" || kind === "audiobook-reference-master" || kind === "audiobook-retail-track") && !mime.startsWith("audio/")) {',
+              '  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter" || kind === "credit-master" || kind === "audiobook-reference-master" || kind === "audiobook-retail-track" || kind === "audiobook-retail-sample") && !mime.startsWith("audio/")) {',
+          )
+          replace_exact(
+              registry,
+              '''  if (
+              kind === "audiobook-retail-track"
+              && (mime !== "audio/mpeg" || integrity.format !== "mp3")
+            ) {
+              throw new Error("ARTIFACT_RETAIL_TRACK_MP3_REQUIRED");
+            }
+          ''',
+              '''  if (
+              kind === "audiobook-retail-track"
+              && (mime !== "audio/mpeg" || integrity.format !== "mp3")
+            ) {
+              throw new Error("ARTIFACT_RETAIL_TRACK_MP3_REQUIRED");
+            }
+            if (
+              kind === "audiobook-retail-sample"
+              && (mime !== "audio/mpeg" || integrity.format !== "mp3")
+            ) {
+              throw new Error("ARTIFACT_RETAIL_SAMPLE_MP3_REQUIRED");
+            }
+          ''',
+          )
+          replace_exact(
+              registry,
+              '  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "credit-master" || record.kind === "audiobook-reference-master" || record.kind === "audiobook-retail-track" || record.kind === "release-package") && parents.length === 0) {',
+              '  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "credit-master" || record.kind === "audiobook-reference-master" || record.kind === "audiobook-retail-track" || record.kind === "audiobook-retail-sample" || record.kind === "release-package") && parents.length === 0) {',
+          )
+
+          tests = Path("packages/storyteller/src/artifact-registry.test.ts")
+          marker = 'test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {'
+          source = tests.read_text(encoding="utf-8")
+          if source.count(marker) != 1:
+              raise SystemExit(
+                  f"AUDIOBOOK_RETAIL_SAMPLE_TEST_MARKER_INVALID:{source.count(marker)}"
+              )
+          block = '''test("audiobook retail samples require MP3 integrity, parent provenance and human review", () => {
+            const sample = createArtifactRecord({
+              id: "artifact_audiobook_retail_sample_001",
+              kind: "audiobook-retail-sample",
+              projectId: job.projectId,
+              jobId: "job_audiobook_retail_sample_001",
+              segmentId: "retail_sample_001",
+              takeId: "retail_sample_render_001",
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/retail/RetailSample.mp3`,
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "5".repeat(64),
+                byteCount: 480_000,
+                mimeType: "audio/mpeg",
+                format: "mp3",
+              },
+              provenance: {
+                createdByActorId: "retail_sample_artifact_001",
+                sourceContentHash: "6".repeat(64),
+                generationRequestHash: "7".repeat(64),
+                parentArtifactIds: [
+                  "artifact_audiobook_retail_sample_plan_001",
+                  "artifact_audiobook_retail_sample_render_001",
+                  "artifact_audiobook_retail_track_001",
+                ],
+              },
+              rights: rights(),
+            }, t1);
+            assert.equal(sample.review.required, true);
+            assert.equal(sample.review.status, "pending");
+            assert.equal(sample.integrity.mimeType, "audio/mpeg");
+            assert.equal(sample.integrity.format, "mp3");
+            assert.doesNotThrow(() => assertArtifactRecord(sample));
+
+            assert.throws(
+              () => createArtifactRecord({
+                ...candidateInput(
+                  "artifact_audiobook_retail_sample_wav_001",
+                  "retail_sample_wav_001",
+                  "6",
+                ),
+                kind: "audiobook-retail-sample",
+                provenance: {
+                  createdByActorId: "retail_sample_artifact_001",
+                  parentArtifactIds: ["artifact_audiobook_retail_track_001"],
+                },
+              }, t1),
+              /ARTIFACT_RETAIL_SAMPLE_MP3_REQUIRED/u,
+            );
+
+            assert.throws(
+              () => createArtifactRecord({
+                ...candidateInput(
+                  "artifact_audiobook_retail_sample_parentless_001",
+                  "retail_sample_parentless_001",
+                  "7",
+                ),
+                kind: "audiobook-retail-sample",
+                integrity: {
+                  algorithm: "sha256",
+                  contentHash: "7".repeat(64),
+                  byteCount: 480_000,
+                  mimeType: "audio/mpeg",
+                  format: "mp3",
+                },
+                provenance: {
+                  createdByActorId: "retail_sample_artifact_001",
+                  parentArtifactIds: [],
+                },
+              }, t1),
+              /ARTIFACT_PARENT_REQUIRED/u,
+            );
+          });
+
+          '''
+          tests.write_text(
+              source.replace(marker, block + marker, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          checker = Path("scripts/check-artifact-registry.mjs")
+          replace_exact(
+              checker,
+              '  \'"audiobook-retail-track"\',\n  "ARTIFACT_RETAIL_TRACK_MP3_REQUIRED",',
+              '  \'"audiobook-retail-track"\',\n  \'"audiobook-retail-sample"\',\n  "ARTIFACT_RETAIL_TRACK_MP3_REQUIRED",\n  "ARTIFACT_RETAIL_SAMPLE_MP3_REQUIRED",',
+          )
+          replace_exact(
+              checker,
+              '  "audiobook retail tracks require MP3 integrity, parent provenance and human review",\n]);',
+              '  "audiobook retail tracks require MP3 integrity, parent provenance and human review",\n  "audiobook retail samples require MP3 integrity, parent provenance and human review",\n]);',
+          )
+
+          print("AUDIOBOOK_RETAIL_SAMPLE_ARTIFACT_KIND_REGISTERED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify branch slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:audiobook-retail-sample 2>&1 | tee .audiobook-retail-sample-check.log
+          npm run typecheck 2>&1 | tee .audiobook-retail-sample-typecheck.log
+          node --import tsx --test \
+            packages/storyteller/src/audiobook-retail-sample.test.ts \
+            packages/storyteller/src/artifact-registry.test.ts \
+            2>&1 | tee .audiobook-retail-sample-test.log
+          npm run verify 2>&1 | tee .audiobook-retail-sample-verify.log
+          npm run build 2>&1 | tee .audiobook-retail-sample-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-retail-sample-admission-branch-${{ github.sha }}
+          path: |
+            .audiobook-retail-sample-admission-patch.log
+            .audiobook-retail-sample-check.log
+            .audiobook-retail-sample-typecheck.log
+            .audiobook-retail-sample-test.log
+            .audiobook-retail-sample-verify.log
+            .audiobook-retail-sample-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit validated branch and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .audiobook-retail-sample-admission-patch.log \
+            .audiobook-retail-sample-check.log \
+            .audiobook-retail-sample-typecheck.log \
+            .audiobook-retail-sample-test.log \
+            .audiobook-retail-sample-verify.log \
+            .audiobook-retail-sample-build.log \
+            .github/workflows/one-time-validate-audiobook-retail-sample-admission-branch.yml \
+            .github/audiobook-retail-sample-admission-branch.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Validate governed audiobook retail sample admission"
+          git pull --rebase origin work/audiobook-retail-sample-admission-20260728
+          git push origin HEAD:work/audiobook-retail-sample-admission-20260728
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-retail-sample-admission-patch.log",
+              ".audiobook-retail-sample-check.log",
+              ".audiobook-retail-sample-typecheck.log",
+              ".audiobook-retail-sample-test.log",
+              ".audiobook-retail-sample-verify.log",
+              ".audiobook-retail-sample-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+|check failed/i.test(line)) || lines.find((line) => /AUDIOBOOK_RETAIL_SAMPLE_[A-Z0-9_]+/i.test(line)) || lines.at(-1) || "retail sample admission branch validation failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-retail-sample-admission-branch",
+              description: state === "success" ? "Retail sample admission branch passed all gates" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
