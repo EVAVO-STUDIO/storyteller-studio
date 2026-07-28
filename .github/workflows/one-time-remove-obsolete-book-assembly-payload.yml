@@ -1,0 +1,96 @@
+name: One-time remove obsolete book assembly payload
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/remove-obsolete-book-assembly-payload.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Remove obsolete encoded assembly payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-book-assembly-plan-promotion.yml \
+            .github/book-assembly-plan-promotion.trigger \
+            .github/book-assembly-plan-payload.b64 \
+            .github/book-assembly-plan-payload.b64.part*
+          rm -f \
+            .github/workflows/one-time-remove-obsolete-book-assembly-payload.yml \
+            .github/remove-obsolete-book-assembly-payload.trigger
+          if find .github -maxdepth 1 -type f -name 'book-assembly-plan-payload.b64*' | grep -q .; then
+            echo "OBSOLETE_BOOK_ASSEMBLY_PAYLOAD_REMAINS"
+            exit 1
+          fi
+          echo "OBSOLETE_BOOK_ASSEMBLY_PAYLOAD_REMOVED"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .obsolete-assembly-cleanup-verify.log
+          npm run build 2>&1 | tee .obsolete-assembly-cleanup-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: obsolete-assembly-cleanup-${{ github.sha }}
+          path: |
+            .obsolete-assembly-cleanup-verify.log
+            .obsolete-assembly-cleanup-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          rm -f .obsolete-assembly-cleanup-verify.log .obsolete-assembly-cleanup-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove obsolete encoded book assembly payload"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/obsolete-assembly-payload-cleanup",
+              description: state === "success"
+                ? "Obsolete encoded assembly payload removed; tests and builds passed"
+                : "Obsolete assembly payload cleanup failed",
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
