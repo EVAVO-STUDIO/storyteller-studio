@@ -1,1 +1,1 @@
-run the line-stable calibrated credit queue promotion and verify every repository gate
+run the narrowed credit queue promotion and verify every repository gate
