@@ -43,12 +43,12 @@ jobs:
           )
           encoded_hash = hashlib.sha256(encoded.encode("ascii")).hexdigest()
           print(f"AUDIOBOOK_SEQUENCE_APPROVAL_PAYLOAD_SHA256:{encoded_hash}")
-          if encoded_hash != "5d6851805a92758879e92983fb628e667c815d71c0dd7724c3ba640e7956aca5":
+          if encoded_hash != "3c9d97e7fb2dac23f7bfa008dcdcc3e520dffb3fe0e64fbbe6f15991fb6c5622":
               raise SystemExit("AUDIOBOOK_SEQUENCE_APPROVAL_PAYLOAD_HASH_INVALID")
           code = gzip.decompress(base64.b64decode(encoded, validate=True)).decode("utf-8")
           code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
           print(f"AUDIOBOOK_SEQUENCE_APPROVAL_CODE_SHA256:{code_hash}")
-          if code_hash != "773a854570551a5a5d1bd8213beec3b5001d57c092444cf4723a03a9daf4fb49":
+          if code_hash != "6aaa1a5848c8d1ff1ad076c9dfaa64ce498dab8a479a629196c8bf7afb4202c0":
               raise SystemExit("AUDIOBOOK_SEQUENCE_APPROVAL_CODE_HASH_INVALID")
           exec(compile(code, "audiobook-sequence-approval-hardening.py", "exec"), {})
           PY
