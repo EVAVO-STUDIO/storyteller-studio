@@ -71,6 +71,19 @@ jobs:
                   f"AUDIOBOOK_RETAIL_PACKAGE_BUILD_JSON_OBSERVATION_FIX_INVALID:{count}"
               )
           source = source.replace(old, new, 1)
+
+          old_rm = '''      await rm(temporaryDirectory, { recursive: true, force: true });
+                temporaryDirectory = undefined;'''
+          new_rm = '''      await rm(temporaryDirectory!, { recursive: true, force: true });
+                temporaryDirectory = undefined;'''
+          rm_count = source.count(old_rm)
+          print(f"AUDIOBOOK_RETAIL_PACKAGE_BUILD_TEMPORARY_NARROWING_FIX:{rm_count}")
+          if rm_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_PACKAGE_BUILD_TEMPORARY_NARROWING_FIX_INVALID:"
+                  f"{rm_count}"
+              )
+          source = source.replace(old_rm, new_rm, 1)
           source_path.write_text(source, encoding="utf-8", newline="\n")
 
           for temporary in [
