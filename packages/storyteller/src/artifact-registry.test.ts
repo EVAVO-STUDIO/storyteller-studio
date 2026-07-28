@@ -508,6 +508,86 @@ test("audiobook retail tracks require MP3 integrity, parent provenance and human
   );
 });
 
+test("audiobook retail samples require MP3 integrity, parent provenance and human review", () => {
+  const sample = createArtifactRecord({
+    id: "artifact_audiobook_retail_sample_001",
+    kind: "audiobook-retail-sample",
+    projectId: job.projectId,
+    jobId: "job_audiobook_retail_sample_001",
+    segmentId: "retail_sample_001",
+    takeId: "retail_sample_render_001",
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/retail/RetailSample.mp3`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "5".repeat(64),
+      byteCount: 480_000,
+      mimeType: "audio/mpeg",
+      format: "mp3",
+    },
+    provenance: {
+      createdByActorId: "retail_sample_artifact_001",
+      sourceContentHash: "6".repeat(64),
+      generationRequestHash: "7".repeat(64),
+      parentArtifactIds: [
+        "artifact_audiobook_retail_sample_plan_001",
+        "artifact_audiobook_retail_sample_render_001",
+        "artifact_audiobook_retail_track_001",
+      ],
+    },
+    rights: rights(),
+  }, t1);
+  assert.equal(sample.review.required, true);
+  assert.equal(sample.review.status, "pending");
+  assert.equal(sample.integrity.mimeType, "audio/mpeg");
+  assert.equal(sample.integrity.format, "mp3");
+  assert.doesNotThrow(() => assertArtifactRecord(sample));
+
+  assert.throws(
+    () => createArtifactRecord({
+      ...candidateInput(
+        "artifact_audiobook_retail_sample_wav_001",
+        "retail_sample_wav_001",
+        "6",
+      ),
+      kind: "audiobook-retail-sample",
+      provenance: {
+        createdByActorId: "retail_sample_artifact_001",
+        parentArtifactIds: ["artifact_audiobook_retail_track_001"],
+      },
+    }, t1),
+    /ARTIFACT_RETAIL_SAMPLE_MP3_REQUIRED/u,
+  );
+
+  assert.throws(
+    () => createArtifactRecord({
+      ...candidateInput(
+        "artifact_audiobook_retail_sample_parentless_001",
+        "retail_sample_parentless_001",
+        "7",
+      ),
+      kind: "audiobook-retail-sample",
+      integrity: {
+        algorithm: "sha256",
+        contentHash: "7".repeat(64),
+        byteCount: 480_000,
+        mimeType: "audio/mpeg",
+        format: "mp3",
+      },
+      provenance: {
+        createdByActorId: "retail_sample_artifact_001",
+        parentArtifactIds: [],
+      },
+    }, t1),
+    /ARTIFACT_PARENT_REQUIRED/u,
+  );
+});
+
 test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {
   const first = approve(verify(createCandidate("artifact_take_008", "take_008", "8")));
   const second = approve(verify(createCandidate("artifact_take_009", "take_009", "9")));

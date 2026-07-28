@@ -21,6 +21,7 @@ export type ArtifactKind =
   | "credit-master"
   | "audiobook-reference-master"
   | "audiobook-retail-track"
+  | "audiobook-retail-sample"
   | "release-package";
 
 export type ArtifactVerificationStatus =
@@ -189,6 +190,7 @@ const ARTIFACT_KINDS: ReadonlySet<ArtifactKind> = new Set([
   "credit-master",
   "audiobook-reference-master",
   "audiobook-retail-track",
+  "audiobook-retail-sample",
   "release-package",
 ]);
 
@@ -215,6 +217,7 @@ const REVIEW_REQUIRED_KINDS: ReadonlySet<ArtifactKind> = new Set([
   "credit-master",
   "audiobook-reference-master",
   "audiobook-retail-track",
+  "audiobook-retail-sample",
   "release-package",
 ]);
 
@@ -311,7 +314,7 @@ function validateIntegrity(kind: ArtifactKind, integrity: ArtifactIntegrity): vo
   if (!FORMAT_PATTERN.test(integrity.format)) throw new Error("ARTIFACT_FORMAT_INVALID");
 
   const mime = integrity.mimeType;
-  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter" || kind === "credit-master" || kind === "audiobook-reference-master" || kind === "audiobook-retail-track") && !mime.startsWith("audio/")) {
+  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter" || kind === "credit-master" || kind === "audiobook-reference-master" || kind === "audiobook-retail-track" || kind === "audiobook-retail-sample") && !mime.startsWith("audio/")) {
     throw new Error("ARTIFACT_AUDIO_MIME_REQUIRED");
   }
   if (
@@ -319,6 +322,12 @@ function validateIntegrity(kind: ArtifactKind, integrity: ArtifactIntegrity): vo
     && (mime !== "audio/mpeg" || integrity.format !== "mp3")
   ) {
     throw new Error("ARTIFACT_RETAIL_TRACK_MP3_REQUIRED");
+  }
+  if (
+    kind === "audiobook-retail-sample"
+    && (mime !== "audio/mpeg" || integrity.format !== "mp3")
+  ) {
+    throw new Error("ARTIFACT_RETAIL_SAMPLE_MP3_REQUIRED");
   }
   if ((kind === "word-alignment" || kind === "audio-analysis") && mime !== "application/json") {
     throw new Error("ARTIFACT_JSON_MIME_REQUIRED");
@@ -377,7 +386,7 @@ function validateProvenance(record: Pick<ArtifactRecord, "id" | "kind" | "jobId"
       throw new Error("ARTIFACT_PROVIDER_PROVENANCE_REQUIRED");
     }
   }
-  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "credit-master" || record.kind === "audiobook-reference-master" || record.kind === "audiobook-retail-track" || record.kind === "release-package") && parents.length === 0) {
+  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "credit-master" || record.kind === "audiobook-reference-master" || record.kind === "audiobook-retail-track" || record.kind === "audiobook-retail-sample" || record.kind === "release-package") && parents.length === 0) {
     throw new Error("ARTIFACT_PARENT_REQUIRED");
   }
 }
