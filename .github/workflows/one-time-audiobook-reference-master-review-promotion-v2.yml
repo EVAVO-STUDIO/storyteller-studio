@@ -63,20 +63,86 @@ jobs:
 
           project_store_path = Path("packages/storyteller/src/project-store.ts")
           project_store = project_store_path.read_text(encoding="utf-8")
-          old = '  | "audiobook-sequence"\n  | "chapter-assembly"'
-          new = (
+          entity_old = '  | "audiobook-sequence"\n  | "chapter-assembly"'
+          entity_new = (
               '  | "audiobook-sequence"\n'
               '  | "audiobook-reference-master-review"\n'
               '  | "chapter-assembly"'
           )
-          count = project_store.count(old)
-          print(f"AUDIOBOOK_REFERENCE_REVIEW_V2_ENTITY_ANCHOR:{count}")
-          if count != 1:
+          entity_count = project_store.count(entity_old)
+          print(
+              "AUDIOBOOK_REFERENCE_REVIEW_V2_ENTITY_ANCHOR:"
+              f"{entity_count}"
+          )
+          if entity_count != 1:
               raise SystemExit(
-                  f"AUDIOBOOK_REFERENCE_REVIEW_V2_ENTITY_ANCHOR_INVALID:{count}"
+                  "AUDIOBOOK_REFERENCE_REVIEW_V2_ENTITY_ANCHOR_INVALID:"
+                  f"{entity_count}"
               )
           project_store_path.write_text(
-              project_store.replace(old, new, 1),
+              project_store.replace(entity_old, entity_new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          review_path = Path(
+              "packages/storyteller/src/"
+              "audiobook-reference-master-review.ts"
+          )
+          review = review_path.read_text(encoding="utf-8")
+          review_old = (
+              "    artifactReviewFingerprint: "
+              "approvedArtifact.review.events.at(-1)!.fingerprint,"
+          )
+          review_new = (
+              "    artifactReviewFingerprint: "
+              "stableHash(approvedArtifact.review),"
+          )
+          review_count = review.count(review_old)
+          print(
+              "AUDIOBOOK_REFERENCE_REVIEW_V2_ARTIFACT_BINDING_ANCHOR:"
+              f"{review_count}"
+          )
+          if review_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_REFERENCE_REVIEW_V2_ARTIFACT_BINDING_INVALID:"
+                  f"{review_count}"
+              )
+          review_path.write_text(
+              review.replace(review_old, review_new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          test_path = Path(
+              "packages/storyteller/src/"
+              "audiobook-reference-master-review.test.ts"
+          )
+          tests = test_path.read_text(encoding="utf-8")
+          test_old = (
+              "    assert.equal(\n"
+              "      approved.session.approval?.approvedArtifactFingerprint,\n"
+              "      approved.artifact.fingerprint,\n"
+              "    );\n"
+          )
+          test_new = test_old + (
+              "    assert.equal(\n"
+              "      approved.session.approval?.artifactReviewFingerprint,\n"
+              "      stableHash(approved.artifact.review),\n"
+              "    );\n"
+          )
+          test_count = tests.count(test_old)
+          print(
+              "AUDIOBOOK_REFERENCE_REVIEW_V2_ARTIFACT_TEST_ANCHOR:"
+              f"{test_count}"
+          )
+          if test_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_REFERENCE_REVIEW_V2_ARTIFACT_TEST_INVALID:"
+                  f"{test_count}"
+              )
+          test_path.write_text(
+              tests.replace(test_old, test_new, 1),
               encoding="utf-8",
               newline="\n",
           )
