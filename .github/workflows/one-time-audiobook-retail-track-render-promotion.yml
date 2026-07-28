@@ -1,0 +1,265 @@
+name: One-time audiobook retail track-render promotion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/audiobook-retail-track-render.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply the isolated retail track-render slice
+        shell: bash
+        run: |
+          set -o pipefail
+          git fetch origin work/audiobook-retail-track-render-20260728
+          git checkout origin/work/audiobook-retail-track-render-20260728 -- \
+            docs/AUDIOBOOK_RETAIL_TRACK_RENDER.md \
+            package.json \
+            packages/storyteller/package.json \
+            packages/storyteller/src/audiobook-retail-track-render.test.ts \
+            packages/storyteller/src/audiobook-retail-track-render.ts \
+            scripts/check-audiobook-retail-track-render.mjs
+
+          python3 - <<'PY' 2>&1 | tee .audiobook-retail-track-render-promotion.log
+          from pathlib import Path
+          import subprocess
+
+          expected = {
+              "docs/AUDIOBOOK_RETAIL_TRACK_RENDER.md",
+              "package.json",
+              "packages/storyteller/package.json",
+              "packages/storyteller/src/audiobook-retail-track-render.test.ts",
+              "packages/storyteller/src/audiobook-retail-track-render.ts",
+              "scripts/check-audiobook-retail-track-render.mjs",
+          }
+          changed = {
+              line.strip()
+              for line in subprocess.check_output(
+                  ["git", "diff", "--cached", "--name-only"],
+                  text=True,
+              ).splitlines()
+              if line.strip()
+          }
+          print("AUDIOBOOK_RETAIL_TRACK_RENDER_FILES:" + ",".join(sorted(changed)))
+          if changed != expected:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_FILE_SCOPE_INVALID:"
+                  + ",".join(sorted(changed))
+              )
+
+          source_path = Path(
+              "packages/storyteller/src/audiobook-retail-track-render.ts"
+          )
+          source = source_path.read_text(encoding="utf-8")
+
+          old_filter = '''  return [
+            `[0:a]atrim=start=${seconds(track.sourceStartMs)}:duration=${seconds(track.durationMs)}`,
+            "asetpts=PTS-STARTPTS",
+            `aformat=sample_rates=${track.output.sampleRateHz}:channel_layouts=${channelLayout(track.output.channels)}`,
+            "[out]",
+          ].join(",").replace(",[out]", "[out]") + "\\n";'''
+          new_filter = '''  return [
+            `atrim=start=${seconds(track.sourceStartMs)}:duration=${seconds(track.durationMs)}`,
+            "asetpts=PTS-STARTPTS",
+            `aformat=sample_rates=${track.output.sampleRateHz}:channel_layouts=${channelLayout(track.output.channels)}`,
+          ].join(",") + "\\n";'''
+          filter_count = source.count(old_filter)
+          print(f"AUDIOBOOK_RETAIL_TRACK_RENDER_FILTER_FIX:{filter_count}")
+          if filter_count != 1:
+              raise SystemExit(
+                  f"AUDIOBOOK_RETAIL_TRACK_RENDER_FILTER_FIX_INVALID:{filter_count}"
+              )
+          source = source.replace(old_filter, new_filter, 1)
+
+          old_result_media = '''    const media = detectArtifactMedia(output.bytes);
+              if (
+                media.format !== "mp3"
+                || media.mimeType !== "audio/mpeg"
+                || media.signature !== evidence.output.mediaSignature
+              ) {
+                throw new AudiobookRetailTrackRenderError(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_RESULT_MEDIA_MISMATCH",
+                );
+              }'''
+          new_result_media = '''    let media;
+              try {
+                media = detectArtifactMedia(output.bytes);
+              } catch {
+                throw new AudiobookRetailTrackRenderError(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_RESULT_MEDIA_MISMATCH",
+                );
+              }
+              if (
+                media.format !== "mp3"
+                || media.mimeType !== "audio/mpeg"
+                || media.signature !== evidence.output.mediaSignature
+              ) {
+                throw new AudiobookRetailTrackRenderError(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_RESULT_MEDIA_MISMATCH",
+                );
+              }'''
+          result_media_count = source.count(old_result_media)
+          print(
+              "AUDIOBOOK_RETAIL_TRACK_RENDER_RESULT_MEDIA_FIX:"
+              f"{result_media_count}"
+          )
+          if result_media_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_RESULT_MEDIA_FIX_INVALID:"
+                  f"{result_media_count}"
+              )
+          source = source.replace(old_result_media, new_result_media, 1)
+
+          old_output_media = '''      const media = detectArtifactMedia(bytes);
+                if (
+                  media.format !== "mp3"
+                  || media.mimeType !== "audio/mpeg"
+                  || media.signature !== "mpeg-audio"
+                ) {
+                  throw new AudiobookRetailTrackRenderError(
+                    "AUDIOBOOK_RETAIL_TRACK_RENDER_OUTPUT_MEDIA_INVALID",
+                  );
+                }'''
+          new_output_media = '''      let media;
+                try {
+                  media = detectArtifactMedia(bytes);
+                } catch {
+                  throw new AudiobookRetailTrackRenderError(
+                    "AUDIOBOOK_RETAIL_TRACK_RENDER_OUTPUT_MEDIA_INVALID",
+                  );
+                }
+                if (
+                  media.format !== "mp3"
+                  || media.mimeType !== "audio/mpeg"
+                  || media.signature !== "mpeg-audio"
+                ) {
+                  throw new AudiobookRetailTrackRenderError(
+                    "AUDIOBOOK_RETAIL_TRACK_RENDER_OUTPUT_MEDIA_INVALID",
+                  );
+                }'''
+          output_media_count = source.count(old_output_media)
+          print(
+              "AUDIOBOOK_RETAIL_TRACK_RENDER_OUTPUT_MEDIA_FIX:"
+              f"{output_media_count}"
+          )
+          if output_media_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_OUTPUT_MEDIA_FIX_INVALID:"
+                  f"{output_media_count}"
+              )
+          source = source.replace(old_output_media, new_output_media, 1)
+          source_path.write_text(source, encoding="utf-8", newline="\n")
+
+          test_path = Path(
+              "packages/storyteller/src/audiobook-retail-track-render.test.ts"
+          )
+          tests = test_path.read_text(encoding="utf-8")
+          old_blocker = '''  const blockerBase: Omit<AudiobookRetailTrackPlanBlocker, "fingerprint"> = {'''
+          new_blocker = '''  const blockerBase: Omit<
+            Extract<
+              AudiobookRetailTrackPlanBlocker,
+              { kind: "reference-duration-drift" }
+            >,
+            "fingerprint"
+          > = {'''
+          blocker_count = tests.count(old_blocker)
+          print(f"AUDIOBOOK_RETAIL_TRACK_RENDER_BLOCKER_TYPE_FIX:{blocker_count}")
+          if blocker_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_TRACK_RENDER_BLOCKER_TYPE_FIX_INVALID:"
+                  f"{blocker_count}"
+              )
+          tests = tests.replace(old_blocker, new_blocker, 1)
+          test_path.write_text(tests, encoding="utf-8", newline="\n")
+
+          for temporary in [
+              Path(
+                  ".github/workflows/"
+                  "one-time-audiobook-retail-track-render-promotion.yml"
+              ),
+              Path(".github/audiobook-retail-track-render.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+
+          print("AUDIOBOOK_RETAIL_TRACK_RENDER_PROMOTION_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .audiobook-retail-track-render-verify.log
+          npm run build 2>&1 | tee .audiobook-retail-track-render-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-retail-track-render-${{ github.sha }}
+          path: |
+            .audiobook-retail-track-render-promotion.log
+            .audiobook-retail-track-render-verify.log
+            .audiobook-retail-track-render-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f \
+            .audiobook-retail-track-render-promotion.log \
+            .audiobook-retail-track-render-verify.log \
+            .audiobook-retail-track-render-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Add governed audiobook retail track rendering"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-retail-track-render-promotion.log",
+              ".audiobook-retail-track-render-verify.log",
+              ".audiobook-retail-track-render-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /AUDIOBOOK_RETAIL_TRACK_RENDER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "audiobook retail track-render promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-retail-track-render",
+              description: state === "success" ? "Retail track rendering tests, contracts and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
