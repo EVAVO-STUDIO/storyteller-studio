@@ -1,1 +1,1 @@
-run the corrected governed book credit take promotion and verify every repository gate
+rerun the corrected governed book credit take promotion and verify every repository gate
