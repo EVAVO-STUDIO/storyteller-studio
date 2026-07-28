@@ -1,1 +1,1 @@
-promote governed book credit delivery snapshot and verify every repository gate
+run the registered governed book credit delivery promotion and verify every repository gate
