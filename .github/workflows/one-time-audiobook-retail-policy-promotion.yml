@@ -61,6 +61,34 @@ jobs:
                   + ",".join(sorted(changed))
               )
 
+          source_path = Path(
+              "packages/storyteller/src/audiobook-retail-policy.ts"
+          )
+          source = source_path.read_text(encoding="utf-8")
+          replacements = {
+              "  maximumFileDurationMs: 120 * 60 * 1_000,":
+                  "  maximumFileDurationMs: 7_200_000,",
+              "  maximumDurationMs: 5 * 60 * 1_000,":
+                  "  maximumDurationMs: 300_000,",
+          }
+          for old, new in replacements.items():
+              count = source.count(old)
+              print(
+                  "AUDIOBOOK_RETAIL_POLICY_LITERAL_ANCHOR:"
+                  f"{old.strip()}:{count}"
+              )
+              if count != 1:
+                  raise SystemExit(
+                      "AUDIOBOOK_RETAIL_POLICY_LITERAL_ANCHOR_INVALID:"
+                      f"{old.strip()}:{count}"
+                  )
+              source = source.replace(old, new, 1)
+          source_path.write_text(
+              source,
+              encoding="utf-8",
+              newline="\n",
+          )
+
           for temporary in [
               Path(
                   ".github/workflows/"
