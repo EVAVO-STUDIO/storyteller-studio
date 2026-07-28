@@ -66,6 +66,20 @@ jobs:
               "audiobook-retail-package-review.test.ts"
           )
           tests = test_path.read_text(encoding="utf-8")
+          old_package_id = '    packageId: "retail_package_review_001",'
+          new_package_id = '    packageId: "package_subject_opaque_001",'
+          package_id_count = tests.count(old_package_id)
+          print(
+              "AUDIOBOOK_RETAIL_PACKAGE_REVIEW_PACKAGE_ID_FIX:"
+              f"{package_id_count}"
+          )
+          if package_id_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_PACKAGE_REVIEW_PACKAGE_ID_FIX_INVALID:"
+                  f"{package_id_count}"
+              )
+          tests = tests.replace(old_package_id, new_package_id, 1)
+
           old_audit = (
               '    const audit = await readFile(join(root, "audit", '
               '"2026-07-29.jsonl"), "utf8");'
