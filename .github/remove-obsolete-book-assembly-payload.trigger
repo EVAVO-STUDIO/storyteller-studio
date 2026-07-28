@@ -1,1 +1,1 @@
-remove the obsolete encoded assembly payload and verify every repository gate
+execute the registered obsolete assembly payload cleanup and verify every repository gate
