@@ -26,6 +26,7 @@ export type StoredEntityType =
   | "audiobook-reference-master-review"
   | "audiobook-retail-track-review"
   | "audiobook-retail-sample-plan"
+  | "audiobook-retail-sample-review"
   | "chapter-assembly"
   | "release-package";
 
