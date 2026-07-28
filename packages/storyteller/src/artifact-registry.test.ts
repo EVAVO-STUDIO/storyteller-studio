@@ -297,6 +297,61 @@ test("mastered chapters require audio integrity, parent provenance and human rev
   );
 });
 
+test("credit masters require audio integrity, parent provenance and human review", () => {
+  const source = approve(verify(createCandidate(
+    "artifact_credit_master_source_001",
+    "take_credit_master_source_001",
+    "d",
+  )));
+  const creditMaster = createArtifactRecord({
+    id: "artifact_credit_master_001",
+    kind: "credit-master",
+    projectId: job.projectId,
+    segmentId: "credit_opening_001",
+    takeId: "take_credit_master_001",
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/credits/opening/master.wav`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "e".repeat(64),
+      byteCount: 480_000,
+      mimeType: "audio/wav",
+      format: "wav",
+    },
+    provenance: {
+      createdByActorId: "credit_master_artifact_001",
+      sourceContentHash: source.integrity.contentHash,
+      generationRequestHash: "f".repeat(64),
+      parentArtifactIds: [source.id],
+    },
+    rights: rights(),
+  }, t1);
+  assert.equal(creditMaster.review.required, true);
+  assert.equal(creditMaster.review.status, "pending");
+  assert.doesNotThrow(() => assertArtifactRecord(creditMaster));
+
+  assert.throws(
+    () => createArtifactRecord({
+      ...candidateInput(
+        "artifact_credit_master_invalid_001",
+        "take_credit_master_invalid_001",
+        "9",
+      ),
+      kind: "credit-master",
+      provenance: {
+        createdByActorId: "credit_master_artifact_001",
+        parentArtifactIds: [],
+      },
+    }, t1),
+    /ARTIFACT_PARENT_REQUIRED/u,
+  );
+});
+
 test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {
   const first = approve(verify(createCandidate("artifact_take_008", "take_008", "8")));
   const second = approve(verify(createCandidate("artifact_take_009", "take_009", "9")));

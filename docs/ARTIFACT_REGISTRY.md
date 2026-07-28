@@ -28,11 +28,16 @@ The registry supports the media and evidence records needed by the production pi
 - visual renders;
 - chapter masters;
 - mastered chapters;
+- approved opening and closing credit masters;
 - release packages.
 
 A `mastered-chapter` is a new immutable audio artifact produced from an approved `chapter-master` through a governed mastering plan and render. It never overwrites the approved pre-master chapter. It requires parent provenance, independent verification and a new human review before release.
 
 These are separate records because they have different formats, reviewers, retention needs and failure modes. A waveform is not an audio master. A transcript is not proof that an audio file is complete. A release ZIP is not approved merely because it can be opened.
+
+## Credit master artifact
+
+A `credit-master` is a distinct opening or closing audio component derived from one approved credit-take review. It is audio-only, requires parent provenance, begins with human review pending, and can never be substituted with an ordinary narration candidate or chapter master.
 
 ## Immutable identity and integrity
 
