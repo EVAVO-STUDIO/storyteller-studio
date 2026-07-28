@@ -1,0 +1,215 @@
+name: One-time complete-book assembly plan promotion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/book-assembly-plan-promotion.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply governed complete-book assembly plan slice
+        shell: bash
+        env:
+          BOOK_ASSEMBLY_PAYLOAD: "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[... ELLIPSIZATION ...]Rm7rnl4IJFwOyJwLaaDd9O6JIUdpxKh8ajjvrf/jvP/dOee923DeW3fhvHW8Qc4nUEKxUsZmFMgdkxdRbkcMboUGp8NslDcP7Mxjr9+97e9QKszh/tv+4XB353h/8J/vhvuDFw+WIiD4nScVBKMMT2ZB82gjOs/+3t7+7i8DnbX0jpNjjgk0Rx0ajm2Plbzg4XeRvCau5tKZ9/7w1evDg+PBX/cQpF+dwskh5ssDmMtytqoorcRLvUwo/CfqL6TtRGkWhZoD6LuhmIILTWxH0dsSzS8hvVwveSQ49utb0dSH/0dT/91p6sPb0NSH/xo01Uc1/N7xP5sQrt1mlBwow1F//3D4sr99eHwwOLwfkoZzig0qPJcGO6+GO4PB/nDnlU7nzcZkB1eK/y/XpQXbRgUsE0p0H2NCCVundB/02RAIZ5JRQhEiFdG2LsmIEw19JN2+wuTDO5yxZu4hDRzTWF PnuPJ0AjGyEl1FmMCsXEW M1KyxigjR Mau4rsfun+CfF4O9w9ch3KPMpqSGv0wn6PGPdit1uaKH43S+RJF WK2faqNxJKrj17nqF3qch4NH/XZ3/7lfno9tcnY/ubghwzaGOchvfw7N6X2z78bGuyP0LkJzLDn9C5vAaupW/3VeR2XiXVQQu0mnb8n2Q9I1veSfavRl+FLrzBwrFFmWmcL9B0/OG lHW2NaDQwc9uSHBwbQWCe+g2P3D7sSo+yKpoSkm5ke6w9cYHrsdiXIdUn5Hmvm5Mz7HA5F8HpBRLsz1shiHH9lDFfdfby tqMUA vfg0W TBA2N3noAavjOb57BxnGCs+1OhlEhGFpeUKamV2jkT01RTG2XljSbgZfEUg/+kyVzKTRTpZZ/pL2/LsQCpdc1x12N4J529f0veXVRLC2EutZvfsS0A6uxT2u0q1WnNtqwuXJdTshQfXI1+cIf/ukPbgMjMLWIebddShJrtwOkKUQD1yd+jOohwXV5lhX8fsS6LPuOcXi7b/d2dwY7h8f7u28GAXGJjsJGa2NcjEqn7d6b/k5nOt7obfwueYV65Zlk6mIOHvB/B9IBLPucjaRLiDQSJWdkzSRmcbOz1dmEyqOCI vxr7xEgEyLshPE3AUwuzrQzfqIzSTI8SE6zM7TqCKM5Mpgwkd/9LtlbLuZFmeGvvvZdkTof4XDpOLaoC5vU58bJBb3XgLpksKP5ZAKUe54uaEE5TKlDb6qk8Qr+pshB06UwUF1my aeLfHQB4AAiJBqQE2ACMzdrQVdkqJhWAgAtchZayKZSaY9z4lGo5tJqLNeezq6gPlBRsS8CFPgkFypAow4CAc0VNduX5GhJkLvVYrsiO8vJ17aTDKtkXMA6ZgXesrMR1J6RHxBFT oBJo lcT9ETZOCeYZhMzxmBPL e0yBIWTDA/6PB19TM9x54VZtrzApVQXyAjKbVSO4vJUA/wr2lIxaWME mRCmVBeIaZiNlHayog8lulKpd9E6aGgPu+l2aC/OFX6fBFxcT3B/TjyPxhNyd0Tiu9WhYZTJR S OU9wzgRN9S+ionE3MGo19p5CQHS+j2oZibh58n1vPME/mKhJSXaN4hXNONB HuuHnZAr4+cXhWm363X72IgcHqNrD8FTBc1oa/HHcAQTDg4Dhm2ss/4MDivhESQcJZfo3n8JItllS1nBWVLvxSiR57iwMmnL+bBC R3sU8ClHGjB D A GCtcTHSSHipGuEk1ZkqiOPm4CR3GbFAipE31awUyBKxzJTlaCsZJhV0ZYFRcIzmI5G2RznDd3DkHQGUhyVw3qKi06WJR7DTtKX0jMdR3ruYyMggU2AK0eRXsr5OMY5dlQRS ozc+cp3kjjbAW4ozr+iVqqGBBWdvDYBQ+AVGiQrSlPR0ohhudW21FsAeo4iQApEN6FkFUDn5ihCUsR5nJk+zZJk6MwMbZPUpq3eldBnhVRACwnl2hqBP11kdLcQthA0BDmiZsATlTD35O9LuBJgBbOMPi9nkr6Naabi3kgvgRwSQQUk g c7HS/LopQYjnDDUxrNgrjjaBp0fGXYvk0ugMXGh7HIAcoswhANFEVy o5qxASwxsKGDEjMCtKb6+XSnOqyCo0jACR2F5CnOuUIuDaX9TupqTsyUCuS0QQR/f00kx+igQmxhmhczScqJCueD25bMlAF6MJdFLnrBcXCcaYUTW32yUwp pho bjpNAKt16AT+v92KDGBvAsUosqDJi87vG0Iz8uLfA7dVp+ybMZw0JBC TqsEpXjiVao+FUKhJWsjufDpoWhk0RSOhlabEktp400YjSf2EWHRW9X6dQ18ITLH W3pmh6o0lATppslM0Q7Tanv52i1CEVWzGDMVOtCCvKgrAoZSjmziNiYyjeG/xVbxCWr0oH7kORmPF8jqWfCTsKmhAeIMiInIV5qSj+IEGVkwPEjiqDFqXCrEPVTOedpzIp9IrD2k1aADEGO1FOsk2CPYfPL4MAwrneGZzHjcRm9/QSAFwVVMrAAATEyi5V/6v5jEeAadcBXC iTFZcBShgmkB5x1WRSxHod6NCPDYNfe236ISGVii eXVhF2nSyeOtKcAxgkyLOFjO58UC9wd7lGhMTu3ie jrRBo2Tlv yB6bJPC Cri98Mt+A03kiII4owgCVhIx hNpMIif0KaAWS74+lt6kZP0inKU61Vhe4tflksgCv4rIRWjHJqhBcyj7ltwxeNorQSz4gJVKTMxI0Ww0G2pKpDtGOGG60OCXkuSOcexTuI+nbDqwWfiI87NEYRbY6wYFzhmgHrw 7QhqIo09zj/nULlXIXKwLAT8T5Lx1mJrDagoPwbL20C1Tl0USA rf wk4B8OdAzNBfWKO9lxcoC4lfwEUdAFd41RHdF1goH0uUAgM JtkF13yG2Z7hptH8tWTGNH8H7LLgN1JXLMtnjOJpVNTPTiXDIIYSDLLN3dGcd4WySSyM7p3zZbEESU2cOU0UDdOBs17Ocui9k6gXlUjiAXT0lkwcY/Xiyd6F5GxRTMN8nboE7YYoo16ydvkiSr912CgFbXnN4REpJaWQVFctSvOHdKwl0glWvlhoS JKEwY+zqJ6aK1O2BGGLV3Nr0UZYpp5QA/FwTEHB3FpawtQO0eqY0oK3EW HpMJDkzDlDKSerLoVGGxdo9TTPFtWVlDlLONBnlBC2YsyXEmolqr8maYNLFEzShItZUAhkbU8C7vonCWptlucXMsxWQsycIBKYe xQEBIETymImJFe5jycRa8OJhDmxNuI ybfMZMjSWNUOSkyia2Wxfkp6RuCmOheK9xM4L+n4FxG7aSoTDUctaDUk16hBVhjYJ2mpOhR5xjuHQFC LrrwxXgHhjMDRDAIzAT8N5yIYltj5CLhcxhphVpbsg0k0c+RMi3aJaKfhMTGftqzssErgk/YVKmYlfT6Lewycq5WEpUa9d0DNZ+ALzrgQCCpXYHLkCykGCTAnl2aLFy1vByCoy354WKYVbrmbMhGioOBHNmpOYj/K7Wlsn2c/EO Cg8yK27Il ao5nTYd2afvHWnQP2ASU0VkyJBSTeV0FSIkwk7fIne4SXIFCgRlmz3iDEpzSkWl55hvy5Aphrhs2i8eEp7o6UXrpCriUZrZxNJs lshQq/lfqT5GnNbrmcsqaNk3koYSjzbVfoF0iyiL7xWJKl9UKsXrvJqs3Bl0/QKRcxC83dm3rRq9SBZCJVzCTlgHHJ591wWkyXpsFCnJoi1Og5yNANXurmEWKmuVQsA8YtNkGa9A+I1s7sR1ISxOVKAVaMTwyvHFTscuwMsWtQSyjRD5IUggSjtcp2ABwXQKkU41WEKKC9CGCCnawQJCQQjSsgqQhjSAVF03hcS5YSUozBEY5J/6bp6W+/OlagnL3UGGNPxFfWymvRL8pRgnu1KOzSKtNnJx+xKyDg7xNAm/b0hFX/KTjHFuUgvQ1IILXaFohbOAZKOqlZxXLoKLH4u+ibptiZQwcuTuFkmVwmJD3elZBkJ5ZtvTfpm mCoRmH9U6QtRtCwmUF ncaQo1xI60mIKACKAWI8v8H1SqxUVx/6gThsKY4ntJFoGDAVcMoM5k0uLMG+pVKHJi5uofZmOh2kJa6d81OgKylGKJMZA3uNQsaBsHKdVJyY7oZC42qUoXivON1oYQ0MsHdHU4r2ro bpv+Wm70NoDxBwku+SJunfLga jZq6TcY5tc4X4gfeErxL3zdgFf80cYM5L3eWUmJrnRvSB9aUu9ySbAV+2K3QpaA2qnkYvK5EGDHCM5dZ/RpTC4/+sUPwGxKXgEf9Ffsb180a2B/ZCuTw8mHFvRZN8DlOJXNah uqO1FsPyxhoY/kHtFDFdHRF5Xw9hsDSae3ZlOvoTNflheNE+WK7G8P sby95Nsv2PL6xA++JGdwWHzMZiX1DzSdfqw7F/FW3HN eoPi86bih oGY9gqMRyM7Ch5KDS c5Rv5ChOs2m8XBwVi8XhyShBhBIqxe kAcPuECT0x/WJeqRzrZ7J2MGpigkS7H1B2nCjygZgMcWZvWqpuw1RyYp0kJ4C5iwrhIIGmG5mshpzwKomGqSycxd2yJcj6Nh54m2t123q+x4ACKZCb6HUtxb1ZL+hyoFPF34mldXvnt5EmY0Z6nXy8oVaUQM GDkFKnVx5gqzuFPBUvxk+ksDOHxwddRrPe1X5tSo/f/21/Aokp vntg2WHnAdp0snvf598o+rB16/lPBs14ff7/+58+KNdlyGOGFCgTd3UMD7OJB1l/cm kcbRxhP+jN2MP9DtCgy6Jt1sCgd iLTwS+eul5tCFtleUD9lzxQbkYPQgQVx3v5IbNYPEr28qPHRYVt2YUyYWKGJu877jFn6p8aPpEjmigTXhuARYFT39sJxaQnqorZ+mCsPOnLg67TOji+HNnXSUq5QXGcKzGoRpuYL5oHS+Yv1Mzl nba gGzdp0qRFjWO7/UtfGfiWH3Xn39Fffs5UKTSwe67/e3B8eHwrXZ2MUek5nm9Am4oCAMdhr ujvj7aCv//eXFXDObc18NRr8f7eV rldHs3J/N/3YOwAhMj2FZLsBVShbx l1LA1Dga6Stxsq6rEDGSqPGIvUMUBHat u6ajZ1HdX3eKuxyuI+ydx+CLLEuKP17p2m02LbZSFPKjEPF2UGMUWWOk1e9TcJeutg2qjRVU+77w/2ugECMvRxgcKMIWlNbeuZqZsHtyKvaC9sTT8xOBJ eFzzPv0W0AyzJg5UqeDAkkpu1p3h11lXRkD5j6+SC3CX9h/NKLwsFSw3HI6K8xmaCe8BVHfCsXp0kmoBQifygLnqWRM26IQSerKOFqEGuUie97BKREJLwsNrUMmNWzF57ZsFE3/OgzPM5lPUa8VGie8vEK90ZpFJ4SkkdGpsx+OdW7vtyNY3PCOx49zEIZ6vPBOx5tgaX4CQ9oWHxTmoYNkoSaqjMs4+757BEJIUaPm6jnlGABD isS5/TDabHrADXqhSna3crSRHIfokSfOLG8lngNn6/AnrmcqQJHhJsgn5EYE0oZFdiWclrEmLDQjLAfCbjHw9U+YpTeDP03w8FoqT907ArMBTjB4LomU9H/PC0vrRtlZX9OKb8sKQ57w1Sth9nlcJPdRixf5LLF6o3nB4U4rOx0QIZp9NCGAddoxrqvh+s7gwaptqVFYOwjJcFeadUuucTbq3b7/onmNKq4jOodPphJQzBMTyQTrP8YyrQAr1lT9lp6ayrfKS2v9avV8Yhf9fdpleFpzoyDSNQX7BbFqd1L6O1H0T7YG983KtN9t0pad0t9hGBtJTFhin d/WGExKqQUQEv+QZEki9LSDMdLLFol jABgZeGIT0pHhFJ2cpwA7O1JHmOqwQZjQk7qEave mMdtJGnbMoVJNX6ni4uqpGV6uiVcNJcW7zkceB97Y0u+M5fhyLmdnN22FXdyElRiTjoBu7Nv1lCdzjIDgWi6vwgIIQot14UcwK+HrV8t3TS25P1GK RcHVgbtGOQ3V4wJDnGoxveeNFHnoI6xbQ09GFtkAZt8LIcOI+494jaOy1xDPXfQsXpqTTyD5p//sLT5JjHhxGNaG8W2eO50YZ7n5W+A9ZSDlSY/oq lwvYNHLuE2dUTn3j+v8DaFpvejE8AQAA=="
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .book-assembly-plan-promotion.log
+          import base64
+          import gzip
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(gzip.decompress(base64.b64decode(
+              os.environ["BOOK_ASSEMBLY_PAYLOAD"]
+          )).decode("utf-8"))
+          expected = {
+              "packages/storyteller/src/book-assembly-plan.ts",
+              "packages/storyteller/src/book-assembly-plan.test.ts",
+              "docs/BOOK_ASSEMBLY_PLAN.md",
+              "scripts/check-book-assembly-plan.mjs",
+          }
+          if set(payload) != expected:
+              raise SystemExit(
+                  f"BOOK_ASSEMBLY_PAYLOAD_SCOPE_INVALID:{sorted(payload)}"
+              )
+          for relative, content in payload.items():
+              path = Path(relative)
+              if path.exists():
+                  raise SystemExit(f"BOOK_ASSEMBLY_TARGET_ALREADY_EXISTS:{relative}")
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(content, encoding="utf-8", newline="\n")
+              print(f"BOOK_ASSEMBLY_FILE_WRITTEN:{relative}:{len(content)}")
+
+          project_store = Path("packages/storyteller/src/project-store.ts")
+          source = project_store.read_text(encoding="utf-8")
+          marker = '  | "book-chapter-sequence"\n'
+          count = source.count(marker)
+          print(f"BOOK_ASSEMBLY_PROJECT_STORE_ANCHOR:{count}")
+          if count != 1:
+              raise SystemExit(f"BOOK_ASSEMBLY_PROJECT_STORE_ANCHOR_INVALID:{count}")
+          source = source.replace(
+              marker,
+              marker + '  | "book-assembly-plan"\n',
+              1,
+          )
+          project_store.write_text(source, encoding="utf-8", newline="\n")
+
+          engine_package_path = Path("packages/storyteller/package.json")
+          engine_package = json.loads(engine_package_path.read_text(encoding="utf-8"))
+          exports = engine_package.get("exports")
+          if not isinstance(exports, dict):
+              raise SystemExit("BOOK_ASSEMBLY_ENGINE_EXPORTS_INVALID")
+          if "./book-assembly-plan" in exports:
+              raise SystemExit("BOOK_ASSEMBLY_ENGINE_EXPORT_ALREADY_EXISTS")
+          rebuilt_exports = {}
+          inserted = False
+          for key, value in exports.items():
+              rebuilt_exports[key] = value
+              if key == "./book-chapter-sequence":
+                  rebuilt_exports["./book-assembly-plan"] = "./src/book-assembly-plan.ts"
+                  inserted = True
+          if not inserted:
+              raise SystemExit("BOOK_ASSEMBLY_ENGINE_EXPORT_ANCHOR_MISSING")
+          engine_package["exports"] = rebuilt_exports
+          engine_package_path.write_text(
+              json.dumps(engine_package, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          root_package_path = Path("package.json")
+          root_package = json.loads(root_package_path.read_text(encoding="utf-8"))
+          scripts = root_package.get("scripts")
+          if not isinstance(scripts, dict):
+              raise SystemExit("BOOK_ASSEMBLY_ROOT_SCRIPTS_INVALID")
+          if "verify:book-assembly" in scripts:
+              raise SystemExit("BOOK_ASSEMBLY_VERIFY_SCRIPT_ALREADY_EXISTS")
+          old_chain = "npm run verify:book-credit-master && npm run verify:mastering-render"
+          new_chain = (
+              "npm run verify:book-credit-master && npm run verify:book-assembly "
+              "&& npm run verify:mastering-render"
+          )
+          verify_artifacts = scripts.get("verify:artifacts")
+          if not isinstance(verify_artifacts, str) or verify_artifacts.count(old_chain) != 1:
+              raise SystemExit("BOOK_ASSEMBLY_VERIFY_CHAIN_ANCHOR_INVALID")
+          scripts["verify:artifacts"] = verify_artifacts.replace(old_chain, new_chain, 1)
+          rebuilt_scripts = {}
+          inserted = False
+          for key, value in scripts.items():
+              rebuilt_scripts[key] = value
+              if key == "verify:book-credit-master":
+                  rebuilt_scripts["verify:book-assembly"] = (
+                      "node scripts/check-book-assembly-plan.mjs"
+                  )
+                  inserted = True
+          if not inserted:
+              raise SystemExit("BOOK_ASSEMBLY_VERIFY_SCRIPT_ANCHOR_MISSING")
+          root_package["scripts"] = rebuilt_scripts
+          root_package_path.write_text(
+              json.dumps(root_package, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          for temporary in [
+              Path(".github/workflows/one-time-book-assembly-plan-promotion.yml"),
+              Path(".github/book-assembly-plan-promotion.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("BOOK_ASSEMBLY_PLAN_SLICE_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run focused assembly gates
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:book-assembly 2>&1 | tee .book-assembly-plan-focused.log
+          npm run typecheck 2>&1 | tee -a .book-assembly-plan-focused.log
+          npm run test:engine 2>&1 | tee -a .book-assembly-plan-focused.log
+
+      - name: Run complete verification and builds
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .book-assembly-plan-verify.log
+          npm run build 2>&1 | tee .book-assembly-plan-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-assembly-plan-promotion-${{ github.sha }}
+          path: |
+            .book-assembly-plan-promotion.log
+            .book-assembly-plan-focused.log
+            .book-assembly-plan-verify.log
+            .book-assembly-plan-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promoted slice
+        shell: bash
+        run: |
+          rm -f .book-assembly-plan-promotion.log .book-assembly-plan-focused.log .book-assembly-plan-verify.log .book-assembly-plan-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Add governed complete-book assembly plan"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".book-assembly-plan-promotion.log",
+              ".book-assembly-plan-focused.log",
+              ".book-assembly-plan-verify.log",
+              ".book-assembly-plan-build.log",
+            ].filter((path) => fs.existsSync(path))
+              .map((path) => fs.readFileSync(path, "utf8"))
+              .join("\n")
+              .replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /BOOK_ASSEMBLY_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)
+            ) || lines.at(-1) || "complete-book assembly plan promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/book-assembly-plan-promotion",
+              description: state === "success"
+                ? "Complete-book assembly plan, tests and builds passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
