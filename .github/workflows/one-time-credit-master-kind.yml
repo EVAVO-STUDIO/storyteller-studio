@@ -1,0 +1,243 @@
+name: One-time credit master artifact kind
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/credit-master-kind.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Add governed credit master artifact kind
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .credit-master-kind.log
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              source = path.read_text(encoding="utf-8")
+              count = source.count(old)
+              print(f"CREDIT_MASTER_KIND_ANCHOR:{label}:{count}")
+              if count != 1:
+                  raise SystemExit(f"CREDIT_MASTER_KIND_ANCHOR_INVALID:{label}:{count}")
+              path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          registry = Path("packages/storyteller/src/artifact-registry.ts")
+          replace_once(
+              registry,
+              '  | "mastered-chapter"\n  | "release-package";\n',
+              '  | "mastered-chapter"\n  | "credit-master"\n  | "release-package";\n',
+              "kind-union",
+          )
+          source = registry.read_text(encoding="utf-8")
+          old = '  "mastered-chapter",\n  "release-package",\n'
+          count = source.count(old)
+          print(f"CREDIT_MASTER_KIND_ANCHOR:kind-sets:{count}")
+          if count != 2:
+              raise SystemExit(f"CREDIT_MASTER_KIND_ANCHOR_INVALID:kind-sets:{count}")
+          source = source.replace(
+              old,
+              '  "mastered-chapter",\n  "credit-master",\n  "release-package",\n',
+              2,
+          )
+          registry.write_text(source, encoding="utf-8", newline="\n")
+          replace_once(
+              registry,
+              '  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter") && !mime.startsWith("audio/")) {\n',
+              '  if ((kind === "audio-candidate" || kind === "chapter-master" || kind === "mastered-chapter" || kind === "credit-master") && !mime.startsWith("audio/")) {\n',
+              "audio-integrity",
+          )
+          replace_once(
+              registry,
+              '  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "release-package") && parents.length === 0) {\n',
+              '  if ((record.kind === "chapter-master" || record.kind === "mastered-chapter" || record.kind === "credit-master" || record.kind === "release-package") && parents.length === 0) {\n',
+              "parent-required",
+          )
+
+          tests = Path("packages/storyteller/src/artifact-registry.test.ts")
+          new_test = '''test("credit masters require audio integrity, parent provenance and human review", () => {
+            const source = approve(verify(createCandidate(
+              "artifact_credit_master_source_001",
+              "take_credit_master_source_001",
+              "d",
+            )));
+            const creditMaster = createArtifactRecord({
+              id: "artifact_credit_master_001",
+              kind: "credit-master",
+              projectId: job.projectId,
+              segmentId: "credit_opening_001",
+              takeId: "take_credit_master_001",
+              storage: {
+                driver: "private-object-store",
+                provider: "s3-compatible-private",
+                container: "storyteller-production",
+                objectKey: `projects/${job.projectId}/credits/opening/master.wav`,
+                region: "australia-southeast",
+              },
+              integrity: {
+                algorithm: "sha256",
+                contentHash: "e".repeat(64),
+                byteCount: 480_000,
+                mimeType: "audio/wav",
+                format: "wav",
+              },
+              provenance: {
+                createdByActorId: "credit_master_artifact_001",
+                sourceContentHash: source.integrity.contentHash,
+                generationRequestHash: "f".repeat(64),
+                parentArtifactIds: [source.id],
+              },
+              rights: rights(),
+            }, t1);
+            assert.equal(creditMaster.review.required, true);
+            assert.equal(creditMaster.review.status, "pending");
+            assert.doesNotThrow(() => assertArtifactRecord(creditMaster));
+
+            assert.throws(
+              () => createArtifactRecord({
+                ...candidateInput(
+                  "artifact_credit_master_invalid_001",
+                  "take_credit_master_invalid_001",
+                  "9",
+                ),
+                kind: "credit-master",
+                provenance: {
+                  createdByActorId: "credit_master_artifact_001",
+                  parentArtifactIds: [],
+                },
+              }, t1),
+              /ARTIFACT_PARENT_REQUIRED/u,
+            );
+          });
+
+          '''
+          replace_once(
+              tests,
+              'test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {\n',
+              new_test + 'test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {\n',
+              "kind-test",
+          )
+
+          checker = Path("scripts/check-artifact-registry.mjs")
+          replace_once(
+              checker,
+              '  \'"mastered-chapter"\',\n',
+              '  \'"mastered-chapter"\',\n  \'"credit-master"\',\n',
+              "checker-kind",
+          )
+          replace_once(
+              checker,
+              '  "mastered chapters require audio integrity, parent provenance and human review",\n',
+              '  "mastered chapters require audio integrity, parent provenance and human review",\n  "credit masters require audio integrity, parent provenance and human review",\n',
+              "checker-test",
+          )
+
+          docs = Path("docs/ARTIFACT_REGISTRY.md")
+          source = docs.read_text(encoding="utf-8")
+          source = source.replace(
+              "- mastered chapter deliverables;\n",
+              "- mastered chapter deliverables;\n- approved opening and closing credit masters;\n",
+              1,
+          ) if "- mastered chapter deliverables;\n" in source else source.replace(
+              "- mastered chapters;\n",
+              "- mastered chapters;\n- approved opening and closing credit masters;\n",
+              1,
+          )
+          if "`credit-master`" not in source:
+              marker = "## Immutable identity and integrity\n"
+              count = source.count(marker)
+              print(f"CREDIT_MASTER_KIND_ANCHOR:docs:{count}")
+              if count != 1:
+                  raise SystemExit(f"CREDIT_MASTER_KIND_DOCS_ANCHOR_INVALID:{count}")
+              note = '''## Credit master artifact
+
+          A `credit-master` is a distinct opening or closing audio component derived from one approved credit-take review. It is audio-only, requires parent provenance, begins with human review pending, and can never be substituted with an ordinary narration candidate or chapter master.
+
+          '''
+              source = source.replace(marker, note + marker, 1)
+          docs.write_text(source, encoding="utf-8", newline="\n")
+
+          for temporary in [
+              Path(".github/workflows/one-time-credit-master-kind.yml"),
+              Path(".github/credit-master-kind.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("CREDIT_MASTER_KIND_PROMOTED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .credit-master-kind-verify.log
+          npm run build 2>&1 | tee .credit-master-kind-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: credit-master-kind-${{ github.sha }}
+          path: |
+            .credit-master-kind.log
+            .credit-master-kind-verify.log
+            .credit-master-kind-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit artifact kind
+        shell: bash
+        run: |
+          rm -f .credit-master-kind.log .credit-master-kind-verify.log .credit-master-kind-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Add governed audiobook credit master artifacts"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".credit-master-kind.log",
+              ".credit-master-kind-verify.log",
+              ".credit-master-kind-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /CREDIT_MASTER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "credit master artifact kind failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/credit-master-kind",
+              description: state === "success" ? "Credit master artifact kind, tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
