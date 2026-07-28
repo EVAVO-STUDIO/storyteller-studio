@@ -17,6 +17,7 @@
     "./audiobook-render": "./src/audiobook-render.ts",
     "./audiobook-retail-policy": "./src/audiobook-retail-policy.ts",
     "./audiobook-retail-track-plan": "./src/audiobook-retail-track-plan.ts",
+    "./audiobook-retail-track-render": "./src/audiobook-retail-track-render.ts",
     "./audiobook-sequence": "./src/audiobook-sequence.ts",
     "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
     "./book-credit-delivery": "./src/book-credit-delivery.ts",
