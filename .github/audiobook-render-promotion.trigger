@@ -1,1 +1,1 @@
-promote shell-free complete audiobook rendering and verify every repository gate
+execute the registered shell-free complete audiobook render promotion and verify every repository gate
