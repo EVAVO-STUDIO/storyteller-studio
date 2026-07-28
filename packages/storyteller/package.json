@@ -17,6 +17,7 @@
     "./book-credit-queue": "./src/book-credit-queue.ts",
     "./book-credit-script": "./src/book-credit-script.ts",
     "./book-credit-take": "./src/book-credit-take.ts",
+    "./book-credit-take-review": "./src/book-credit-take-review.ts",
     "./budget-ledger": "./src/budget-ledger.ts",
     "./calibration-admission": "./src/calibration-admission.ts",
     "./calibration-engineering": "./src/calibration-engineering.ts",
