@@ -40,13 +40,41 @@ jobs:
               line[10:] if line.startswith("          ") else line
               for line in lines
           ) + "\n"
-          old = '"export function assertBookCreditMasterChain(\\n"'
-          new = '"export function assertBookCreditMasterChain("'
-          count = code.count(old)
-          print(f"BOOK_CREDIT_MASTER_V5_ASSERT_BOUNDARY:{count}")
-          if count != 4:
-              raise SystemExit(f"BOOK_CREDIT_MASTER_V5_ASSERT_BOUNDARY_INVALID:{count}")
-          code = code.replace(old, new)
+
+          boundary_old = '"export function assertBookCreditMasterChain(\\n"'
+          boundary_new = '"export function assertBookCreditMasterChain("'
+          boundary_count = code.count(boundary_old)
+          print(f"BOOK_CREDIT_MASTER_V5_ASSERT_BOUNDARY:{boundary_count}")
+          if boundary_count != 4:
+              raise SystemExit(
+                  f"BOOK_CREDIT_MASTER_V5_ASSERT_BOUNDARY_INVALID:{boundary_count}"
+              )
+          code = code.replace(boundary_old, boundary_new)
+
+          assertion_old = (
+              "'''  assertArtifactEnvelope(\n"
+              "  chain.reviewEvidence,\n"
+              '  "audio-analysis",\n'
+              '  "BOOK_CREDIT_MASTER_REVIEW_ENVELOPE_INVALID",\n'
+              ");\n"
+              "'''"
+          )
+          assertion_new = (
+              "'''  assertArtifactEnvelope(\n"
+              "    chain.reviewEvidence,\n"
+              '    "audio-analysis",\n'
+              '    "BOOK_CREDIT_MASTER_REVIEW_ENVELOPE_INVALID",\n'
+              "  );\n"
+              "'''"
+          )
+          assertion_count = code.count(assertion_old)
+          print(f"BOOK_CREDIT_MASTER_V5_ASSERT_LITERAL:{assertion_count}")
+          if assertion_count != 1:
+              raise SystemExit(
+                  f"BOOK_CREDIT_MASTER_V5_ASSERT_LITERAL_INVALID:{assertion_count}"
+              )
+          code = code.replace(assertion_old, assertion_new, 1)
+
           exec(compile(code, "book-credit-master-promotion-v5.py", "exec"), {})
           for temporary in [
               Path(".github/workflows/one-time-book-credit-master-promotion-v5.yml"),
