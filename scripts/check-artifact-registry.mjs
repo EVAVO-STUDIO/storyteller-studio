@@ -66,6 +66,8 @@ requireTokens("packages/storyteller/src/artifact-registry.ts", [
   '"mastered-chapter"',
   '"credit-master"',
   '"audiobook-reference-master"',
+  '"audiobook-retail-track"',
+  "ARTIFACT_RETAIL_TRACK_MP3_REQUIRED",
   "ARTIFACT_STORAGE_OBJECT_KEY_UNSAFE",
   "ARTIFACT_CONTENT_HASH_MISMATCH",
   "ARTIFACT_BYTE_COUNT_MISMATCH",
@@ -97,6 +99,7 @@ requireTokens("packages/storyteller/src/artifact-registry.test.ts", [
   "mastered chapters require audio integrity, parent provenance and human review",
   "credit masters require audio integrity, parent provenance and human review",
   "audiobook reference masters require audio integrity, parent provenance and human review",
+  "audiobook retail tracks require MP3 integrity, parent provenance and human review",
 ]);
 
 requireTokens("packages/storyteller/src/artifact-queue.ts", [
