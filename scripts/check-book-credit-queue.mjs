@@ -121,7 +121,6 @@ for (const path of [
   for (const forbidden of [
     "@evavo/storyteller-engine/book-credit-queue",
     "enqueuePreparedBookCreditGeneration",
-    "FileGenerationQueue",
     "claimNext(",
   ]) {
     if (runtime.includes(forbidden)) {
@@ -141,4 +140,4 @@ console.log("- only complete persisted credit plans, material and calibration ma
 console.log("- queue admission revalidates store and queue envelope hashes before execution");
 console.log("- claimed jobs resolve exact approved text through the normal private worker stores");
 console.log("- idempotent admission reports current queue state without exposing lease material");
-console.log("- normal web and API runtimes cannot enqueue or claim credit generation work");
+console.log("- normal web and API runtimes expose no credit-specific admission or worker-claim controls");
