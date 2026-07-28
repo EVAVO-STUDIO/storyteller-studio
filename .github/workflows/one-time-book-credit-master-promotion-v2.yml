@@ -88,6 +88,40 @@ insertion = marker + ''' + '"""' + '''    approvedSourceAudio: {
 source_path.write_text(source.replace(marker, insertion, 1), encoding="utf-8", newline="\\n")
 '''
           code = code[:call_start] + replacement + code[call_end:]
+
+          result_start_marker = '''replace_once(
+    source_path,
+    ''' + "'''    selectedAudioRevision: approvedSource.revision,"
+          result_end_marker = '    "result-source-envelopes",\n)\n'
+          result_start_count = code.count(result_start_marker)
+          result_end_count = code.count(result_end_marker)
+          print(
+              f"BOOK_CREDIT_MASTER_V2_SECTION:result-source-envelopes:"
+              f"{result_start_count}:{result_end_count}"
+          )
+          if result_start_count != 1 or result_end_count != 1:
+              raise SystemExit(
+                  f"BOOK_CREDIT_MASTER_V2_SECTION_INVALID:result-source-envelopes:"
+                  f"{result_start_count}:{result_end_count}"
+              )
+          result_start = code.index(result_start_marker)
+          result_end = code.index(result_end_marker, result_start) + len(result_end_marker)
+          result_replacement = '''source = source_path.read_text(encoding="utf-8")
+marker = "    selectedAudioFingerprint: approvedSource.payload.fingerprint,\\n"
+count = source.count(marker)
+print(f"BOOK_CREDIT_MASTER_PROMOTION_ANCHOR:result-source-envelopes:{count}")
+if count != 1:
+    raise SystemExit(
+        f"BOOK_CREDIT_MASTER_PROMOTION_ANCHOR_INVALID:result-source-envelopes:{count}"
+    )
+insertion = marker + ''' + '"""' + '''    approvedSourceAudio: approvedSource,
+    transcriptArtifact: currentTranscript,
+    engineeringArtifact: currentEngineering,
+''' + '"""' + '''
+source_path.write_text(source.replace(marker, insertion, 1), encoding="utf-8", newline="\\n")
+'''
+          code = code[:result_start] + result_replacement + code[result_end:]
+
           exec(compile(code, "book-credit-master-promotion-v2.py", "exec"), {})
           for temporary in [
               Path(".github/workflows/one-time-book-credit-master-promotion-v2.yml"),
