@@ -1,1 +1,1 @@
-run the line-stable governed book credit delivery promotion and verify every repository gate
+execute the registered line-stable book credit delivery promotion now and verify every repository gate
