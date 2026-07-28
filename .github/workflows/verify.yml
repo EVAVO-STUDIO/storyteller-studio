@@ -44,17 +44,17 @@ jobs:
           set -o pipefail
           npm run verify:private-boundary 2>&1 | tee .verification/private-boundary.log
 
-      - name: Verify governed artifact lifecycle
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run verify:artifacts 2>&1 | tee .verification/artifacts.log
-
       - name: Type-check repository
         shell: bash
         run: |
           set -o pipefail
           npm run typecheck 2>&1 | tee .verification/typecheck.log
+
+      - name: Verify governed artifact lifecycle
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:artifacts 2>&1 | tee .verification/artifacts.log
 
       - name: Test storyteller engine
         shell: bash
@@ -108,8 +108,8 @@ jobs:
             const logFiles = [
               ".verification/foundation.log",
               ".verification/private-boundary.log",
-              ".verification/artifacts.log",
               ".verification/typecheck.log",
+              ".verification/artifacts.log",
               ".verification/engine-tests.log",
               ".verification/api-tests.log",
               ".verification/worker-tests.log",
@@ -163,7 +163,7 @@ jobs:
               }
             }
             const description = state === "success"
-              ? "Foundation, boundaries, artifacts, worker, typecheck, tests and builds passed"
+              ? "Foundation, boundaries, typecheck, artifacts, worker, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
