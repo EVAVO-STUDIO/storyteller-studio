@@ -352,6 +352,83 @@ test("credit masters require audio integrity, parent provenance and human review
   );
 });
 
+test("audiobook reference masters require audio integrity, parent provenance and human review", () => {
+  const reference = createArtifactRecord({
+    id: "artifact_audiobook_reference_master_001",
+    kind: "audiobook-reference-master",
+    projectId: job.projectId,
+    jobId: "job_audiobook_reference_001",
+    segmentId: "book_reference_001",
+    takeId: "take_audiobook_reference_001",
+    storage: {
+      driver: "private-object-store",
+      provider: "s3-compatible-private",
+      container: "storyteller-production",
+      objectKey: `projects/${job.projectId}/books/book_reference_001/reference-master.wav`,
+      region: "australia-southeast",
+    },
+    integrity: {
+      algorithm: "sha256",
+      contentHash: "a".repeat(64),
+      byteCount: 4_800_000,
+      mimeType: "audio/wav",
+      format: "wav",
+    },
+    provenance: {
+      createdByActorId: "audiobook_reference_master_001",
+      sourceContentHash: "b".repeat(64),
+      generationRequestHash: "c".repeat(64),
+      parentArtifactIds: [
+        "artifact_audiobook_sequence_001",
+        "artifact_audiobook_render_evidence_001",
+      ],
+    },
+    rights: rights(),
+  }, t1);
+  assert.equal(reference.review.required, true);
+  assert.equal(reference.review.status, "pending");
+  assert.doesNotThrow(() => assertArtifactRecord(reference));
+
+  assert.throws(
+    () => createArtifactRecord({
+      ...candidateInput(
+        "artifact_audiobook_reference_non_audio_001",
+        "take_audiobook_reference_non_audio_001",
+        "8",
+      ),
+      kind: "audiobook-reference-master",
+      integrity: {
+        algorithm: "sha256",
+        contentHash: "8".repeat(64),
+        byteCount: 128,
+        mimeType: "application/json",
+        format: "json",
+      },
+      provenance: {
+        createdByActorId: "audiobook_reference_master_001",
+        parentArtifactIds: ["artifact_audiobook_sequence_001"],
+      },
+    }, t1),
+    /ARTIFACT_AUDIO_MIME_REQUIRED/u,
+  );
+
+  assert.throws(
+    () => createArtifactRecord({
+      ...candidateInput(
+        "artifact_audiobook_reference_parentless_001",
+        "take_audiobook_reference_parentless_001",
+        "9",
+      ),
+      kind: "audiobook-reference-master",
+      provenance: {
+        createdByActorId: "audiobook_reference_master_001",
+        parentArtifactIds: [],
+      },
+    }, t1),
+    /ARTIFACT_PARENT_REQUIRED/u,
+  );
+});
+
 test("release remains blocked until every dependency is verified, reviewed and rights-valid", () => {
   const first = approve(verify(createCandidate("artifact_take_008", "take_008", "8")));
   const second = approve(verify(createCandidate("artifact_take_009", "take_009", "9")));

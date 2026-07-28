@@ -65,6 +65,7 @@ requireTokens("packages/storyteller/src/artifact-registry.ts", [
   "ArtifactRightsSnapshot",
   '"mastered-chapter"',
   '"credit-master"',
+  '"audiobook-reference-master"',
   "ARTIFACT_STORAGE_OBJECT_KEY_UNSAFE",
   "ARTIFACT_CONTENT_HASH_MISMATCH",
   "ARTIFACT_BYTE_COUNT_MISMATCH",
@@ -95,6 +96,7 @@ requireTokens("packages/storyteller/src/artifact-registry.test.ts", [
   "fingerprint tampering is detected",
   "mastered chapters require audio integrity, parent provenance and human review",
   "credit masters require audio integrity, parent provenance and human review",
+  "audiobook reference masters require audio integrity, parent provenance and human review",
 ]);
 
 requireTokens("packages/storyteller/src/artifact-queue.ts", [
