@@ -63,7 +63,7 @@ const creditText = "The North Water, written by Ian McGuire, narrated by EVAVO N
 const rights: ArtifactRightsSnapshot = Object.freeze({
   rightsEvidenceId: "rights_credit_master_001",
   rightsFingerprint: "a".repeat(64),
-  allowedUses: Object.freeze(["audiobook"]),
+  allowedUses: Object.freeze(["audiobook"] as const),
   commercialUseApproved: true,
   expiresAt: "2028-07-27T00:00:00.000Z",
   retainUntil: "2033-07-27T00:00:00.000Z",
@@ -562,11 +562,19 @@ test("approved selected take promotes losslessly into a complete approved credit
 test("unapproved sessions, wrong bytes, rights drift and source snapshot drift fail before a master is usable", async () => {
   await withStores(async ({ objectStore, registry }) => {
     const fixture = await approvedFixture({ objectStore, registry });
-    const draftSession = {
-      ...fixture.session,
-      status: "ready-for-approval" as const,
-      approval: undefined,
-    };
+    const {
+    approval: _approval,
+    fingerprint: _fingerprint,
+    ...draftBase
+  } = fixture.session;
+  const draftPartial = {
+    ...draftBase,
+    status: "ready-for-approval" as const,
+  };
+  const draftSession = {
+    ...draftPartial,
+    fingerprint: stableHash(draftPartial),
+  };
     await assert.rejects(
       promoteBookCreditMaster(objectStore, registry, {
         session: draftSession as typeof fixture.session,
@@ -624,7 +632,7 @@ test("unapproved sessions, wrong bytes, rights drift and source snapshot drift f
         actorId: "credit_master_operator_001",
         now: t13,
       }),
-      /ARTIFACT_FINGERPRINT_MISMATCH|BOOK_CREDIT_MASTER_AUDIO_SNAPSHOT_MISMATCH/u,
+      /ARTIFACT_VERIFIED_STATE_INVALID|ARTIFACT_FINGERPRINT_MISMATCH|BOOK_CREDIT_MASTER_AUDIO_SNAPSHOT_MISMATCH/u,
     );
   });
 });
@@ -667,7 +675,7 @@ test("credit-master chain rejects recomputed envelope and parent tampering", asy
     } as typeof chain;
     assert.throws(
       () => assertBookCreditMasterChain(tampered),
-      /BOOK_CREDIT_MASTER_ARTIFACT_ENVELOPE_INVALID|BOOK_CREDIT_MASTER_CHAIN_SCOPE_MISMATCH/u,
+      /ARTIFACT_FINGERPRINT_MISMATCH|BOOK_CREDIT_MASTER_ARTIFACT_ENVELOPE_INVALID|BOOK_CREDIT_MASTER_CHAIN_SCOPE_MISMATCH/u,
     );
   });
 });

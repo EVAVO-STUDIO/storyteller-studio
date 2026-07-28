@@ -56,6 +56,9 @@ export interface BookCreditMasterChain {
   selectedAudioArtifactId: string;
   selectedAudioRevision: number;
   selectedAudioFingerprint: string;
+  approvedSourceAudio: StoredEnvelope<ArtifactRecord>;
+  transcriptArtifact: StoredEnvelope<ArtifactRecord>;
+  engineeringArtifact: StoredEnvelope<ArtifactRecord>;
   reviewEvidence: StoredEnvelope<ArtifactRecord>;
   creditMaster: StoredEnvelope<ArtifactRecord>;
   contentHash: string;
@@ -364,6 +367,24 @@ function chainFingerprint(
     selectedAudioArtifactId: chain.selectedAudioArtifactId,
     selectedAudioRevision: chain.selectedAudioRevision,
     selectedAudioFingerprint: chain.selectedAudioFingerprint,
+  approvedSourceAudio: {
+    id: chain.approvedSourceAudio.payload.id,
+    revision: chain.approvedSourceAudio.revision,
+    fingerprint: chain.approvedSourceAudio.payload.fingerprint,
+    envelopeHash: chain.approvedSourceAudio.envelopeHash,
+  },
+  transcriptArtifact: {
+    id: chain.transcriptArtifact.payload.id,
+    revision: chain.transcriptArtifact.revision,
+    fingerprint: chain.transcriptArtifact.payload.fingerprint,
+    envelopeHash: chain.transcriptArtifact.envelopeHash,
+  },
+  engineeringArtifact: {
+    id: chain.engineeringArtifact.payload.id,
+    revision: chain.engineeringArtifact.revision,
+    fingerprint: chain.engineeringArtifact.payload.fingerprint,
+    envelopeHash: chain.engineeringArtifact.envelopeHash,
+  },
     reviewEvidence: {
       id: chain.reviewEvidence.payload.id,
       revision: chain.reviewEvidence.revision,
@@ -665,6 +686,9 @@ export async function promoteBookCreditMaster(
     selectedAudioArtifactId: approvedSource.payload.id,
     selectedAudioRevision: approvedSource.revision,
     selectedAudioFingerprint: approvedSource.payload.fingerprint,
+  approvedSourceAudio: approvedSource,
+  transcriptArtifact: currentTranscript,
+  engineeringArtifact: currentEngineering,
     reviewEvidence: reviewIngest.envelope,
     creditMaster: approvedMaster,
     contentHash: approvedMaster.payload.integrity.contentHash,
@@ -672,11 +696,27 @@ export async function promoteBookCreditMaster(
     format,
     lossless: true,
     eligibleForBookAssembly: true,
-    createdAt: now.toISOString(),
+    createdAt: approvedMaster.payload.updatedAt,
   };
   const chain = Object.freeze({ ...partial, fingerprint: chainFingerprint(partial) });
   assertBookCreditMasterChain(chain);
   return chain;
+}
+
+function canonicalEnvelopeHash(
+  envelope: Omit<StoredEnvelope<ArtifactRecord>, "envelopeHash">,
+): string {
+  return stableHash({
+    schemaVersion: envelope.schemaVersion,
+    entityType: envelope.entityType,
+    entityId: envelope.entityId,
+    revision: envelope.revision,
+    createdAt: envelope.createdAt,
+    savedAt: envelope.savedAt,
+    contentHash: envelope.contentHash,
+    previousEnvelopeHash: envelope.previousEnvelopeHash ?? null,
+    payload: envelope.payload,
+  });
 }
 
 function assertArtifactEnvelope(
@@ -685,6 +725,7 @@ function assertArtifactEnvelope(
   code: string,
 ): void {
   assertArtifactRecord(envelope.payload);
+  const { envelopeHash: _envelopeHash, ...partial } = envelope;
   if (
     envelope.schemaVersion !== "storyteller-store-v1"
     || envelope.entityType !== "artifact"
@@ -692,6 +733,7 @@ function assertArtifactEnvelope(
     || envelope.revision !== envelope.payload.revision
     || envelope.payload.kind !== kind
     || envelope.contentHash !== stableHash(envelope.payload)
+  || canonicalEnvelopeHash(partial) !== envelope.envelopeHash
   ) {
     throw new BookCreditMasterError(code);
   }
@@ -732,6 +774,27 @@ export function assertBookCreditMasterChain(chain: BookCreditMasterChain): void 
   }
   requireDate(chain.createdAt, "BOOK_CREDIT_MASTER_DATE_INVALID");
   assertArtifactEnvelope(
+  chain.approvedSourceAudio,
+  "audio-candidate",
+  "BOOK_CREDIT_MASTER_SOURCE_ENVELOPE_INVALID",
+);
+  if (
+    chain.transcriptArtifact.payload.kind !== "transcript"
+    && chain.transcriptArtifact.payload.kind !== "audio-analysis"
+  ) {
+    throw new BookCreditMasterError("BOOK_CREDIT_MASTER_TRANSCRIPT_ENVELOPE_INVALID");
+  }
+  assertArtifactEnvelope(
+    chain.transcriptArtifact,
+    chain.transcriptArtifact.payload.kind,
+    "BOOK_CREDIT_MASTER_TRANSCRIPT_ENVELOPE_INVALID",
+  );
+  assertArtifactEnvelope(
+    chain.engineeringArtifact,
+    "audio-analysis",
+    "BOOK_CREDIT_MASTER_ENGINEERING_ENVELOPE_INVALID",
+  );
+  assertArtifactEnvelope(
     chain.reviewEvidence,
     "audio-analysis",
     "BOOK_CREDIT_MASTER_REVIEW_ENVELOPE_INVALID",
@@ -741,9 +804,46 @@ export function assertBookCreditMasterChain(chain: BookCreditMasterChain): void 
     "credit-master",
     "BOOK_CREDIT_MASTER_ARTIFACT_ENVELOPE_INVALID",
   );
+  const approvedSource = chain.approvedSourceAudio.payload;
+  const transcript = chain.transcriptArtifact.payload;
+  const engineering = chain.engineeringArtifact.payload;
   const review = chain.reviewEvidence.payload;
   const master = chain.creditMaster.payload;
   if (
+    chain.selectedAudioArtifactId !== approvedSource.id
+    || chain.selectedAudioRevision !== chain.approvedSourceAudio.revision
+    || chain.selectedAudioFingerprint !== approvedSource.fingerprint
+    || approvedSource.verification.status !== "verified"
+    || approvedSource.review.status !== "approved"
+    || approvedSource.integrity.contentHash !== chain.contentHash
+    || approvedSource.integrity.byteCount !== chain.byteCount
+    || transcript.projectId !== approvedSource.projectId
+    || transcript.jobId !== approvedSource.jobId
+    || transcript.segmentId !== approvedSource.segmentId
+    || transcript.takeId !== approvedSource.takeId
+    || engineering.projectId !== approvedSource.projectId
+    || engineering.jobId !== approvedSource.jobId
+    || engineering.segmentId !== approvedSource.segmentId
+    || engineering.takeId !== approvedSource.takeId
+    || transcript.verification.status !== "verified"
+    || engineering.verification.status !== "verified"
+    || !transcript.provenance.parentArtifactIds.includes(approvedSource.id)
+    || !engineering.provenance.parentArtifactIds.includes(approvedSource.id)
+    || review.provenance.parentArtifactIds.length !== 3
+    || !review.provenance.parentArtifactIds.includes(approvedSource.id)
+    || !review.provenance.parentArtifactIds.includes(transcript.id)
+    || !review.provenance.parentArtifactIds.includes(engineering.id)
+    || master.provenance.parentArtifactIds.length !== 4
+    || !master.provenance.parentArtifactIds.includes(approvedSource.id)
+    || !master.provenance.parentArtifactIds.includes(transcript.id)
+    || !master.provenance.parentArtifactIds.includes(engineering.id)
+    || !master.provenance.parentArtifactIds.includes(review.id)
+    || stableHash(approvedSource.rights) !== stableHash(master.rights)
+    || stableHash(approvedSource.rights) !== stableHash(review.rights)
+    || stableHash(approvedSource.rights) !== stableHash(transcript.rights)
+    || stableHash(approvedSource.rights) !== stableHash(engineering.rights)
+    || Date.parse(chain.createdAt) !== Date.parse(master.updatedAt)
+    ||
     master.verification.status !== "verified"
     || master.review.status !== "approved"
     || review.verification.status !== "verified"
