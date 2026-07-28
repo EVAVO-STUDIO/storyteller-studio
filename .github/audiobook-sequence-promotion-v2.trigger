@@ -1,1 +1,1 @@
-execute the registered typed complete audiobook sequence promotion and verify every repository gate
+rerun the proven complete audiobook sequence promotion on the current green delivery baseline
