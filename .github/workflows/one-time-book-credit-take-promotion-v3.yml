@@ -40,8 +40,8 @@ jobs:
               line[10:] if line.startswith("          ") else line
               for line in lines
           ) + "\n"
-          old = '              "function recordFingerprint(\\n",\n'
-          new = '              "function recordFingerprint(",\n'
+          old = '"function recordFingerprint(\\n"'
+          new = '"function recordFingerprint("'
           count = code.count(old)
           print(f"BOOK_CREDIT_TAKE_V3_CHRONOLOGY_MARKER:{count}")
           if count != 1:
