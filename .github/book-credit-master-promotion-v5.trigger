@@ -1,1 +1,1 @@
-run the fully normalized governed audiobook credit master promotion and verify all repository gates
+run the governed audiobook credit master promotion with fail-fast tamper expectations and verify every repository gate
