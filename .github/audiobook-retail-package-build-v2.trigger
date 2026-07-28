@@ -1,3 +1,4 @@
 trigger governed audiobook retail package-build promotion v2
 rerun after workflow registration
 rerun after temporary narrowing correction
+rerun after corrected workflow indexing
