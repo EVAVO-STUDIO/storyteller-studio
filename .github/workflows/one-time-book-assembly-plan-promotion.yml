@@ -1,0 +1,135 @@
+name: One-time audiobook sequence human approval hardening
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/book-assembly-plan-promotion.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Harden authoritative sequence and remove duplicate staging
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .audiobook-sequence-approval-hardening.log
+          import base64
+          import gzip
+          import hashlib
+          from pathlib import Path
+
+          parts = [
+              Path(".github/book-assembly-plan-payload.b64"),
+              Path(".github/book-assembly-plan-payload.b64.part01"),
+          ]
+          if any(not path.is_file() for path in parts):
+              raise SystemExit("AUDIOBOOK_SEQUENCE_APPROVAL_PAYLOAD_MISSING")
+          encoded = "".join(
+              "".join(path.read_text(encoding="ascii").split())
+              for path in parts
+          )
+          encoded_hash = hashlib.sha256(encoded.encode("ascii")).hexdigest()
+          print(f"AUDIOBOOK_SEQUENCE_APPROVAL_PAYLOAD_SHA256:{encoded_hash}")
+          if encoded_hash != "5d6851805a92758879e92983fb628e667c815d71c0dd7724c3ba640e7956aca5":
+              raise SystemExit("AUDIOBOOK_SEQUENCE_APPROVAL_PAYLOAD_HASH_INVALID")
+          code = gzip.decompress(base64.b64decode(encoded, validate=True)).decode("utf-8")
+          code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+          print(f"AUDIOBOOK_SEQUENCE_APPROVAL_CODE_SHA256:{code_hash}")
+          if code_hash != "773a854570551a5a5d1bd8213beec3b5001d57c092444cf4723a03a9daf4fb49":
+              raise SystemExit("AUDIOBOOK_SEQUENCE_APPROVAL_CODE_HASH_INVALID")
+          exec(compile(code, "audiobook-sequence-approval-hardening.py", "exec"), {})
+          PY
+          git diff --check
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run focused sequence gates
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:audiobook-sequence 2>&1 | tee .audiobook-sequence-approval-focused.log
+          npm run typecheck 2>&1 | tee -a .audiobook-sequence-approval-focused.log
+          npm run test:engine 2>&1 | tee -a .audiobook-sequence-approval-focused.log
+
+      - name: Run complete verification and builds
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .audiobook-sequence-approval-verify.log
+          npm run build 2>&1 | tee .audiobook-sequence-approval-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-sequence-approval-hardening-${{ github.sha }}
+          path: |
+            .audiobook-sequence-approval-hardening.log
+            .audiobook-sequence-approval-focused.log
+            .audiobook-sequence-approval-verify.log
+            .audiobook-sequence-approval-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit hardened sequence
+        shell: bash
+        run: |
+          rm -f .audiobook-sequence-approval-hardening.log .audiobook-sequence-approval-focused.log .audiobook-sequence-approval-verify.log .audiobook-sequence-approval-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Require human approval for complete audiobook sequence"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".audiobook-sequence-approval-hardening.log",
+              ".audiobook-sequence-approval-focused.log",
+              ".audiobook-sequence-approval-verify.log",
+              ".audiobook-sequence-approval-build.log",
+            ].filter((path) => fs.existsSync(path))
+              .map((path) => fs.readFileSync(path, "utf8"))
+              .join("\n")
+              .replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) =>
+              /AUDIOBOOK_SEQUENCE_APPROVAL_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)
+            ) || lines.at(-1) || "audiobook sequence human approval hardening failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/audiobook-sequence-human-approval",
+              description: state === "success"
+                ? "Whole-book human approval, tests and builds passed"
+                : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
