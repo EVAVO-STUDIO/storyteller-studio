@@ -1,0 +1,161 @@
+name: One-time book credit master promotion v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/book-credit-master-promotion-v2.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply line-stable governed credit master promotion
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .book-credit-master-v2.log
+          from pathlib import Path
+
+          workflow = Path(
+              ".github/workflows/one-time-book-credit-master-promotion.yml"
+          ).read_text(encoding="utf-8")
+          start_marker = "          python3 - <<'PY' 2>&1 | tee .book-credit-master-promotion.log\n"
+          end_marker = "          PY\n\n      - name: Install dependencies"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          lines = workflow[start:end].splitlines()
+          code = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in lines
+          ) + "\n"
+
+          call_start_marker = '''replace_once(
+    source_path,
+    ''' + "'''    selectedAudioRevision: chain.selectedAudioRevision,"
+          call_end_marker = '    "chain-fingerprint-envelopes",\n)\n'
+          call_start_count = code.count(call_start_marker)
+          call_end_count = code.count(call_end_marker)
+          print(
+              f"BOOK_CREDIT_MASTER_V2_SECTION:fingerprint-envelopes:"
+              f"{call_start_count}:{call_end_count}"
+          )
+          if call_start_count != 1 or call_end_count != 1:
+              raise SystemExit(
+                  f"BOOK_CREDIT_MASTER_V2_SECTION_INVALID:fingerprint-envelopes:"
+                  f"{call_start_count}:{call_end_count}"
+              )
+          call_start = code.index(call_start_marker)
+          call_end = code.index(call_end_marker, call_start) + len(call_end_marker)
+          replacement = '''source = source_path.read_text(encoding="utf-8")
+marker = "    selectedAudioFingerprint: chain.selectedAudioFingerprint,\\n"
+count = source.count(marker)
+print(f"BOOK_CREDIT_MASTER_PROMOTION_ANCHOR:chain-fingerprint-envelopes:{count}")
+if count != 1:
+    raise SystemExit(
+        f"BOOK_CREDIT_MASTER_PROMOTION_ANCHOR_INVALID:chain-fingerprint-envelopes:{count}"
+    )
+insertion = marker + ''' + '"""' + '''    approvedSourceAudio: {
+      id: chain.approvedSourceAudio.payload.id,
+      revision: chain.approvedSourceAudio.revision,
+      fingerprint: chain.approvedSourceAudio.payload.fingerprint,
+      envelopeHash: chain.approvedSourceAudio.envelopeHash,
+    },
+    transcriptArtifact: {
+      id: chain.transcriptArtifact.payload.id,
+      revision: chain.transcriptArtifact.revision,
+      fingerprint: chain.transcriptArtifact.payload.fingerprint,
+      envelopeHash: chain.transcriptArtifact.envelopeHash,
+    },
+    engineeringArtifact: {
+      id: chain.engineeringArtifact.payload.id,
+      revision: chain.engineeringArtifact.revision,
+      fingerprint: chain.engineeringArtifact.payload.fingerprint,
+      envelopeHash: chain.engineeringArtifact.envelopeHash,
+    },
+''' + '"""' + '''
+source_path.write_text(source.replace(marker, insertion, 1), encoding="utf-8", newline="\\n")
+'''
+          code = code[:call_start] + replacement + code[call_end:]
+          exec(compile(code, "book-credit-master-promotion-v2.py", "exec"), {})
+          for temporary in [
+              Path(".github/workflows/one-time-book-credit-master-promotion-v2.yml"),
+              Path(".github/book-credit-master-promotion-v2.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("BOOK_CREDIT_MASTER_V2_APPLIED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .book-credit-master-v2-verify.log
+          npm run build 2>&1 | tee .book-credit-master-v2-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-credit-master-promotion-v2-${{ github.sha }}
+          path: |
+            .book-credit-master-v2.log
+            .book-credit-master-v2-verify.log
+            .book-credit-master-v2-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f .book-credit-master-v2.log .book-credit-master-v2-verify.log .book-credit-master-v2-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify governed audiobook credit master promotion"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".book-credit-master-v2.log",
+              ".book-credit-master-v2-verify.log",
+              ".book-credit-master-v2-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /BOOK_CREDIT_MASTER_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "book credit master v2 promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/book-credit-master-promotion-v2",
+              description: state === "success" ? "Credit master, complete tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
