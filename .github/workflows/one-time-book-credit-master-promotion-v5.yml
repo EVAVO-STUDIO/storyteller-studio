@@ -75,6 +75,30 @@ jobs:
               )
           code = code.replace(assertion_old, assertion_new, 1)
 
+          draft_old = (
+              "'''    const draftSession = {\n"
+              "    ...fixture.session,\n"
+              '    status: "ready-for-approval" as const,\n'
+              "    approval: undefined,\n"
+              "  };\n"
+              "'''"
+          )
+          draft_new = (
+              "'''    const draftSession = {\n"
+              "      ...fixture.session,\n"
+              '      status: "ready-for-approval" as const,\n'
+              "      approval: undefined,\n"
+              "    };\n"
+              "'''"
+          )
+          draft_count = code.count(draft_old)
+          print(f"BOOK_CREDIT_MASTER_V5_DRAFT_LITERAL:{draft_count}")
+          if draft_count != 1:
+              raise SystemExit(
+                  f"BOOK_CREDIT_MASTER_V5_DRAFT_LITERAL_INVALID:{draft_count}"
+              )
+          code = code.replace(draft_old, draft_new, 1)
+
           exec(compile(code, "book-credit-master-promotion-v5.py", "exec"), {})
           for temporary in [
               Path(".github/workflows/one-time-book-credit-master-promotion-v5.yml"),
