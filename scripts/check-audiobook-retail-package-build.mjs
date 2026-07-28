@@ -69,7 +69,8 @@ requireTokens("packages/storyteller/src/audiobook-retail-package-build.ts", [
   "AUDIOBOOK_RETAIL_PACKAGE_BUILD_SOURCE_MISMATCH",
   "isSymbolicLink",
   "mkdtemp",
-  "shell",
+  "createReadStream",
+  "copyFile",
 ]);
 
 requireTokens("packages/storyteller/src/audiobook-retail-package-build.test.ts", [
