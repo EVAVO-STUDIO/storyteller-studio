@@ -61,6 +61,48 @@ jobs:
               newline="\n",
           )
 
+          test_path = Path(
+              "packages/storyteller/src/"
+              "audiobook-retail-package-review.test.ts"
+          )
+          tests = test_path.read_text(encoding="utf-8")
+          old_audit = (
+              '    const audit = await readFile(join(root, "audit", '
+              '"2026-07-29.jsonl"), "utf8");'
+          )
+          new_audit = "\n".join([
+              '    const audit = await readFile(join(root, "audit", "2026-07-29.jsonl"), "utf8");',
+              '    const auditMetadata = JSON.stringify(',
+              '      audit.trim().split(/\\r?\\n/u).filter(Boolean).map((line) =>',
+              '        (JSON.parse(line) as { metadata: unknown }).metadata',
+              '      ),',
+              '    );',
+          ])
+          audit_count = tests.count(old_audit)
+          print(f"AUDIOBOOK_RETAIL_PACKAGE_REVIEW_AUDIT_PARSE_FIX:{audit_count}")
+          if audit_count != 1:
+              raise SystemExit(
+                  f"AUDIOBOOK_RETAIL_PACKAGE_REVIEW_AUDIT_PARSE_FIX_INVALID:{audit_count}"
+              )
+          tests = tests.replace(old_audit, new_audit, 1)
+          old_assertion = '      assert.equal(audit.includes(forbidden), false);'
+          new_assertion = '      assert.equal(auditMetadata.includes(forbidden), false);'
+          assertion_count = tests.count(old_assertion)
+          print(
+              "AUDIOBOOK_RETAIL_PACKAGE_REVIEW_AUDIT_ASSERTION_FIX:"
+              f"{assertion_count}"
+          )
+          if assertion_count != 1:
+              raise SystemExit(
+                  "AUDIOBOOK_RETAIL_PACKAGE_REVIEW_AUDIT_ASSERTION_FIX_INVALID:"
+                  f"{assertion_count}"
+              )
+          test_path.write_text(
+              tests.replace(old_assertion, new_assertion, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
           for temporary in [
               Path(
                   ".github/workflows/"
