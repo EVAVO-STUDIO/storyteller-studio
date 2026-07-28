@@ -21,6 +21,7 @@
     "./audiobook-retail-track-encode": "./src/audiobook-retail-track-encode.ts",
     "./audiobook-retail-track-review": "./src/audiobook-retail-track-review.ts",
     "./audiobook-retail-sample-plan": "./src/audiobook-retail-sample-plan.ts",
+    "./audiobook-retail-sample-render": "./src/audiobook-retail-sample-render.ts",
     "./audiobook-sequence": "./src/audiobook-sequence.ts",
     "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
     "./book-credit-delivery": "./src/book-credit-delivery.ts",
