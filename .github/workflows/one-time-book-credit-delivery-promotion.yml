@@ -1,0 +1,232 @@
+name: One-time book credit delivery promotion
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/book-credit-delivery-promotion.trigger"
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Promote governed book credit delivery snapshot
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 - <<'PY' 2>&1 | tee .book-credit-delivery-promotion.log
+          import json
+          from pathlib import Path
+
+          test_path = Path("packages/storyteller/src/book-credit-master.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+          marker = 'test("approved credit master produces an immutable delivery snapshot"'
+          if marker not in tests:
+              tests += r'''
+
+test("approved credit master produces an immutable delivery snapshot", async () => {
+  const {
+    assertBookCreditDeliverySnapshot,
+    bookCreditDeliveryPublicView,
+    createBookCreditDeliverySnapshot,
+  } = await import("./book-credit-delivery.js");
+
+  await withStores(async ({ objectStore, registry }) => {
+    const fixture = await approvedFixture({ objectStore, registry });
+    const chain = await promoteBookCreditMaster(objectStore, registry, {
+      session: fixture.session,
+      sourceAudio: fixture.first.audio.envelope.payload,
+      transcriptArtifact: fixture.first.transcript.envelope.payload,
+      engineeringArtifact: fixture.first.engineering.envelope.payload,
+      sourceBytes: wavBytes(1),
+      rights,
+      actorId: "credit_delivery_operator_001",
+      verifierActorId: "credit_delivery_verifier_001",
+      now: t13,
+    });
+    const snapshot = createBookCreditDeliverySnapshot({
+      chain,
+      reviewSession: fixture.session,
+      now: new Date(t13.getTime() + 1_000),
+    });
+
+    assert.equal(snapshot.creditKind, "opening");
+    assert.equal(snapshot.durationMs, 10_000);
+    assert.deepEqual(snapshot.output, {
+      format: "wav",
+      sampleRateHz: 44_100,
+      channels: 1,
+      bitDepth: 24,
+    });
+    assert.equal(snapshot.engineeringProfileId, "acx-audiobook");
+    assert.equal(snapshot.status, "ready-for-book-assembly");
+    assert.doesNotThrow(() => assertBookCreditDeliverySnapshot(snapshot));
+
+    const publicView = bookCreditDeliveryPublicView(snapshot);
+    const serialised = JSON.stringify(publicView);
+    for (const forbidden of [
+      snapshot.creditMaster.id,
+      snapshot.creditMaster.contentHash,
+      snapshot.rightsFingerprint,
+      snapshot.reviewApprovalFingerprint,
+      snapshot.selectedTakeRecordId,
+      fixture.session.id,
+      rights.rightsEvidenceId,
+      rights.rightsFingerprint,
+      "elevenlabs",
+    ]) assert.equal(serialised.includes(forbidden), false);
+
+    const selected = fixture.session.candidates[0]!;
+    const { fingerprint: _candidateFingerprint, ...candidateBase } = selected;
+    const candidatePartial = {
+      ...candidateBase,
+      durationMs: selected.durationMs + 1,
+    };
+    const candidateTampered = {
+      ...candidatePartial,
+      fingerprint: stableHash(candidatePartial),
+    };
+    const { fingerprint: _sessionFingerprint, ...sessionBase } = fixture.session;
+    const sessionPartial = {
+      ...sessionBase,
+      candidates: Object.freeze([
+        candidateTampered,
+        ...fixture.session.candidates.slice(1),
+      ]),
+    };
+    const sessionTampered = {
+      ...sessionPartial,
+      fingerprint: stableHash(sessionPartial),
+    } as typeof fixture.session;
+    assert.throws(
+      () => createBookCreditDeliverySnapshot({
+        chain,
+        reviewSession: sessionTampered,
+        now: new Date(t13.getTime() + 1_000),
+      }),
+      /BOOK_CREDIT_DELIVERY_REVIEW_SCOPE_MISMATCH|BOOK_CREDIT_DELIVERY_DURATION_EVIDENCE_MISMATCH/u,
+    );
+
+    assert.throws(
+      () => createBookCreditDeliverySnapshot({
+        chain,
+        reviewSession: fixture.session,
+        now: new Date("2029-07-27T00:00:00.000Z"),
+      }),
+      /BOOK_CREDIT_DELIVERY_RIGHTS_EXPIRED/u,
+    );
+  });
+});
+'''
+              test_path.write_text(tests, encoding="utf-8", newline="\n")
+
+          engine_path = Path("packages/storyteller/package.json")
+          engine = json.loads(engine_path.read_text(encoding="utf-8"))
+          engine["exports"]["./book-credit-delivery"] = "./src/book-credit-delivery.ts"
+          engine["exports"] = dict(sorted(engine["exports"].items()))
+          engine_path.write_text(
+              json.dumps(engine, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          root_path = Path("package.json")
+          root = json.loads(root_path.read_text(encoding="utf-8"))
+          scripts = root["scripts"]
+          scripts["verify:book-credit-delivery"] = "node scripts/check-book-credit-delivery.mjs"
+          verify_marker = "npm run verify:book-credit-master"
+          if "npm run verify:book-credit-delivery" not in scripts["verify:artifacts"]:
+              if verify_marker not in scripts["verify:artifacts"]:
+                  raise SystemExit("BOOK_CREDIT_DELIVERY_VERIFY_MARKER_MISSING")
+              scripts["verify:artifacts"] = scripts["verify:artifacts"].replace(
+                  verify_marker,
+                  f"{verify_marker} && npm run verify:book-credit-delivery",
+                  1,
+              )
+          root_path.write_text(
+              json.dumps(root, indent=2) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          for temporary in [
+              Path(".github/workflows/one-time-book-credit-delivery-promotion.yml"),
+              Path(".github/book-credit-delivery-promotion.trigger"),
+          ]:
+              temporary.unlink(missing_ok=True)
+          print("BOOK_CREDIT_DELIVERY_PROMOTED")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee .book-credit-delivery-verify.log
+          npm run build 2>&1 | tee .book-credit-delivery-build.log
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: book-credit-delivery-promotion-${{ github.sha }}
+          path: |
+            .book-credit-delivery-promotion.log
+            .book-credit-delivery-verify.log
+            .book-credit-delivery-build.log
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit promotion
+        shell: bash
+        run: |
+          rm -f .book-credit-delivery-promotion.log .book-credit-delivery-verify.log .book-credit-delivery-build.log
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Verify governed book credit delivery snapshot"
+          git pull --rebase origin main
+          npm run verify
+          npm run build
+          git push origin HEAD:main
+
+      - name: Publish status
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const fs = require("node:fs");
+            const state = process.env.JOB_STATUS === "success" ? "success" : "failure";
+            const source = [
+              ".book-credit-delivery-promotion.log",
+              ".book-credit-delivery-verify.log",
+              ".book-credit-delivery-build.log",
+            ].filter((path) => fs.existsSync(path)).map((path) => fs.readFileSync(path, "utf8")).join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+            const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+            const diagnostic = lines.find((line) => /BOOK_CREDIT_DELIVERY_|error TS\d+|TEST_FAILURE_DIAGNOSTIC|not ok|AssertionError|ERR_[A-Z_]+/i.test(line)) || lines.at(-1) || "book credit delivery promotion failed";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state,
+              context: "storyteller/book-credit-delivery-promotion",
+              description: state === "success" ? "Credit delivery, complete tests and builds passed" : diagnostic.slice(0, 140),
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
