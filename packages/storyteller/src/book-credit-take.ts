@@ -113,6 +113,7 @@ export class BookCreditTakeStoreConflictError extends Error {
 const ENTITY_TYPE = "book-credit-take" as const;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const SAFE_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const WORD_PATTERN = /[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu;
 const MAX_TRANSCRIPT_CHARACTERS = 20_000;
@@ -241,7 +242,13 @@ export function assertBookCreditTranscriptEvidence(
       throw new BookCreditTakeError("BOOK_CREDIT_TRANSCRIPT_EXACT_STATE_INVALID");
     }
   } else {
-    requireInteger(
+  if (
+    evidence.sourceTextHash === evidence.observedTextHash
+    && evidence.sourceCharacterCount === evidence.observedCharacterCount
+  ) {
+    throw new BookCreditTakeError("BOOK_CREDIT_TRANSCRIPT_MISMATCH_STATE_INVALID");
+  }
+  requireInteger(
       evidence.firstMismatchIndex ?? -1,
       0,
       Math.max(evidence.sourceCharacterCount, evidence.observedCharacterCount),
@@ -301,7 +308,15 @@ function requireParent(record: ArtifactRecord, parentId: string, code: string): 
 }
 
 function requireChronology(earlier: string, later: string, code: string): void {
-  if (Date.parse(later) < Date.parse(earlier)) throw new BookCreditTakeError(code);
+  const earlierTime = Date.parse(earlier);
+  const laterTime = Date.parse(later);
+  if (
+    Number.isNaN(earlierTime)
+    || Number.isNaN(laterTime)
+    || laterTime < earlierTime
+  ) {
+    throw new BookCreditTakeError(code);
+  }
 }
 
 function recordFingerprint(record: Omit<BookCreditTakeRecord, "fingerprint">): string {
@@ -521,8 +536,18 @@ export function assertBookCreditTakeRecord(record: BookCreditTakeRecord): void {
   assertSnapshot(record.engineering, "BOOK_CREDIT_TAKE_ENGINEERING_SNAPSHOT_INVALID");
   assertBookCreditTranscriptEvidence(record.transcriptEvidence);
   requireIdentifier(record.engineeringProfileId, "BOOK_CREDIT_TAKE_ENGINEERING_PROFILE_INVALID");
-  if (!record.engineeringProfileVersion.trim()) {
+  if (!SAFE_VERSION.test(record.engineeringProfileVersion)) {
     throw new BookCreditTakeError("BOOK_CREDIT_TAKE_ENGINEERING_VERSION_INVALID");
+  }
+  if (record.transcriptEvidence.sourceTextHash !== record.scriptTextHash) {
+    throw new BookCreditTakeError("BOOK_CREDIT_TAKE_TRANSCRIPT_SOURCE_MISMATCH");
+  }
+  if (new Set([
+    record.audio.id,
+    record.transcript.id,
+    record.engineering.id,
+  ]).size !== 3) {
+    throw new BookCreditTakeError("BOOK_CREDIT_TAKE_ARTIFACT_ID_DUPLICATE");
   }
   if (!Array.isArray(record.findings) || record.findings.some((finding) =>
     !finding.code?.trim()
@@ -531,10 +556,30 @@ export function assertBookCreditTakeRecord(record: BookCreditTakeRecord): void {
   )) {
     throw new BookCreditTakeError("BOOK_CREDIT_TAKE_FINDINGS_INVALID");
   }
+  const findingCodes = record.findings.map((finding) => finding.code);
+  if (new Set(findingCodes).size !== findingCodes.length) {
+    throw new BookCreditTakeError("BOOK_CREDIT_TAKE_FINDING_CODE_DUPLICATE");
+  }
+  const hasTranscriptError = findingCodes.includes(
+    "BOOK_CREDIT_TAKE_TRANSCRIPT_NOT_EXACT",
+  );
+  const hasFinalWordError = findingCodes.includes(
+    "BOOK_CREDIT_TAKE_FINAL_WORD_MISSING",
+  );
+  if (
+    hasTranscriptError === record.transcriptEvidence.exactMatch
+    || hasFinalWordError === record.transcriptEvidence.finalWordCovered
+  ) {
+    throw new BookCreditTakeError("BOOK_CREDIT_TAKE_EVIDENCE_STATE_MISMATCH");
+  }
   const errors = record.findings.filter((finding) => finding.severity === "error");
   if (
     record.eligibleForReview !== (errors.length === 0)
     || record.status !== (record.eligibleForReview ? "eligible-for-review" : "blocked")
+    || (record.eligibleForReview
+      && (!record.transcriptEvidence.exactMatch
+        || !record.transcriptEvidence.finalWordCovered))
+    || (!record.eligibleForReview && errors.length === 0)
   ) {
     throw new BookCreditTakeError("BOOK_CREDIT_TAKE_STATUS_MISMATCH");
   }

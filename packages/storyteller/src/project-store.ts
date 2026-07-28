@@ -20,6 +20,7 @@ export type StoredEntityType =
   | "book-chapter-sequence"
   | "book-credit-script"
   | "book-credit-generation"
+  | "book-credit-take"
   | "chapter-assembly"
   | "release-package";
 

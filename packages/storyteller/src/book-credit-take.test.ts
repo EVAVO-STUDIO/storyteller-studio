@@ -58,7 +58,7 @@ const audioBytes = 960_000;
 const rights: ArtifactRightsSnapshot = Object.freeze({
   rightsEvidenceId: "rights_credit_take_001",
   rightsFingerprint: "b".repeat(64),
-  allowedUses: Object.freeze(["audiobook"]),
+  allowedUses: Object.freeze(["audiobook"] as const),
   commercialUseApproved: true,
   expiresAt: "2028-07-27T00:00:00.000Z",
   retainUntil: "2033-07-27T00:00:00.000Z",
@@ -569,13 +569,28 @@ test("transcript and take evidence reject recomputed structural tampering", asyn
     ...evidenceTamperedBase,
     fingerprint: stableHash(evidenceTamperedBase),
   } as typeof evidence;
-  assert.doesNotThrow(() => assertBookCreditTranscriptEvidence(evidenceTampered));
+  assert.throws(
+    () => assertBookCreditTranscriptEvidence(evidenceTampered),
+    /BOOK_CREDIT_TRANSCRIPT_MISMATCH_STATE_INVALID/u,
+  );
 
   const fixture = await admittedFixture();
+  const {
+    fingerprint: _transcriptFingerprint,
+    ...transcriptWithoutFingerprint
+  } = fixture.record.transcriptEvidence;
+  const transcriptTamperedBase = {
+    ...transcriptWithoutFingerprint,
+    sourceTextHash: "0".repeat(64),
+  };
+  const transcriptTampered = {
+    ...transcriptTamperedBase,
+    fingerprint: stableHash(transcriptTamperedBase),
+  };
   const { fingerprint: _recordFingerprint, ...recordBase } = fixture.record;
   const recordTamperedBase = {
     ...recordBase,
-    transcriptEvidence: evidenceTampered,
+    transcriptEvidence: transcriptTampered,
   };
   const recordTampered = {
     ...recordTamperedBase,
@@ -583,6 +598,6 @@ test("transcript and take evidence reject recomputed structural tampering", asyn
   } as typeof fixture.record;
   assert.throws(
     () => assertBookCreditTakeRecord(recordTampered),
-    /BOOK_CREDIT_TAKE_STATUS_MISMATCH|BOOK_CREDIT_TAKE_TRANSCRIPT_SOURCE_MISMATCH/u,
+    /BOOK_CREDIT_TRANSCRIPT_EXACT_STATE_INVALID|BOOK_CREDIT_TAKE_TRANSCRIPT_SOURCE_MISMATCH/u,
   );
 });
