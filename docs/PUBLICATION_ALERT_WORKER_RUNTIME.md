@@ -11,6 +11,8 @@ The Storyteller worker executable can run the generation service or the publicat
 
 A production deployment should run separate worker processes when both roles are required. Both roles use the same worker application and repository but have independent configuration, failure, scaling and shutdown boundaries.
 
+Each process owns exactly one role for its full lifetime. Changing roles requires a process restart so no provider, route resolver or secret state crosses role boundaries.
+
 ## Disabled by default
 
 Publication alert delivery is disabled unless:
