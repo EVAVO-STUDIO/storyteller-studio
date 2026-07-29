@@ -67,6 +67,8 @@ It does not include:
 - notification idempotency keys;
 - private source evidence.
 
+Message bodies preserve ordinary tabs and line breaks while rejecting other control characters. Subjects, addresses and receipt references remain single-line bounded values.
+
 A custom renderer may be supplied, but its output remains bounded and validated before provider delivery.
 
 ## Provider adapter boundary
