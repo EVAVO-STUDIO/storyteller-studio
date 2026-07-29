@@ -1,0 +1,148 @@
+name: One-time publication evidence CLI integration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-evidence-cli-integration.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/publication-evidence-intake-cli-20260730
+          fetch-depth: 0
+
+      - name: Apply exact CLI integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          main = Path("packages/cli/src/main.ts")
+          source = main.read_text(encoding="utf-8")
+
+          import_anchor = '''import {
+            createElevenLabsPricingForConfiguration,
+            validateElevenLabsConfigurationDocument,
+          } from "./elevenlabs-config.js";
+          '''
+          import_replacement = import_anchor + '''import type { AudiobookRetailPublicationVerification } from "@evavo/storyteller-engine/audiobook-retail-publication-verification";
+          import { submitPublicationEvidenceCommand } from "./publication-evidence.js";
+          '''
+          if source.count(import_anchor) != 1:
+              raise SystemExit("PUBLICATION_EVIDENCE_CLI_IMPORT_ANCHOR_INVALID")
+          source = source.replace(import_anchor, import_replacement, 1)
+
+          help_anchor = '  process.stdout.write(`  queue-reap     Requeue expired worker leases or fail exhausted work.\\n`);\n'
+          help_insert = help_anchor + '  process.stdout.write(`  publication-evidence-submit  Admit complete governed publication verification to the private inbox.\\n`);\n'
+          if source.count(help_anchor) != 1:
+              raise SystemExit("PUBLICATION_EVIDENCE_CLI_HELP_ANCHOR_INVALID")
+          source = source.replace(help_anchor, help_insert, 1)
+
+          example_anchor = '  process.stdout.write(`  npm run storyteller -- queue-cancel --data-dir ./storage --item-id queue_job_123 --actor-id operator_greg --reason "Direction review required"\\n`);\n'
+          example_insert = example_anchor + '  process.stdout.write(`  npm run storyteller -- publication-evidence-submit --data-dir ./storage --monitor-id publication_monitor_001 --verification verification.json --source-reference-hash <sha256> --actor-id operator_greg --output intake.json\\n`);\n'
+          if source.count(example_anchor) != 1:
+              raise SystemExit("PUBLICATION_EVIDENCE_CLI_EXAMPLE_ANCHOR_INVALID")
+          source = source.replace(example_anchor, example_insert, 1)
+
+          switch_anchor = '''    case "verify": {
+              const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
+          '''
+          command_case = '''    case "publication-evidence-submit": {
+              const dataDirectory = stringFlag(args, "data-dir")
+                ?? process.env.STORYTELLER_DATA_DIR?.trim();
+              if (!dataDirectory) throw new Error("CLI_FLAG_REQUIRED:data-dir");
+              const receivedAt = dateFlag(args, "received-at");
+              const result = await submitPublicationEvidenceCommand({
+                dataDirectory,
+                monitorId: stringFlag(args, "monitor-id", true)!,
+                verification: readJson<AudiobookRetailPublicationVerification>(
+                  stringFlag(args, "verification", true)!,
+                ),
+                sourceReferenceHash: stringFlag(
+                  args,
+                  "source-reference-hash",
+                  true,
+                )!,
+                actorId: stringFlag(args, "actor-id", true)!,
+                ...(receivedAt ? { receivedAt } : {}),
+              });
+              emit(result, output, force);
+              return 0;
+            }
+
+          '''
+          if source.count(switch_anchor) != 1:
+              raise SystemExit("PUBLICATION_EVIDENCE_CLI_SWITCH_ANCHOR_INVALID")
+          source = source.replace(switch_anchor, command_case + switch_anchor, 1)
+          main.write_text(source, encoding="utf-8", newline="\n")
+
+          package = Path("package.json")
+          package_source = package.read_text(encoding="utf-8")
+          script_anchor = '    "verify:publication-refresh-runtime": "node scripts/check-publication-refresh-runtime.mjs",\n'
+          script_insert = script_anchor + '    "verify:publication-evidence-cli": "node scripts/check-publication-evidence-cli.mjs",\n'
+          if package_source.count(script_anchor) != 1:
+              raise SystemExit("PUBLICATION_EVIDENCE_CLI_SCRIPT_ANCHOR_INVALID")
+          package_source = package_source.replace(script_anchor, script_insert, 1)
+
+          verify_anchor = '&& npm run verify:audiobook-retail-publication-evidence-inbox && npm run verify:mastering-render'
+          verify_insert = '&& npm run verify:audiobook-retail-publication-evidence-inbox && npm run verify:publication-evidence-cli && npm run verify:mastering-render'
+          if package_source.count(verify_anchor) != 1:
+              raise SystemExit("PUBLICATION_EVIDENCE_CLI_VERIFY_ANCHOR_INVALID")
+          package_source = package_source.replace(verify_anchor, verify_insert, 1)
+          package.write_text(package_source, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Remove temporary workflow files
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/one-time-publication-evidence-cli-integration.yml \
+            .github/publication-evidence-cli-integration.trigger
+
+      - name: Install and validate focused slice
+        run: |
+          npm install --no-audit --no-fund
+          npm run verify:publication-evidence-cli
+          npm run typecheck
+          node --import tsx --test packages/cli/src/publication-evidence.test.ts
+
+      - name: Commit integrated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Integrate private publication evidence intake CLI"
+          git pull --rebase origin work/publication-evidence-intake-cli-20260730
+          git push origin HEAD:work/publication-evidence-intake-cli-20260730
+
+      - name: Self-clean main
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          rm -f \
+            .github/workflows/one-time-publication-evidence-cli-integration.yml \
+            .github/publication-evidence-cli-integration.trigger
+          if ! git diff --quiet; then
+            git config user.name "EVAVO Repository Automation"
+            git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+            git add --all
+            git commit -m "Remove publication evidence CLI integration workflow"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
