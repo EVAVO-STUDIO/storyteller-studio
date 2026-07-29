@@ -31,6 +31,8 @@ import {
   createElevenLabsPricingForConfiguration,
   validateElevenLabsConfigurationDocument,
 } from "./elevenlabs-config.js";
+import type { AudiobookRetailPublicationVerification } from "@evavo/storyteller-engine/audiobook-retail-publication-verification";
+import { submitPublicationEvidenceCommand } from "./publication-evidence.js";
 
 export type ParsedArguments = {
   command: string;
@@ -180,6 +182,7 @@ function help(): void {
   process.stdout.write(`  queue-show     Inspect one local queue item without exposing its lease token hash.\n`);
   process.stdout.write(`  queue-cancel   Cancel queued or in-flight work as an identified operator.\n`);
   process.stdout.write(`  queue-reap     Requeue expired worker leases or fail exhausted work.\n`);
+  process.stdout.write(`  publication-evidence-submit  Admit complete governed publication verification to the private inbox.\n`);
   process.stdout.write(`  verify         Validate structural invariants in a project manifest.\n`);
   process.stdout.write(`  generate       Explain why provider execution remains gated until an adapter is configured.\n\n`);
   process.stdout.write(`Examples:\n`);
@@ -190,6 +193,7 @@ function help(): void {
   process.stdout.write(`  npm run storyteller -- queue-enqueue --project project.json --data-dir ./storage\n`);
   process.stdout.write(`  npm run storyteller -- queue-list --data-dir ./storage --status queued,retry-wait\n`);
   process.stdout.write(`  npm run storyteller -- queue-cancel --data-dir ./storage --item-id queue_job_123 --actor-id operator_greg --reason "Direction review required"\n`);
+  process.stdout.write(`  npm run storyteller -- publication-evidence-submit --data-dir ./storage --monitor-id publication_monitor_001 --verification verification.json --source-reference-hash <sha256> --actor-id operator_greg --output intake.json\n`);
 }
 
 function verifyManifest(manifest: ProjectManifest): { ok: boolean; problems: string[] } {
@@ -372,6 +376,29 @@ export async function run(args: ParsedArguments): Promise<number> {
       emit({ reaped }, output, force);
       return 0;
     }
+
+    case "publication-evidence-submit": {
+    const dataDirectory = stringFlag(args, "data-dir")
+      ?? process.env.STORYTELLER_DATA_DIR?.trim();
+    if (!dataDirectory) throw new Error("CLI_FLAG_REQUIRED:data-dir");
+    const receivedAt = dateFlag(args, "received-at");
+    const result = await submitPublicationEvidenceCommand({
+      dataDirectory,
+      monitorId: stringFlag(args, "monitor-id", true)!,
+      verification: readJson<AudiobookRetailPublicationVerification>(
+        stringFlag(args, "verification", true)!,
+      ),
+      sourceReferenceHash: stringFlag(
+        args,
+        "source-reference-hash",
+        true,
+      )!,
+      actorId: stringFlag(args, "actor-id", true)!,
+      ...(receivedAt ? { receivedAt } : {}),
+    });
+    emit(result, output, force);
+    return 0;
+  }
 
     case "verify": {
       const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
