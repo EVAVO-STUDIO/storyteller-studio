@@ -25,6 +25,8 @@ The alert stores only `recipientReferenceHash`.
 
 A private runtime resolver may map that hash to an email address and optional display name for the duration of one delivery attempt. The resolver must return the same one-way reference hash requested by the alert. A different route, missing route or malformed address fails closed.
 
+One governed notification resolves to one explicit email address. Distribution-list expansion or fan-out must occur in a separate governed routing layer rather than being hidden inside the provider adapter.
+
 The raw email address is used only in the provider request. It is never written into:
 
 - the publication alert;
