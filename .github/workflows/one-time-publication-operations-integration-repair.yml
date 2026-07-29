@@ -1,0 +1,99 @@
+name: One-time publication operations integration repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-operations-integration-repair.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/audiobook-retail-publication-alert-delivery-20260729
+          fetch-depth: 0
+
+      - name: Patch pull-request branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          store_path = Path("packages/storyteller/src/project-store.ts")
+          store = store_path.read_text(encoding="utf-8")
+          store_old = '''  | "audiobook-retail-publication-verification"
+            | "chapter-assembly";'''
+          store_new = '''  | "audiobook-retail-publication-verification"
+            | "audiobook-retail-publication-monitor"
+            | "audiobook-retail-publication-alert"
+            | "chapter-assembly";'''
+          store_count = store.count(store_old)
+          print(f"PUBLICATION_ENTITY_REGISTRATION:{store_count}")
+          if store_count != 1:
+              raise SystemExit(
+                  f"PUBLICATION_ENTITY_REGISTRATION_INVALID:{store_count}"
+              )
+          store_path.write_text(
+              store.replace(store_old, store_new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          alert_path = Path("packages/storyteller/src/audiobook-retail-publication-alert.ts")
+          alert = alert_path.read_text(encoding="utf-8")
+          alert_old = '''  if (
+            alert.distributor !== "acx-audible"
+            || alert.trigger.toHealth === "healthy-live"
+          ) {'''
+          alert_new = '''  const triggerHealth: AudiobookRetailPublicationHealth =
+            alert.trigger.toHealth;
+          if (
+            alert.distributor !== "acx-audible"
+            || triggerHealth === "healthy-live"
+          ) {'''
+          alert_count = alert.count(alert_old)
+          print(f"PUBLICATION_ALERT_HEALTH_NARROWING:{alert_count}")
+          if alert_count != 1:
+              raise SystemExit(
+                  f"PUBLICATION_ALERT_HEALTH_NARROWING_INVALID:{alert_count}"
+              )
+          alert_path.write_text(
+              alert.replace(alert_old, alert_new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add \
+            packages/storyteller/src/project-store.ts \
+            packages/storyteller/src/audiobook-retail-publication-alert.ts
+          git diff --cached --check
+          git commit -m "Register publication operations entities"
+          git pull --rebase origin work/audiobook-retail-publication-alert-delivery-20260729
+          git push origin HEAD:work/audiobook-retail-publication-alert-delivery-20260729
+
+      - name: Self-clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-publication-operations-integration-repair.yml \
+            .github/publication-operations-integration-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication operations integration repair"
+          git pull --rebase origin main
+          git push origin HEAD:main
