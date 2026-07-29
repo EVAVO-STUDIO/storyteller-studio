@@ -1,0 +1,74 @@
+name: One-time publication verification parser repair
+
+on:
+  push:
+    branches:
+      - work/audiobook-retail-publication-verification-20260729
+    paths:
+      - ".github/publication-verification-parser-repair.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/audiobook-retail-publication-verification-20260729
+          fetch-depth: 0
+
+      - name: Apply exact parser repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/audiobook-retail-publication-verification.ts")
+          source = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  '''  const verification = envelope.payload
+                    as unknown as AudiobookRetailPublicationVerification;''',
+                  '''  const verification = envelope.payload as unknown as AudiobookRetailPublicationVerification;''',
+              ),
+              (
+                  '''  return envelope
+                    as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;''',
+                  '''  return envelope as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;''',
+              ),
+          ]
+          for old, new in replacements:
+              count = source.count(old)
+              print(f"PUBLICATION_VERIFICATION_PARSER_REPAIR:{count}")
+              if count != 1:
+                  raise SystemExit(
+                      f"PUBLICATION_VERIFICATION_PARSER_REPAIR_INVALID:{count}"
+                  )
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check repaired branch
+        run: npm run typecheck
+
+      - name: Commit repair and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-publication-verification-parser-repair.yml \
+            .github/publication-verification-parser-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Correct publication verification type assertions"
+          git pull --rebase origin work/audiobook-retail-publication-verification-20260729
+          git push origin HEAD:work/audiobook-retail-publication-verification-20260729
