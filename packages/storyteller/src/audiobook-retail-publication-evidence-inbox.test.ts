@@ -409,7 +409,14 @@ test("revision-safe persistence and public views redact private evidence provena
       /AUDIOBOOK_RETAIL_PUBLICATION_EVIDENCE_STORE_REVISION_CONFLICT/u,
     );
 
-    const audit = await readFile(join(temporaryRoot, "audit.jsonl"), "utf8");
+    const audit = await readFile(
+      join(
+        temporaryRoot,
+        "audit",
+        `${item.receivedAt.slice(0, 10)}.jsonl`,
+      ),
+      "utf8",
+    );
     for (const forbidden of [
       item.sourceReferenceHash,
       item.request.requestFingerprint,
