@@ -9,8 +9,25 @@ import {
   resolveWorkerRuntimeConfiguration,
   workerRuntimeConfigurationSummary,
 } from "./configuration.js";
+import {
+  publicationAlertRuntimeConfigurationSummary,
+  resolvePublicationAlertRuntimeConfiguration,
+} from "./publication-alert-configuration.js";
+import { runConfiguredPublicationAlertRuntime } from "./publication-alert-runtime.js";
 import { createWorkerProviderRegistry } from "./providers.js";
 import { runConfiguredWorkerRuntime } from "./runtime.js";
+
+type StorytellerWorkerProcessRole = "generation" | "publication-alerts";
+
+function resolveProcessRole(
+  value: string | undefined,
+): StorytellerWorkerProcessRole {
+  const role = value?.trim().toLocaleLowerCase("en-AU") ?? "generation";
+  if (role !== "generation" && role !== "publication-alerts") {
+    throw new Error("WORKER_PROCESS_ROLE_INVALID");
+  }
+  return role;
+}
 
 function safeErrorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "WORKER_PROCESS_FAILED";
@@ -18,7 +35,7 @@ function safeErrorCode(error: unknown): string {
   return match?.[0] ?? "WORKER_PROCESS_FAILED";
 }
 
-export async function startStorytellerWorker(): Promise<void> {
+async function startGenerationWorker(): Promise<void> {
   const environment = process.env;
   const configuration = resolveWorkerRuntimeConfiguration(environment);
   const credentialBindings = configuration.enabled ? configuration.credentialBindings : {};
@@ -47,6 +64,7 @@ export async function startStorytellerWorker(): Promise<void> {
 
   console.info(JSON.stringify({
     service: "storyteller-studio-worker",
+    role: "generation",
     event: "configuration",
     configuration: workerRuntimeConfigurationSummary(configuration),
     audioEngineering: workerAudioEngineeringPolicySummary(audioEngineering),
@@ -60,9 +78,39 @@ export async function startStorytellerWorker(): Promise<void> {
   });
   console.info(JSON.stringify({
     service: "storyteller-studio-worker",
+    role: "generation",
     event: "stopped",
     result,
   }));
+}
+
+async function startPublicationAlertWorker(): Promise<void> {
+  const environment = process.env;
+  const configuration = resolvePublicationAlertRuntimeConfiguration(environment);
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-alerts",
+    event: "configuration",
+    configuration: publicationAlertRuntimeConfigurationSummary(configuration),
+  }));
+  const result = await runConfiguredPublicationAlertRuntime(configuration, {
+    environment,
+  });
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-alerts",
+    event: "stopped",
+    result,
+  }));
+}
+
+export async function startStorytellerWorker(): Promise<void> {
+  const role = resolveProcessRole(process.env.STORYTELLER_WORKER_ROLE);
+  if (role === "publication-alerts") {
+    await startPublicationAlertWorker();
+    return;
+  }
+  await startGenerationWorker();
 }
 
 const entryPath = process.argv[1] ? resolve(process.argv[1]) : "";
