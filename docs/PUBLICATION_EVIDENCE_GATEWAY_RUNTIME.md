@@ -2,7 +2,7 @@
 
 The Storyteller worker can run a dedicated `publication-evidence-gateway` role that serves complete governed publication-verification evidence from the private inbox to the `publication-refresh` worker.
 
-The gateway does not scrape retailer pages, create observations, create human verification, or expose a public execution API.
+The gateway does not scrape retailer pages, create observations or create human verification. It does not expose a public execution API.
 
 ## Process role
 
