@@ -111,6 +111,8 @@ The gateway trust policy must never convert automated acquisition into human-con
 
 `204 No Content` means no current governed verification is available.
 
+It does not assert that no observation exists anywhere or that the product is unavailable. It states only that the trusted gateway cannot supply a current complete verification for this monitor at this request boundary.
+
 When a monitor is due, the coordinator records governed staleness and creates an evidence-stale incident. Staleness means the evidence deadline was missed; it does not by itself prove the public product is unavailable.
 
 ## Recipient route
