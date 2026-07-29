@@ -158,4 +158,4 @@ An `available` item means complete current human-governed verification is waitin
 
 An `acknowledged` item means a later persisted monitor revision proves that it consumed that exact verification.
 
-Neither state proves perpetual publication availability. The inbox does not scrape retailer pages, create human evidence, expose an execution API, send notification email or replace independent publication verification.
+The inbox does not prove perpetual publication availability. It does not scrape retailer pages, create human evidence, expose an execution API, send notification email or replace independent publication verification.
