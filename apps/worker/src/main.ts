@@ -14,16 +14,28 @@ import {
   resolvePublicationAlertRuntimeConfiguration,
 } from "./publication-alert-configuration.js";
 import { runConfiguredPublicationAlertRuntime } from "./publication-alert-runtime.js";
+import {
+  publicationRefreshRuntimeConfigurationSummary,
+  resolvePublicationRefreshRuntimeConfiguration,
+} from "./publication-refresh-configuration.js";
+import { runConfiguredPublicationRefreshRuntime } from "./publication-refresh-runtime.js";
 import { createWorkerProviderRegistry } from "./providers.js";
 import { runConfiguredWorkerRuntime } from "./runtime.js";
 
 type StorytellerWorkerProcessRole = "generation" | "publication-alerts";
+type StorytellerExtendedWorkerProcessRole =
+  | StorytellerWorkerProcessRole
+  | "publication-refresh";
 
 function resolveProcessRole(
   value: string | undefined,
-): StorytellerWorkerProcessRole {
+): StorytellerExtendedWorkerProcessRole {
   const role = value?.trim().toLocaleLowerCase("en-AU") ?? "generation";
-  if (role !== "generation" && role !== "publication-alerts") {
+  if (
+    role !== "generation"
+    && role !== "publication-alerts"
+    && role !== "publication-refresh"
+  ) {
     throw new Error("WORKER_PROCESS_ROLE_INVALID");
   }
   return role;
@@ -104,10 +116,34 @@ async function startPublicationAlertWorker(): Promise<void> {
   }));
 }
 
+async function startPublicationRefreshWorker(): Promise<void> {
+  const environment = process.env;
+  const configuration = resolvePublicationRefreshRuntimeConfiguration(environment);
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-refresh",
+    event: "configuration",
+    configuration: publicationRefreshRuntimeConfigurationSummary(configuration),
+  }));
+  const result = await runConfiguredPublicationRefreshRuntime(configuration, {
+    environment,
+  });
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-refresh",
+    event: "stopped",
+    result,
+  }));
+}
+
 export async function startStorytellerWorker(): Promise<void> {
   const role = resolveProcessRole(process.env.STORYTELLER_WORKER_ROLE);
   if (role === "publication-alerts") {
     await startPublicationAlertWorker();
+    return;
+  }
+  if (role === "publication-refresh") {
+    await startPublicationRefreshWorker();
     return;
   }
   await startGenerationWorker();
