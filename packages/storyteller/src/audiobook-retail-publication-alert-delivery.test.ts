@@ -426,7 +426,7 @@ test("route substitution and invalid addresses fail closed without persisting re
     },
   ]) {
     const alert = alertFrom(
-      degradedMonitor(`publication_delivery_monitor_route_${route.emailAddress.replaceAll("@", "_").replaceAll(".", "_")}`),
+      degradedMonitor(`publication_delivery_monitor_route_${stableHash(route).slice(0, 24)}`),
       atMinute(73),
     );
     await withStoredAlert(alert, async ({ state, alerts }) => {
