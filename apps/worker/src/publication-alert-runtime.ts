@@ -285,7 +285,7 @@ export class HttpPublicationAlertEmailProvider
 
 function defaultWaiter(): PublicationAlertRuntimeWaiter {
   return Object.freeze({
-    wait(milliseconds, signal) {
+    wait(milliseconds: number, signal: AbortSignal) {
       if (signal.aborted) return Promise.reject(signal.reason);
       return new Promise<void>((resolvePromise, reject) => {
         const handle = setTimeout(resolvePromise, milliseconds);
@@ -301,7 +301,7 @@ function defaultWaiter(): PublicationAlertRuntimeWaiter {
 
 function defaultSignalSource(): WorkerSignalSource {
   return Object.freeze({
-    subscribe(listener) {
+    subscribe(listener: (signal: WorkerProcessSignal) => void) {
       const onInterrupt = () => listener("SIGINT");
       const onTerminate = () => listener("SIGTERM");
       process.on("SIGINT", onInterrupt);
@@ -316,7 +316,7 @@ function defaultSignalSource(): WorkerSignalSource {
 
 function defaultShutdownScheduler(): WorkerShutdownScheduler {
   return Object.freeze({
-    schedule(callback, delayMs): WorkerShutdownTimer {
+    schedule(callback: () => void, delayMs: number): WorkerShutdownTimer {
       const handle = setTimeout(callback, delayMs);
       handle.unref?.();
       return Object.freeze({
