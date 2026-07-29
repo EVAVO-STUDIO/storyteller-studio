@@ -23,6 +23,16 @@ function requireTokens(path, tokens) {
   }
 }
 
+function serviceBlock(source, serviceName, nextServiceName) {
+  const startToken = `\n  ${serviceName}:\n`;
+  const start = source.indexOf(startToken);
+  if (start < 0) return "";
+  const end = nextServiceName
+    ? source.indexOf(`\n  ${nextServiceName}:\n`, start + startToken.length)
+    : source.indexOf("\nvolumes:\n", start + startToken.length);
+  return source.slice(start, end < 0 ? source.length : end);
+}
+
 for (const path of [
   "Dockerfile.publication-operations",
   "compose.publication-operations.yml",
@@ -31,6 +41,7 @@ for (const path of [
   ".env.publication-operations.example",
   "package.json",
   "docs/PUBLICATION_OPERATIONS_DOCKER.md",
+  "docs/PUBLICATION_OPERATIONS_MAINTENANCE_PROFILE.md",
 ]) requireFile(path);
 
 requireTokens("Dockerfile.publication-operations", [
@@ -71,6 +82,9 @@ requireTokens("compose.publication-operations.yml", [
   "publication-operations-preflight:",
   "publication-refresh:",
   "publication-alerts:",
+  "publication-backup:",
+  "publication-backup-verify:",
+  "publication-restore:",
   "network_mode: service:publication-evidence-gateway",
   "condition: service_healthy",
   "condition: service_completed_successfully",
@@ -83,7 +97,9 @@ requireTokens("compose.publication-operations.yml", [
   "STORYTELLER_FILE_PUBLICATION_ALERT_SINGLE_HOST: \"true\"",
   "STORYTELLER_FILE_PUBLICATION_REFRESH_SINGLE_HOST: \"true\"",
   "STORYTELLER_FILE_PUBLICATION_EVIDENCE_GATEWAY_SINGLE_HOST: \"true\"",
-  "name: storyteller-publication-data",
+  "STORYTELLER_PUBLICATION_DATA_VOLUME",
+  "STORYTELLER_PUBLICATION_BACKUP_VOLUME",
+  "publication-backups:",
 ]);
 
 if (existsSync(fromRoot("compose.publication-operations.yml"))) {
@@ -108,6 +124,81 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
       problems.push(`compose.publication-operations.yml exposes unsafe topology: ${forbidden.trim()}`);
     }
   }
+
+  const maintenance = [
+    ["publication-backup", "publication-backup-verify"],
+    ["publication-backup-verify", "publication-restore"],
+    ["publication-restore", null],
+  ];
+  for (const [serviceName, nextServiceName] of maintenance) {
+    const block = serviceBlock(compose, serviceName, nextServiceName);
+    if (!block) {
+      problems.push(`maintenance service is missing: ${serviceName}`);
+      continue;
+    }
+    for (const token of [
+      "profiles:",
+      "- maintenance",
+      'restart: "no"',
+      "network_mode: none",
+    ]) {
+      if (!block.includes(token)) {
+        problems.push(`${serviceName} is missing maintenance isolation token: ${token}`);
+      }
+    }
+    if (block.includes("depends_on:")) {
+      problems.push(`${serviceName} must not start or depend on mutation services`);
+    }
+  }
+
+  const backup = serviceBlock(
+    compose,
+    "publication-backup",
+    "publication-backup-verify",
+  );
+  for (const token of [
+    "publication-data:/var/lib/storyteller:ro",
+    "publication-backups:/var/backups/storyteller",
+    "publication-operations-backup",
+    "--offline-confirmed",
+    "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID",
+  ]) {
+    if (!backup.includes(token)) {
+      problems.push(`publication-backup is missing token: ${token}`);
+    }
+  }
+
+  const verify = serviceBlock(
+    compose,
+    "publication-backup-verify",
+    "publication-restore",
+  );
+  for (const token of [
+    "publication-backups:/var/backups/storyteller:ro",
+    "publication-operations-backup-verify",
+    "STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID",
+  ]) {
+    if (!verify.includes(token)) {
+      problems.push(`publication-backup-verify is missing token: ${token}`);
+    }
+  }
+  if (verify.includes("publication-data:/var/lib/storyteller")) {
+    problems.push("publication-backup-verify must not mount live publication data");
+  }
+
+  const restore = serviceBlock(compose, "publication-restore", null);
+  for (const token of [
+    "publication-data:/var/lib/storyteller",
+    "publication-backups:/var/backups/storyteller:ro",
+    "publication-operations-restore",
+    "--offline-confirmed",
+    "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID",
+    "STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID",
+  ]) {
+    if (!restore.includes(token)) {
+      problems.push(`publication-restore is missing token: ${token}`);
+    }
+  }
 }
 
 requireTokens(".dockerignore", [
@@ -126,6 +217,10 @@ requireTokens(".gitignore", [
 ]);
 
 requireTokens(".env.publication-operations.example", [
+  "STORYTELLER_PUBLICATION_DATA_VOLUME=storyteller-publication-data",
+  "STORYTELLER_PUBLICATION_BACKUP_VOLUME=storyteller-publication-backups",
+  "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID=",
+  "STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID=",
   "STORYTELLER_PUBLICATION_ALERT_WORKER_ID=",
   "STORYTELLER_PUBLICATION_REFRESH_WORKER_ID=",
   "STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_ID=",
@@ -157,6 +252,24 @@ requireTokens("docs/PUBLICATION_OPERATIONS_DOCKER.md", [
   "does not provide multi-host locking",
 ]);
 
+requireTokens("docs/PUBLICATION_OPERATIONS_MAINTENANCE_PROFILE.md", [
+  "Services",
+  "Named volumes",
+  "Required maintenance inputs",
+  "Stop mutation roles",
+  "Create an offline backup",
+  "Verify the snapshot",
+  "Isolated restore rehearsal",
+  "Production restore by volume cutover",
+  "Rollback",
+  "Off-host and encrypted backup",
+  "No network boundary",
+  "No automatic service control",
+  "Current boundary",
+  "network_mode: none",
+  "does not schedule backups",
+]);
+
 if (existsSync(fromRoot("package.json"))) {
   const packageJson = JSON.parse(read("package.json"));
   if (
@@ -184,6 +297,8 @@ if (dockerVersion.status === 0) {
     "docker",
     [
       "compose",
+      "--profile",
+      "maintenance",
       "--env-file",
       ".env.publication-operations.example",
       "-f",
@@ -215,9 +330,11 @@ if (problems.length > 0) {
 }
 
 console.log("storyteller_publication_operations_compose_check_passed");
-console.log("- one immutable worker image runs four explicit publication roles");
+console.log("- one immutable worker image runs four long-lived or startup publication roles");
+console.log("- three offline maintenance services are profile-gated and networkless");
+console.log("- backup reads live data only through a read-only mount and writes a separate volume");
+console.log("- verification mounts no live state and restore requires a selected data volume");
 console.log("- gateway and refresh share a loopback-only network namespace with no published port");
 console.log("- startup preflight blocks mutation roles when deployment contracts fail");
-console.log("- one named local volume and file locks preserve the single-host boundary");
 console.log("- containers run unprivileged with read-only roots and dropped capabilities");
-console.log("- docker compose syntax is checked automatically when Docker Compose is available");
+console.log("- Docker Compose syntax including maintenance profiles is checked when available");
