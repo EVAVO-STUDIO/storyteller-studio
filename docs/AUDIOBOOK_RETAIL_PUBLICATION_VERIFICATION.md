@@ -183,3 +183,5 @@ It omits:
 `published-and-live` is the first state that truthfully confirms the approved audiobook identity is publicly published, purchasable and sample-playable in every required region.
 
 It does not prove perpetual availability. Publication evidence expires with its public observation and should be refreshed whenever regional availability, metadata, cover, price, sample playback or retailer status materially changes.
+
+A later refresh creates new immutable evidence rather than rewriting the historical verification that supported an earlier live state.
