@@ -450,6 +450,7 @@ test("continuous mode drains on the first signal and unsubscribes cleanly", asyn
   await Promise.resolve();
   signals.emit("SIGTERM");
   const result = await running;
+  assert.notEqual(result.status, "disabled");
   assert.equal(service.startCalls, 1);
   assert.equal(service.drainCalls, 1);
   assert.equal(result.shutdownSignal, "SIGTERM");
@@ -475,6 +476,7 @@ test("a second signal forces a bounded active refresh abort", async () => {
   signals.emit("SIGINT");
   signals.emit("SIGTERM");
   const result = await running;
+  assert.notEqual(result.status, "disabled");
   assert.equal(result.shutdownSignal, "SIGINT");
   assert.equal(result.forcedAbort, true);
   assert.deepEqual(service.abortCodes, [
