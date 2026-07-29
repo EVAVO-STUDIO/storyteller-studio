@@ -66,7 +66,7 @@ A revision-one item is `available`.
 
 Acknowledged and expired items are excluded.
 
-The presence of an available item does not prove the monitor has consumed it.
+The presence of an available item does not prove the monitor has consumed it. Returning that item through a gateway response must not change its status or create an acknowledgement.
 
 ## Proven-consumption acknowledgement
 
