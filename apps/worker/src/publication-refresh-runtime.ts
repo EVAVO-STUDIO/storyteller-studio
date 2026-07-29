@@ -1,4 +1,4 @@
-import { stableHash } from "@evavo/storyteller-engine";
+import { audiobookRetailPublicationRefreshRequestFingerprint } from "@evavo/storyteller-engine/audiobook-retail-publication-evidence-inbox";
 import { FileAudiobookRetailPublicationAlertStore } from "@evavo/storyteller-engine/audiobook-retail-publication-alert";
 import { FileAudiobookRetailPublicationMonitorStore } from "@evavo/storyteller-engine/audiobook-retail-publication-monitor";
 import {
@@ -173,13 +173,8 @@ export class HttpPublicationVerificationProvider
   ): Promise<AudiobookRetailPublicationVerification | null> {
     if (signal.aborted) throw signal.reason;
     const latestEntry = monitor.entries.at(-1)!;
-    const requestFingerprint = stableHash({
-      monitorId: monitor.id,
-      monitorRevision: monitor.revision,
-      monitorFingerprint: monitor.fingerprint,
-      latestVerificationFingerprint: latestEntry.verificationFingerprint,
-      nextRefreshDueAt: monitor.nextRefreshDueAt,
-    });
+    const requestFingerprint =
+      audiobookRetailPublicationRefreshRequestFingerprint(monitor);
     let response: Response;
     try {
       response = await this.#fetch(this.#endpoint, {
