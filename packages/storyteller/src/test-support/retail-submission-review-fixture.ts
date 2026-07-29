@@ -3,6 +3,7 @@ import {
   startAudiobookRetailDeliveryAttempt,
   type AudiobookRetailDeliveryAttempt,
 } from "../audiobook-retail-delivery-attempt.js";
+import type { AudiobookRetailNarrationSourceKind } from "../audiobook-retail-policy.js";
 import {
   createAudiobookRetailReleaseDecision,
   type AudiobookRetailReleaseDecision,
@@ -61,8 +62,10 @@ export interface RetailSubmissionReviewFixture {
   submissionReview: AudiobookRetailSubmissionReviewSession;
 }
 
-export function retailSubmissionReviewFixture(): RetailSubmissionReviewFixture {
-  const release = retailReleaseFixture();
+export function retailSubmissionReviewFixture(
+  sourceKind: AudiobookRetailNarrationSourceKind = "human-performance",
+): RetailSubmissionReviewFixture {
+  const release = retailReleaseFixture(sourceKind);
   const releaseDecision = createAudiobookRetailReleaseDecision(release.input);
   const started = startAudiobookRetailDeliveryAttempt({
     releaseDecision,
