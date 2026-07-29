@@ -102,6 +102,68 @@ services:
       STORYTELLER_PUBLICATION_ALERT_MODE: continuous
       STORYTELLER_FILE_PUBLICATION_ALERT_SINGLE_HOST: "true"
 
+  publication-backup:
+    <<: *worker-base
+    profiles:
+      - maintenance
+    restart: "no"
+    network_mode: none
+    volumes:
+      - publication-data:/var/lib/storyteller:ro
+      - publication-backups:/var/backups/storyteller
+    command:
+      - npm
+      - run
+      - publication-operations-backup
+      - --
+      - --data-dir
+      - /var/lib/storyteller
+      - --backup-dir
+      - /var/backups/storyteller
+      - --actor-id
+      - ${STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID:?set STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID}
+      - --offline-confirmed
+
+  publication-backup-verify:
+    <<: *worker-base
+    profiles:
+      - maintenance
+    restart: "no"
+    network_mode: none
+    volumes:
+      - publication-backups:/var/backups/storyteller:ro
+    command:
+      - npm
+      - run
+      - publication-operations-backup-verify
+      - --
+      - --snapshot
+      - /var/backups/storyteller/${STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID:?set STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID}
+
+  publication-restore:
+    <<: *worker-base
+    profiles:
+      - maintenance
+    restart: "no"
+    network_mode: none
+    volumes:
+      - publication-data:/var/lib/storyteller
+      - publication-backups:/var/backups/storyteller:ro
+    command:
+      - npm
+      - run
+      - publication-operations-restore
+      - --
+      - --snapshot
+      - /var/backups/storyteller/${STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID:?set STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID}
+      - --data-dir
+      - /var/lib/storyteller
+      - --actor-id
+      - ${STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID:?set STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID}
+      - --offline-confirmed
+
 volumes:
   publication-data:
-    name: storyteller-publication-data
+    name: ${STORYTELLER_PUBLICATION_DATA_VOLUME:-storyteller-publication-data}
+  publication-backups:
+    name: ${STORYTELLER_PUBLICATION_BACKUP_VOLUME:-storyteller-publication-backups}
