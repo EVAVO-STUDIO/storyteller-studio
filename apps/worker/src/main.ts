@@ -19,6 +19,7 @@ import {
   resolvePublicationEvidenceGatewayConfiguration,
 } from "./publication-evidence-gateway-configuration.js";
 import { runConfiguredPublicationEvidenceGateway } from "./publication-evidence-gateway-runtime.js";
+import { runPublicationOperationsPreflight } from "./publication-operations-preflight.js";
 import {
   publicationRefreshRuntimeConfigurationSummary,
   resolvePublicationRefreshRuntimeConfiguration,
@@ -31,7 +32,8 @@ type StorytellerWorkerProcessRole = "generation" | "publication-alerts";
 type StorytellerExtendedWorkerProcessRole =
   | StorytellerWorkerProcessRole
   | "publication-refresh"
-  | "publication-evidence-gateway";
+  | "publication-evidence-gateway"
+  | "publication-operations-preflight";
 
 function resolveProcessRole(
   value: string | undefined,
@@ -42,6 +44,7 @@ function resolveProcessRole(
     && role !== "publication-alerts"
     && role !== "publication-refresh"
     && role !== "publication-evidence-gateway"
+    && role !== "publication-operations-preflight"
   ) {
     throw new Error("WORKER_PROCESS_ROLE_INVALID");
   }
@@ -163,6 +166,16 @@ async function startPublicationEvidenceGateway(): Promise<void> {
   }));
 }
 
+async function startPublicationOperationsPreflight(): Promise<void> {
+  const result = runPublicationOperationsPreflight(process.env);
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-operations-preflight",
+    event: "ready",
+    result,
+  }));
+}
+
 export async function startStorytellerWorker(): Promise<void> {
   const role = resolveProcessRole(process.env.STORYTELLER_WORKER_ROLE);
   if (role === "publication-alerts") {
@@ -175,6 +188,10 @@ export async function startStorytellerWorker(): Promise<void> {
   }
   if (role === "publication-evidence-gateway") {
     await startPublicationEvidenceGateway();
+    return;
+  }
+  if (role === "publication-operations-preflight") {
+    await startPublicationOperationsPreflight();
     return;
   }
   await startGenerationWorker();
