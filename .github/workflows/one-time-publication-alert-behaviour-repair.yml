@@ -30,72 +30,86 @@ jobs:
           delivery_path = Path(
               "packages/storyteller/src/audiobook-retail-publication-alert-delivery.ts"
           )
-          delivery = delivery_path.read_text(encoding="utf-8")
-          control_old = (
-              'const CONTROL_CHARACTERS = /[\\u0000-\\u001f\\u007f]/u;\n'
-              'const MAXIMUM_EMAIL_LENGTH = 320;'
-          )
-          control_new = (
-              'const CONTROL_CHARACTERS = /[\\u0000-\\u001f\\u007f]/u;\n'
-              'const MESSAGE_CONTROL_CHARACTERS = '
-              '/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/u;\n'
-              'const MAXIMUM_EMAIL_LENGTH = 320;'
-          )
-          control_count = delivery.count(control_old)
-          print(f"PUBLICATION_DELIVERY_MESSAGE_CONTROL:{control_count}")
-          if control_count != 1:
-              raise SystemExit(
-                  f"PUBLICATION_DELIVERY_MESSAGE_CONTROL_INVALID:{control_count}"
-              )
-          delivery = delivery.replace(control_old, control_new, 1)
+          delivery_lines = delivery_path.read_text(encoding="utf-8").splitlines()
 
-          function_old = '''function requireEmail(value: string): string {'''
-          function_new = '''function requireMessageBody(
-            value: string,
-            maximum: number,
-            code: string,
-          ): string {
-            const trimmed = value.trim();
-            if (
-              !trimmed
-              || trimmed.length > maximum
-              || MESSAGE_CONTROL_CHARACTERS.test(trimmed)
-            ) {
-              throw new AudiobookRetailPublicationAlertDeliveryError(code);
-            }
-            return trimmed;
+          control_matches = [
+              index
+              for index in range(len(delivery_lines) - 1)
+              if delivery_lines[index].strip().startswith(
+                  "const CONTROL_CHARACTERS ="
+              )
+              and delivery_lines[index + 1].strip()
+                  == "const MAXIMUM_EMAIL_LENGTH = 320;"
+          ]
+          print(f"PUBLICATION_DELIVERY_MESSAGE_CONTROL:{control_matches}")
+          if len(control_matches) != 1:
+              raise SystemExit(
+                  "PUBLICATION_DELIVERY_MESSAGE_CONTROL_INVALID:"
+                  f"{control_matches}"
+              )
+          control_index = control_matches[0]
+          delivery_lines.insert(
+              control_index + 1,
+              "const MESSAGE_CONTROL_CHARACTERS = "
+              "/[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f]/u;",
+          )
+
+          email_matches = [
+              index
+              for index, line in enumerate(delivery_lines)
+              if line.strip() == "function requireEmail(value: string): string {"
+          ]
+          print(f"PUBLICATION_DELIVERY_BODY_VALIDATOR:{email_matches}")
+          if len(email_matches) != 1:
+              raise SystemExit(
+                  "PUBLICATION_DELIVERY_BODY_VALIDATOR_INVALID:"
+                  f"{email_matches}"
+              )
+          email_index = email_matches[0]
+          delivery_lines[email_index:email_index] = [
+              "function requireMessageBody(",
+              "  value: string,",
+              "  maximum: number,",
+              "  code: string,",
+              "): string {",
+              "  const trimmed = value.trim();",
+              "  if (",
+              "    !trimmed",
+              "    || trimmed.length > maximum",
+              "    || MESSAGE_CONTROL_CHARACTERS.test(trimmed)",
+              "  ) {",
+              "    throw new AudiobookRetailPublicationAlertDeliveryError(code);",
+              "  }",
+              "  return trimmed;",
+              "}",
+              "",
+          ]
+
+          replacements = {
+              "const textBody = requireText(":
+                  "const textBody = requireMessageBody(",
+              "const htmlBody = requireText(":
+                  "const htmlBody = requireMessageBody(",
           }
-
-          function requireEmail(value: string): string {'''
-          function_count = delivery.count(function_old)
-          print(f"PUBLICATION_DELIVERY_BODY_VALIDATOR:{function_count}")
-          if function_count != 1:
-              raise SystemExit(
-                  f"PUBLICATION_DELIVERY_BODY_VALIDATOR_INVALID:{function_count}"
-              )
-          delivery = delivery.replace(function_old, function_new, 1)
-
-          for old, new, label in [
-              (
-                  "  const textBody = requireText(\n",
-                  "  const textBody = requireMessageBody(\n",
-                  "TEXT_BODY",
-              ),
-              (
-                  "  const htmlBody = requireText(\n",
-                  "  const htmlBody = requireMessageBody(\n",
-                  "HTML_BODY",
-              ),
-          ]:
-              count = delivery.count(old)
-              print(f"PUBLICATION_DELIVERY_{label}:{count}")
-              if count != 1:
+          for old, new in replacements.items():
+              matches = [
+                  index
+                  for index, line in enumerate(delivery_lines)
+                  if line.strip() == old
+              ]
+              print(f"PUBLICATION_DELIVERY_BODY_CALL:{old}:{matches}")
+              if len(matches) != 1:
                   raise SystemExit(
-                      f"PUBLICATION_DELIVERY_{label}_INVALID:{count}"
+                      f"PUBLICATION_DELIVERY_BODY_CALL_INVALID:{old}:{matches}"
                   )
-              delivery = delivery.replace(old, new, 1)
+              indentation = delivery_lines[matches[0]][
+                  :len(delivery_lines[matches[0]])
+                  - len(delivery_lines[matches[0]].lstrip())
+              ]
+              delivery_lines[matches[0]] = indentation + new
+
           delivery_path.write_text(
-              delivery,
+              "\n".join(delivery_lines) + "\n",
               encoding="utf-8",
               newline="\n",
           )
@@ -103,36 +117,52 @@ jobs:
           alert_path = Path(
               "packages/storyteller/src/audiobook-retail-publication-alert.ts"
           )
-          alert = alert_path.read_text(encoding="utf-8")
-          notification_old = '''  const notificationBase: Omit<
-            AudiobookRetailPublicationAlertNotification,
-            "fingerprint"
-          > = {
-            ...alert.notification,
-            deliveryStatus: deriveDeliveryStatus(attempts),
-            attempts,
-          };'''
-          notification_new = '''  const {
-            fingerprint: _notificationFingerprint,
-            ...notificationState
-          } = alert.notification;
-          const notificationBase: Omit<
-            AudiobookRetailPublicationAlertNotification,
-            "fingerprint"
-          > = {
-            ...notificationState,
-            deliveryStatus: deriveDeliveryStatus(attempts),
-            attempts,
-          };'''
-          notification_count = alert.count(notification_old)
-          print(f"PUBLICATION_ALERT_NOTIFICATION_REVISION:{notification_count}")
-          if notification_count != 1:
+          alert_lines = alert_path.read_text(encoding="utf-8").splitlines()
+          notification_matches = []
+          for index, line in enumerate(alert_lines):
+              if line.strip() != "const notificationBase: Omit<":
+                  continue
+              window = alert_lines[index:index + 12]
+              if any(item.strip() == "...alert.notification," for item in window):
+                  notification_matches.append(index)
+          print(
+              "PUBLICATION_ALERT_NOTIFICATION_REVISION:"
+              f"{notification_matches}"
+          )
+          if len(notification_matches) != 1:
               raise SystemExit(
                   "PUBLICATION_ALERT_NOTIFICATION_REVISION_INVALID:"
-                  f"{notification_count}"
+                  f"{notification_matches}"
               )
+          notification_index = notification_matches[0]
+          alert_lines[notification_index:notification_index] = [
+              "  const {",
+              "    fingerprint: _notificationFingerprint,",
+              "    ...notificationState",
+              "  } = alert.notification;",
+          ]
+          spread_matches = [
+              index
+              for index in range(
+                  notification_index + 4,
+                  min(len(alert_lines), notification_index + 20),
+              )
+              if alert_lines[index].strip() == "...alert.notification,"
+          ]
+          print(f"PUBLICATION_ALERT_NOTIFICATION_SPREAD:{spread_matches}")
+          if len(spread_matches) != 1:
+              raise SystemExit(
+                  "PUBLICATION_ALERT_NOTIFICATION_SPREAD_INVALID:"
+                  f"{spread_matches}"
+              )
+          spread_index = spread_matches[0]
+          indentation = alert_lines[spread_index][
+              :len(alert_lines[spread_index])
+              - len(alert_lines[spread_index].lstrip())
+          ]
+          alert_lines[spread_index] = indentation + "...notificationState,"
           alert_path.write_text(
-              alert.replace(notification_old, notification_new, 1),
+              "\n".join(alert_lines) + "\n",
               encoding="utf-8",
               newline="\n",
           )
