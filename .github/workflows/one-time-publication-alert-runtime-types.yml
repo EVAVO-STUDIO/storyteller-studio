@@ -1,0 +1,79 @@
+name: One-time publication alert runtime type repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-alert-runtime-types.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/publication-alert-worker-runtime-20260729
+          fetch-depth: 0
+
+      - name: Patch pull-request branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("apps/worker/src/publication-alert-runtime.ts")
+          source = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "    wait(milliseconds, signal) {",
+                  "    wait(milliseconds: number, signal: AbortSignal) {",
+              ),
+              (
+                  "    subscribe(listener) {",
+                  "    subscribe(listener: (signal: WorkerProcessSignal) => void) {",
+              ),
+              (
+                  "    schedule(callback, delayMs): WorkerShutdownTimer {",
+                  "    schedule(callback: () => void, delayMs: number): WorkerShutdownTimer {",
+              ),
+          ]
+          for old, new in replacements:
+              count = source.count(old)
+              print(f"PUBLICATION_ALERT_RUNTIME_TYPE_REPAIR:{old}:{count}")
+              if count != 1:
+                  raise SystemExit(
+                      f"PUBLICATION_ALERT_RUNTIME_TYPE_REPAIR_INVALID:{old}:{count}"
+                  )
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8", newline="\n")
+          PY
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add apps/worker/src/publication-alert-runtime.ts
+          git diff --cached --check
+          git commit -m "Type publication alert runtime adapters"
+          git pull --rebase origin work/publication-alert-worker-runtime-20260729
+          git push origin HEAD:work/publication-alert-worker-runtime-20260729
+
+      - name: Self-clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-publication-alert-runtime-types.yml \
+            .github/publication-alert-runtime-types.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication alert runtime type repair"
+          git pull --rebase origin main
+          git push origin HEAD:main
