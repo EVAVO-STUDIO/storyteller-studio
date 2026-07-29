@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync } from "node:fs";
-import { open } from "node:fs/promises";
+import { chmod, open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -15,9 +15,13 @@ interface ParsedArguments {
   flags: Record<string, string | boolean>;
 }
 
+export interface PublicationOperationsBackupTextOutput {
+  write(value: string): unknown;
+}
+
 export interface PublicationOperationsBackupCliDependencies {
   environment?: NodeJS.ProcessEnv;
-  stdout?: Pick<NodeJS.WriteStream, "write">;
+  stdout?: PublicationOperationsBackupTextOutput;
 }
 
 function parseArguments(argv: readonly string[]): ParsedArguments {
@@ -77,7 +81,7 @@ async function emit(
   value: unknown,
   outputPath: string | undefined,
   force: boolean,
-  stdout: Pick<NodeJS.WriteStream, "write">,
+  stdout: PublicationOperationsBackupTextOutput,
 ): Promise<void> {
   const content = `${JSON.stringify(value, null, 2)}\n`;
   if (!outputPath) {
@@ -95,9 +99,10 @@ async function emit(
   } finally {
     await handle.close();
   }
+  await chmod(path, 0o600);
 }
 
-function help(stdout: Pick<NodeJS.WriteStream, "write">): void {
+function help(stdout: PublicationOperationsBackupTextOutput): void {
   stdout.write("Storyteller publication operations backup CLI\n\n");
   stdout.write("Commands:\n");
   stdout.write("  backup   Create an offline, integrity-checked publication state snapshot.\n");
@@ -132,14 +137,13 @@ export async function runPublicationOperationsBackupCli(
     if (!dataDirectory) {
       throw new Error("PUBLICATION_OPERATIONS_BACKUP_CLI_FLAG_REQUIRED:data-dir");
     }
+    const createdAt = dateFlag(args, "created-at");
     const result = await createPublicationOperationsBackup({
       dataDirectory,
       backupDirectory: stringFlag(args, "backup-dir", true)!,
       actorId: stringFlag(args, "actor-id", true)!,
       offlineConfirmed: booleanFlag(args, "offline-confirmed") as true,
-      ...(dateFlag(args, "created-at")
-        ? { createdAt: dateFlag(args, "created-at")! }
-        : {}),
+      ...(createdAt ? { createdAt } : {}),
     });
     await emit(result, output, force, stdout);
     return 0;
@@ -159,14 +163,13 @@ export async function runPublicationOperationsBackupCli(
     if (!dataDirectory) {
       throw new Error("PUBLICATION_OPERATIONS_BACKUP_CLI_FLAG_REQUIRED:data-dir");
     }
+    const restoredAt = dateFlag(args, "restored-at");
     const result = await restorePublicationOperationsBackup({
       snapshotDirectory: stringFlag(args, "snapshot", true)!,
       dataDirectory,
       actorId: stringFlag(args, "actor-id", true)!,
       offlineConfirmed: booleanFlag(args, "offline-confirmed") as true,
-      ...(dateFlag(args, "restored-at")
-        ? { restoredAt: dateFlag(args, "restored-at")! }
-        : {}),
+      ...(restoredAt ? { restoredAt } : {}),
     });
     await emit(result, output, force, stdout);
     return 0;
