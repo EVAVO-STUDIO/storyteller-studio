@@ -22,14 +22,14 @@ import { runConfiguredPublicationRefreshRuntime } from "./publication-refresh-ru
 import { createWorkerProviderRegistry } from "./providers.js";
 import { runConfiguredWorkerRuntime } from "./runtime.js";
 
-type StorytellerWorkerProcessRole =
-  | "generation"
-  | "publication-alerts"
+type StorytellerWorkerProcessRole = "generation" | "publication-alerts";
+type StorytellerExtendedWorkerProcessRole =
+  | StorytellerWorkerProcessRole
   | "publication-refresh";
 
 function resolveProcessRole(
   value: string | undefined,
-): StorytellerWorkerProcessRole {
+): StorytellerExtendedWorkerProcessRole {
   const role = value?.trim().toLocaleLowerCase("en-AU") ?? "generation";
   if (
     role !== "generation"
