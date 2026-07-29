@@ -1,0 +1,79 @@
+name: One-time publication evidence inbox parser repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-evidence-inbox-parser-repair.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/audiobook-retail-publication-evidence-inbox-20260729
+          fetch-depth: 0
+
+      - name: Patch pull-request branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(
+              "packages/storyteller/src/"
+              "audiobook-retail-publication-evidence-inbox.ts"
+          )
+          lines = path.read_text(encoding="utf-8").splitlines()
+          target = [
+              "  const item = envelope.payload",
+              "    as unknown as AudiobookRetailPublicationEvidenceInboxItem;",
+          ]
+          matches = [
+              index
+              for index in range(len(lines) - 1)
+              if lines[index:index + 2] == target
+          ]
+          print(f"PUBLICATION_EVIDENCE_INBOX_PARSER_REPAIR:{matches}")
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"PUBLICATION_EVIDENCE_INBOX_PARSER_REPAIR_INVALID:{matches}"
+              )
+          index = matches[0]
+          lines[index:index + 2] = [
+              "  const item = envelope.payload as unknown as "
+              "AudiobookRetailPublicationEvidenceInboxItem;"
+          ]
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+          PY
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add packages/storyteller/src/audiobook-retail-publication-evidence-inbox.ts
+          git diff --cached --check
+          git commit -m "Correct publication evidence inbox type assertion"
+          git pull --rebase origin work/audiobook-retail-publication-evidence-inbox-20260729
+          git push origin HEAD:work/audiobook-retail-publication-evidence-inbox-20260729
+
+      - name: Self-clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-publication-evidence-inbox-parser-repair.yml \
+            .github/publication-evidence-inbox-parser-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication evidence inbox parser repair"
+          git pull --rebase origin main
+          git push origin HEAD:main
