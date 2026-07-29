@@ -27,6 +27,8 @@ A private runtime resolver may map that hash to an email address and optional di
 
 One governed notification resolves to one explicit email address. Distribution-list expansion or fan-out must occur in a separate governed routing layer rather than being hidden inside the provider adapter.
 
+Recipient-route identifiers must be opaque and must not be derived from or embed the raw email address they resolve.
+
 The raw email address is used only in the provider request. It is never written into:
 
 - the publication alert;
