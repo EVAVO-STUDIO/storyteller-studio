@@ -77,6 +77,8 @@ An email provider adapter declares:
 
 Provider credentials remain inside the private adapter implementation. The delivery domain does not persist or expose credentials.
 
+Provider adapters must also avoid logging raw recipient addresses, message bodies, credentials or response bodies into application logs. Operational logs should contain only safe codes and governed identifiers.
+
 A successful provider call returns a raw receipt reference. The worker hashes that reference together with the provider identity and adapter version before recording the alert attempt. The raw receipt is discarded.
 
 ## Bounded retries
