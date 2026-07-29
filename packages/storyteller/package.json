@@ -31,6 +31,7 @@
     "./audiobook-retail-release-decision": "./src/audiobook-retail-release-decision.ts",
     "./audiobook-retail-delivery-attempt": "./src/audiobook-retail-delivery-attempt.ts",
     "./audiobook-retail-submission-review": "./src/audiobook-retail-submission-review.ts",
+    "./audiobook-retail-submission-decision": "./src/audiobook-retail-submission-decision.ts",
     "./audiobook-sequence": "./src/audiobook-sequence.ts",
     "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
     "./book-credit-delivery": "./src/book-credit-delivery.ts",
