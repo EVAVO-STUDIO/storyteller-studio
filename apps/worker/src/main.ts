@@ -38,9 +38,7 @@ function safeErrorCode(error: unknown): string {
 async function startGenerationWorker(): Promise<void> {
   const environment = process.env;
   const configuration = resolveWorkerRuntimeConfiguration(environment);
-  const credentialBindings = configuration.enabled
-    ? configuration.credentialBindings
-    : {};
+  const credentialBindings = configuration.enabled ? configuration.credentialBindings : {};
   const audioEngineering = resolveWorkerAudioEngineeringPolicy({
     workerEnabled: configuration.enabled,
     environment,
