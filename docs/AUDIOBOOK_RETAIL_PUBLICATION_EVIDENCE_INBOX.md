@@ -114,6 +114,8 @@ Aggregate audit metadata records:
 - required-region count;
 - acknowledgement state.
 
+Audit events use the project store's date-partitioned private audit files. Reading or exporting those files remains an administrative operation and is not part of the public evidence projection.
+
 Audit metadata omits:
 
 - request and verification fingerprints;
