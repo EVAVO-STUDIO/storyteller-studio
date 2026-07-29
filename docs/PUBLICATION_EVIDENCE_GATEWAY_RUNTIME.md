@@ -198,6 +198,8 @@ Normal web and protected API applications must not import or invoke:
 
 No public route is introduced in the protected API or web application.
 
+The general generation-worker contract continues to prohibit HTTP listeners throughout `apps/worker`. `publication-evidence-gateway-runtime.ts` is the sole narrowly scoped exception, and its dedicated checker requires private binding, bearer authentication, bounded request handling, no public API imports and fail-closed configuration.
+
 ## Current boundary
 
 This runtime serves complete current governed verification from the private inbox to the trusted refresh worker.
