@@ -33,6 +33,7 @@
     "./audiobook-retail-submission-review": "./src/audiobook-retail-submission-review.ts",
     "./audiobook-retail-submission-decision": "./src/audiobook-retail-submission-decision.ts",
     "./audiobook-retail-submission-attempt": "./src/audiobook-retail-submission-attempt.ts",
+    "./audiobook-retailer-status-evidence": "./src/audiobook-retailer-status-evidence.ts",
     "./audiobook-sequence": "./src/audiobook-sequence.ts",
     "./book-chapter-sequence": "./src/book-chapter-sequence.ts",
     "./book-credit-delivery": "./src/book-credit-delivery.ts",

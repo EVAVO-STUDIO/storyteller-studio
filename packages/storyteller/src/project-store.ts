@@ -35,6 +35,7 @@ export type StoredEntityType =
   | "audiobook-retail-submission-review"
   | "audiobook-retail-submission-decision"
   | "audiobook-retail-submission-attempt"
+  | "audiobook-retailer-status-evidence"
   | "chapter-assembly"
   | "release-package";
 
