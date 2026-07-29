@@ -134,7 +134,12 @@ test("preflight fails closed when any publication role is disabled", () => {
 test("preflight rejects token, route and role identity mismatches", () => {
   assert.throws(
     () => runPublicationOperationsPreflight(
-      environment({ PUBLICATION_OPERATIONS_GATEWAY_TOKEN: "different-token" }),
+      environment({
+        STORYTELLER_PUBLICATION_REFRESH_VERIFICATION_TOKEN_ENV:
+          "PUBLICATION_OPERATIONS_REFRESH_TOKEN",
+        PUBLICATION_OPERATIONS_REFRESH_TOKEN: sharedGatewayToken,
+        PUBLICATION_OPERATIONS_GATEWAY_TOKEN: "different-token",
+      }),
       workingDirectory,
     ),
     /PUBLICATION_OPERATIONS_PREFLIGHT_GATEWAY_TOKEN_MISMATCH/u,
