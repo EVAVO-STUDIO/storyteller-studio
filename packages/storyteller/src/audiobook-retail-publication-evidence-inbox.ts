@@ -654,8 +654,7 @@ export function audiobookRetailPublicationEvidenceInboxPublicView(
 function toEnvelope(
   envelope: StoredEnvelope<Record<string, unknown>>,
 ): StoredEnvelope<AudiobookRetailPublicationEvidenceInboxItem> {
-  const item = envelope.payload
-    as unknown as AudiobookRetailPublicationEvidenceInboxItem;
+  const item = envelope.payload as unknown as AudiobookRetailPublicationEvidenceInboxItem;
   assertAudiobookRetailPublicationEvidenceInboxItem(item);
   if (
     envelope.entityType
