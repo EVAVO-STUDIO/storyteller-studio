@@ -28,28 +28,52 @@ jobs:
           from pathlib import Path
 
           path = Path("packages/storyteller/src/audiobook-retail-publication-verification.ts")
-          source = path.read_text(encoding="utf-8")
-          replacements = [
-              (
-                  '''  const verification = envelope.payload
-                    as unknown as AudiobookRetailPublicationVerification;''',
-                  '''  const verification = envelope.payload as unknown as AudiobookRetailPublicationVerification;''',
-              ),
-              (
-                  '''  return envelope
-                    as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;''',
-                  '''  return envelope as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;''',
-              ),
-          ]
-          for old, new in replacements:
-              count = source.count(old)
-              print(f"PUBLICATION_VERIFICATION_PARSER_REPAIR:{count}")
-              if count != 1:
-                  raise SystemExit(
-                      f"PUBLICATION_VERIFICATION_PARSER_REPAIR_INVALID:{count}"
+          lines = path.read_text(encoding="utf-8").splitlines()
+          repaired = []
+          index = 0
+          counts = {
+              "verification": 0,
+              "return": 0,
+          }
+          while index < len(lines):
+              line = lines[index]
+              following = lines[index + 1] if index + 1 < len(lines) else ""
+              if (
+                  line.strip() == "const verification = envelope.payload"
+                  and following.strip()
+                  == "as unknown as AudiobookRetailPublicationVerification;"
+              ):
+                  repaired.append(
+                      "  const verification = envelope.payload as unknown as "
+                      "AudiobookRetailPublicationVerification;"
                   )
-              source = source.replace(old, new, 1)
-          path.write_text(source, encoding="utf-8", newline="\n")
+                  counts["verification"] += 1
+                  index += 2
+                  continue
+              if (
+                  line.strip() == "return envelope"
+                  and following.strip()
+                  == "as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;"
+              ):
+                  repaired.append(
+                      "  return envelope as unknown as "
+                      "StoredEnvelope<AudiobookRetailPublicationVerification>;"
+                  )
+                  counts["return"] += 1
+                  index += 2
+                  continue
+              repaired.append(line)
+              index += 1
+          print(f"PUBLICATION_VERIFICATION_PARSER_REPAIR:{counts}")
+          if counts != {"verification": 1, "return": 1}:
+              raise SystemExit(
+                  f"PUBLICATION_VERIFICATION_PARSER_REPAIR_INVALID:{counts}"
+              )
+          path.write_text(
+              "\n".join(repaired) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
           PY
           rm -f \
             .github/workflows/one-time-publication-verification-parser-repair.yml \
