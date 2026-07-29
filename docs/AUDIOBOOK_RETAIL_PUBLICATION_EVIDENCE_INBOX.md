@@ -82,6 +82,8 @@ Acknowledgement requires:
 
 A served HTTP response, successful network request or provider receipt is not sufficient. This avoids false acknowledgement after ambiguous delivery or client failure.
 
+The acknowledgement reconciler must re-read the persisted monitor after its refresh save succeeds. It must not acknowledge from an in-memory candidate that has not been durably committed.
+
 Acknowledgement creates revision two and preserves the original request, verification and receipt provenance.
 
 ## Revision and concurrency safety
