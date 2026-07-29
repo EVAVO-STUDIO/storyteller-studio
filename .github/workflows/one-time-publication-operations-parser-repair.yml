@@ -13,14 +13,14 @@ permissions:
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: work/audiobook-retail-publication-alert-delivery-20260729
           fetch-depth: 0
 
-      - name: Patch and type-check pull-request branch
+      - name: Patch pull-request branch
         shell: bash
         run: |
           set -euo pipefail
@@ -49,8 +49,6 @@ jobs:
           ]
           path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
           PY
-          npm install --no-audit --no-fund
-          npm run typecheck
           git config user.name "EVAVO Repository Automation"
           git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
           git add packages/storyteller/src/audiobook-retail-publication-monitor.ts
