@@ -130,6 +130,8 @@ Delivery ordering is deterministic:
 
 Concurrency and maximum batch size are bounded. The worker snapshot exposes only safe aggregate counts and per-alert dispositions.
 
+Worker snapshots describe one completed drain pass only. They do not guarantee that another process has not created a new pending alert immediately afterwards.
+
 ## Persistence and audit
 
 The worker reuses the existing revisioned `audiobook-retail-publication-alert` entity.
