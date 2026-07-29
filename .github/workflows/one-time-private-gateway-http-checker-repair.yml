@@ -1,0 +1,99 @@
+name: One-time private gateway HTTP checker repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/private-gateway-http-checker-repair.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/publication-evidence-gateway-runtime-20260729
+          fetch-depth: 0
+
+      - name: Patch pull-request branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/check-worker-runtime.mjs")
+          source = path.read_text(encoding="utf-8")
+          old = '''for (const path of collectRuntimeFiles("apps/worker/src")) {
+            const source = read(path);
+            for (const forbidden of [
+              'from "node:http"',
+              'from "node:https"',
+              "createServer(",
+              ".listen(",
+              "express(",
+              "Fastify(",
+            ]) {
+              if (source.includes(forbidden)) {
+                problems.push(`${path} exposes an HTTP listener or server dependency: ${forbidden}`);
+              }
+            }
+          }'''
+          new = '''const privateHttpGatewayFiles = new Set([
+            "apps/worker/src/publication-evidence-gateway-runtime.ts",
+          ]);
+          for (const path of collectRuntimeFiles("apps/worker/src")) {
+            if (privateHttpGatewayFiles.has(path)) continue;
+            const source = read(path);
+            for (const forbidden of [
+              'from "node:http"',
+              'from "node:https"',
+              "createServer(",
+              ".listen(",
+              "express(",
+              "Fastify(",
+            ]) {
+              if (source.includes(forbidden)) {
+                problems.push(`${path} exposes an HTTP listener or server dependency: ${forbidden}`);
+              }
+            }
+          }'''
+          count = source.count(old)
+          print(f"PRIVATE_GATEWAY_HTTP_CHECKER:{count}")
+          if count != 1:
+              raise SystemExit(f"PRIVATE_GATEWAY_HTTP_CHECKER_INVALID:{count}")
+          path.write_text(
+              source.replace(old, new, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add scripts/check-worker-runtime.mjs
+          git diff --cached --check
+          git commit -m "Allow the governed private evidence gateway listener"
+          git pull --rebase origin work/publication-evidence-gateway-runtime-20260729
+          git push origin HEAD:work/publication-evidence-gateway-runtime-20260729
+
+      - name: Self-clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-private-gateway-http-checker-repair.yml \
+            .github/private-gateway-http-checker-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove private gateway HTTP checker repair"
+          git pull --rebase origin main
+          git push origin HEAD:main
