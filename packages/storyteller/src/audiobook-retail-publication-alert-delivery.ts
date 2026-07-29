@@ -131,6 +131,7 @@ const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const SEMVER_PATTERN = /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/u;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+const MESSAGE_CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 const MAXIMUM_EMAIL_LENGTH = 320;
 const MAXIMUM_TEXT_LENGTH = 16_000;
 const MAXIMUM_RECEIPT_LENGTH = 1_000;
@@ -167,6 +168,22 @@ function requireText(value: string, maximum: number, code: string): string {
     !trimmed
     || trimmed.length > maximum
     || CONTROL_CHARACTERS.test(trimmed)
+  ) {
+    throw new AudiobookRetailPublicationAlertDeliveryError(code);
+  }
+  return trimmed;
+}
+
+function requireMessageBody(
+  value: string,
+  maximum: number,
+  code: string,
+): string {
+  const trimmed = value.trim();
+  if (
+    !trimmed
+    || trimmed.length > maximum
+    || MESSAGE_CONTROL_CHARACTERS.test(trimmed)
   ) {
     throw new AudiobookRetailPublicationAlertDeliveryError(code);
   }
@@ -513,12 +530,12 @@ export async function deliverAudiobookRetailPublicationAlert(
     500,
     "AUDIOBOOK_RETAIL_PUBLICATION_ALERT_DELIVERY_SUBJECT_INVALID",
   );
-  const textBody = requireText(
+  const textBody = requireMessageBody(
     rendered.textBody,
     MAXIMUM_TEXT_LENGTH,
     "AUDIOBOOK_RETAIL_PUBLICATION_ALERT_DELIVERY_TEXT_INVALID",
   );
-  const htmlBody = requireText(
+  const htmlBody = requireMessageBody(
     rendered.htmlBody,
     MAXIMUM_TEXT_LENGTH,
     "AUDIOBOOK_RETAIL_PUBLICATION_ALERT_DELIVERY_HTML_INVALID",

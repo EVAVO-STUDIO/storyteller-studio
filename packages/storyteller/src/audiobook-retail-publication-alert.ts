@@ -673,11 +673,15 @@ export function recordAudiobookRetailPublicationAlertDelivery(
     ...alert.notification.attempts,
     attempt,
   ]);
+  const {
+    fingerprint: _notificationFingerprint,
+    ...notificationState
+  } = alert.notification;
   const notificationBase: Omit<
     AudiobookRetailPublicationAlertNotification,
     "fingerprint"
   > = {
-    ...alert.notification,
+    ...notificationState,
     deliveryStatus: deriveDeliveryStatus(attempts),
     attempts,
   };
