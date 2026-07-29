@@ -159,7 +159,7 @@ test("synthetic narration remains bound to current title-scoped platform authori
       ...value,
       sources: { ...value.sources, narration: withoutAuthorisation },
     }),
-    /AUDIOBOOK_RETAIL_AUTHORISATION_REQUIRED|AUDIOBOOK_RETAIL_SUBMISSION_DECISION_NARRATION_MISMATCH/u,
+    /AUDIOBOOK_RETAIL_NARRATION_PLATFORM_AUTHORISATION_REQUIRED|AUDIOBOOK_RETAIL_SUBMISSION_DECISION_NARRATION_MISMATCH/u,
   );
 });
 
