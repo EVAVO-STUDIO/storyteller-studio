@@ -186,4 +186,4 @@ It omits:
 
 An `open` or `acknowledged` incident means a governed publication problem remains unresolved.
 
-A `resolved` incident means a later immutable monitor verification proved recovery to `healthy-live`. It does not erase the regression, guarantee future availability or prevent a later transition from creating a new incident.
+A `resolved` incident means a later immutable monitor verification proved recovery to `healthy-live`. It does not erase the regression and does not guarantee future availability or prevent a later transition from creating a new incident.

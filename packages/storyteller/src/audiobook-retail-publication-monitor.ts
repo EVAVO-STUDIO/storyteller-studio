@@ -847,8 +847,7 @@ export function audiobookRetailPublicationMonitorPublicView(
 function toEnvelope(
   envelope: StoredEnvelope<Record<string, unknown>>,
 ): StoredEnvelope<AudiobookRetailPublicationMonitor> {
-  const monitor = envelope.payload
-    as unknown as AudiobookRetailPublicationMonitor;
+  const monitor = envelope.payload as unknown as AudiobookRetailPublicationMonitor;
   assertAudiobookRetailPublicationMonitor(monitor);
   if (
     envelope.entityType !== AUDIOBOOK_RETAIL_PUBLICATION_MONITOR_ENTITY_TYPE

@@ -673,11 +673,15 @@ export function recordAudiobookRetailPublicationAlertDelivery(
     ...alert.notification.attempts,
     attempt,
   ]);
+  const {
+    fingerprint: _notificationFingerprint,
+    ...notificationState
+  } = alert.notification;
   const notificationBase: Omit<
     AudiobookRetailPublicationAlertNotification,
     "fingerprint"
   > = {
-    ...alert.notification,
+    ...notificationState,
     deliveryStatus: deriveDeliveryStatus(attempts),
     attempts,
   };
@@ -838,9 +842,10 @@ export function assertAudiobookRetailPublicationAlert(
     alert.trigger.occurredAt,
     "AUDIOBOOK_RETAIL_PUBLICATION_ALERT_TRIGGER_DATE_INVALID",
   );
+  const triggerHealth = String(alert.trigger.toHealth);
   if (
     alert.distributor !== "acx-audible"
-    || alert.trigger.toHealth === "healthy-live"
+    || triggerHealth === "healthy-live"
   ) {
     throw new AudiobookRetailPublicationAlertError(
       "AUDIOBOOK_RETAIL_PUBLICATION_ALERT_STATE_INVALID",
