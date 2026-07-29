@@ -1,0 +1,107 @@
+name: storyteller-publication-operations
+
+x-worker-base: &worker-base
+  build:
+    context: .
+    dockerfile: Dockerfile.publication-operations
+  image: storyteller-publication-operations:local
+  env_file:
+    - ${STORYTELLER_PUBLICATION_OPERATIONS_ENV_FILE:-.env.publication-operations}
+  environment:
+    NODE_ENV: production
+    STORYTELLER_DATA_DIR: /var/lib/storyteller
+  init: true
+  read_only: true
+  user: node
+  volumes:
+    - publication-data:/var/lib/storyteller
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  stop_grace_period: 45s
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  publication-evidence-gateway:
+    <<: *worker-base
+    environment:
+      NODE_ENV: production
+      STORYTELLER_DATA_DIR: /var/lib/storyteller
+      STORYTELLER_WORKER_ROLE: publication-evidence-gateway
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_MODE: serve
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_BIND_HOST: 127.0.0.1
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT: ${STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT:-8789}
+      STORYTELLER_FILE_PUBLICATION_EVIDENCE_GATEWAY_SINGLE_HOST: "true"
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PRIVATE_NETWORK: "false"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "const net=require('node:net');const s=net.connect({host:'127.0.0.1',port:Number(process.env.STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT||8789)},()=>{s.end();process.exit(0)});s.setTimeout(2000,()=>{s.destroy();process.exit(1)});s.on('error',()=>process.exit(1));"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  publication-operations-preflight:
+    <<: *worker-base
+    restart: "no"
+    network_mode: service:publication-evidence-gateway
+    depends_on:
+      publication-evidence-gateway:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      STORYTELLER_DATA_DIR: /var/lib/storyteller
+      STORYTELLER_WORKER_ROLE: publication-operations-preflight
+      STORYTELLER_PUBLICATION_ALERT_MODE: continuous
+      STORYTELLER_FILE_PUBLICATION_ALERT_SINGLE_HOST: "true"
+      STORYTELLER_PUBLICATION_REFRESH_MODE: continuous
+      STORYTELLER_PUBLICATION_REFRESH_VERIFICATION_ENDPOINT: http://127.0.0.1:${STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT:-8789}/v1/publication-evidence
+      STORYTELLER_FILE_PUBLICATION_REFRESH_SINGLE_HOST: "true"
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_MODE: serve
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_BIND_HOST: 127.0.0.1
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT: ${STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT:-8789}
+      STORYTELLER_FILE_PUBLICATION_EVIDENCE_GATEWAY_SINGLE_HOST: "true"
+      STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PRIVATE_NETWORK: "false"
+      STORYTELLER_PUBLICATION_OPERATIONS_GATEWAY_PROXY: "false"
+
+  publication-refresh:
+    <<: *worker-base
+    network_mode: service:publication-evidence-gateway
+    depends_on:
+      publication-evidence-gateway:
+        condition: service_healthy
+      publication-operations-preflight:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      STORYTELLER_DATA_DIR: /var/lib/storyteller
+      STORYTELLER_WORKER_ROLE: publication-refresh
+      STORYTELLER_PUBLICATION_REFRESH_MODE: continuous
+      STORYTELLER_PUBLICATION_REFRESH_VERIFICATION_ENDPOINT: http://127.0.0.1:${STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT:-8789}/v1/publication-evidence
+      STORYTELLER_FILE_PUBLICATION_REFRESH_SINGLE_HOST: "true"
+
+  publication-alerts:
+    <<: *worker-base
+    depends_on:
+      publication-operations-preflight:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      STORYTELLER_DATA_DIR: /var/lib/storyteller
+      STORYTELLER_WORKER_ROLE: publication-alerts
+      STORYTELLER_PUBLICATION_ALERT_MODE: continuous
+      STORYTELLER_FILE_PUBLICATION_ALERT_SINGLE_HOST: "true"
+
+volumes:
+  publication-data:
+    name: storyteller-publication-data
