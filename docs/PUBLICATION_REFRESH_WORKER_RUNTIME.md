@@ -105,6 +105,8 @@ The engine coordinator then enforces exact monitor, listing, regional and chrono
 
 The gateway is responsible for returning evidence already created by the human-governed publication-verification workflow. Automated page acquisition alone is not sufficient.
 
+The gateway trust policy must never convert automated acquisition into human-confirmed observation or verification fields. Changing that trust policy, gateway identity or evidence authority requires a reviewed configuration change and a worker-process restart.
+
 ## No-evidence behavior
 
 `204 No Content` means no current governed verification is available.
