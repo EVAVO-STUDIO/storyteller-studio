@@ -66,7 +66,7 @@ requireTokens("packages/cli/src/main.ts", [
   'stringFlag(args, "data-dir"',
   'stringFlag(args, "monitor-id", true)',
   'stringFlag(args, "verification", true)',
-  'stringFlag(args, "source-reference-hash", true)',
+  '"source-reference-hash"',
   'stringFlag(args, "actor-id", true)',
   'dateFlag(args, "received-at")',
   "publication-evidence-submit",
