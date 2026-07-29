@@ -28,45 +28,58 @@ jobs:
           from pathlib import Path
 
           store_path = Path("packages/storyteller/src/project-store.ts")
-          store = store_path.read_text(encoding="utf-8")
-          store_old = '''  | "audiobook-retail-publication-verification"
-            | "chapter-assembly";'''
-          store_new = '''  | "audiobook-retail-publication-verification"
-            | "audiobook-retail-publication-monitor"
-            | "audiobook-retail-publication-alert"
-            | "chapter-assembly";'''
-          store_count = store.count(store_old)
-          print(f"PUBLICATION_ENTITY_REGISTRATION:{store_count}")
-          if store_count != 1:
+          store_lines = store_path.read_text(encoding="utf-8").splitlines()
+          store_matches = [
+              index
+              for index in range(len(store_lines) - 1)
+              if store_lines[index].strip()
+                  == '| "audiobook-retail-publication-verification"'
+              and store_lines[index + 1].strip() == '| "chapter-assembly"'
+          ]
+          print(f"PUBLICATION_ENTITY_REGISTRATION:{store_matches}")
+          if len(store_matches) != 1:
               raise SystemExit(
-                  f"PUBLICATION_ENTITY_REGISTRATION_INVALID:{store_count}"
+                  f"PUBLICATION_ENTITY_REGISTRATION_INVALID:{store_matches}"
               )
+          store_index = store_matches[0]
+          store_lines[store_index + 1:store_index + 1] = [
+              '  | "audiobook-retail-publication-monitor"',
+              '  | "audiobook-retail-publication-alert"',
+          ]
           store_path.write_text(
-              store.replace(store_old, store_new, 1),
+              "\n".join(store_lines) + "\n",
               encoding="utf-8",
               newline="\n",
           )
 
           alert_path = Path("packages/storyteller/src/audiobook-retail-publication-alert.ts")
-          alert = alert_path.read_text(encoding="utf-8")
-          alert_old = '''  if (
-            alert.distributor !== "acx-audible"
-            || alert.trigger.toHealth === "healthy-live"
-          ) {'''
-          alert_new = '''  const triggerHealth: AudiobookRetailPublicationHealth =
-            alert.trigger.toHealth;
-          if (
-            alert.distributor !== "acx-audible"
-            || triggerHealth === "healthy-live"
-          ) {'''
-          alert_count = alert.count(alert_old)
-          print(f"PUBLICATION_ALERT_HEALTH_NARROWING:{alert_count}")
-          if alert_count != 1:
+          alert_lines = alert_path.read_text(encoding="utf-8").splitlines()
+          alert_matches = [
+              index
+              for index in range(len(alert_lines) - 3)
+              if alert_lines[index].strip() == "if ("
+              and alert_lines[index + 1].strip()
+                  == 'alert.distributor !== "acx-audible"'
+              and alert_lines[index + 2].strip()
+                  == '|| alert.trigger.toHealth === "healthy-live"'
+              and alert_lines[index + 3].strip() == ") {"
+          ]
+          print(f"PUBLICATION_ALERT_HEALTH_NARROWING:{alert_matches}")
+          if len(alert_matches) != 1:
               raise SystemExit(
-                  f"PUBLICATION_ALERT_HEALTH_NARROWING_INVALID:{alert_count}"
+                  f"PUBLICATION_ALERT_HEALTH_NARROWING_INVALID:{alert_matches}"
               )
+          alert_index = alert_matches[0]
+          alert_lines[alert_index:alert_index + 4] = [
+              "  const triggerHealth: AudiobookRetailPublicationHealth =",
+              "    alert.trigger.toHealth;",
+              "  if (",
+              '    alert.distributor !== "acx-audible"',
+              '    || triggerHealth === "healthy-live"',
+              "  ) {",
+          ]
           alert_path.write_text(
-              alert.replace(alert_old, alert_new, 1),
+              "\n".join(alert_lines) + "\n",
               encoding="utf-8",
               newline="\n",
           )
