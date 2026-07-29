@@ -13,6 +13,7 @@ coverage/
 
 storage/*
 !storage/.gitkeep
+backups/
 
 *.wav
 *.mp3
