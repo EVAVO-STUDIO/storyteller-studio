@@ -20,7 +20,7 @@ export interface PublicationOperationsBackupTextOutput {
 }
 
 export interface PublicationOperationsBackupCliDependencies {
-  environment?: NodeJS.ProcessEnv;
+  environment?: Readonly<Record<string, string | undefined>>;
   stdout?: PublicationOperationsBackupTextOutput;
 }
 
