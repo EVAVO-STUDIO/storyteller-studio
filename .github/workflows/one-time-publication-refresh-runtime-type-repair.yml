@@ -1,0 +1,74 @@
+name: One-time publication refresh runtime type repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-refresh-runtime-type-repair.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/publication-refresh-worker-runtime-20260729
+          fetch-depth: 0
+
+      - name: Patch pull-request branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("apps/worker/src/publication-refresh-runtime.test.ts")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          matches = []
+          for index, line in enumerate(lines[:-1]):
+              if line != "  const result = await running;":
+                  continue
+              next_line = lines[index + 1]
+              if (
+                  next_line.startswith("  assert.equal(service.startCalls")
+                  or next_line.startswith("  assert.equal(result.shutdownSignal")
+              ):
+                  matches.append(index)
+          print(f"PUBLICATION_REFRESH_RUNTIME_RESULT_NARROWING:{matches}")
+          if len(matches) != 2:
+              raise SystemExit(
+                  f"PUBLICATION_REFRESH_RUNTIME_RESULT_NARROWING_INVALID:{matches}"
+              )
+          for index in reversed(matches):
+              lines.insert(index + 1, '  assert.notEqual(result.status, "disabled");')
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+          PY
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add apps/worker/src/publication-refresh-runtime.test.ts
+          git diff --cached --check
+          git commit -m "Narrow publication refresh runtime test results"
+          git pull --rebase origin work/publication-refresh-worker-runtime-20260729
+          git push origin HEAD:work/publication-refresh-worker-runtime-20260729
+
+      - name: Self-clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-publication-refresh-runtime-type-repair.yml \
+            .github/publication-refresh-runtime-type-repair.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication refresh runtime type repair"
+          git pull --rebase origin main
+          git push origin HEAD:main
