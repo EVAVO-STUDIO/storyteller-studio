@@ -6,7 +6,7 @@ x-worker-base: &worker-base
     dockerfile: Dockerfile.publication-operations
   image: storyteller-publication-operations:local
   env_file:
-    - .env.publication-operations
+    - ${STORYTELLER_PUBLICATION_OPERATIONS_ENV_FILE:-.env.publication-operations}
   environment:
     NODE_ENV: production
     STORYTELLER_DATA_DIR: /var/lib/storyteller
