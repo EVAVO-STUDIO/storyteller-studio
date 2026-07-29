@@ -38,6 +38,8 @@ export type StoredEntityType =
   | "audiobook-retailer-status-evidence"
   | "audiobook-retail-listing-identity"
   | "audiobook-retail-publication-verification"
+  | "audiobook-retail-publication-monitor"
+  | "audiobook-retail-publication-alert"
   | "chapter-assembly"
   | "release-package";
 
