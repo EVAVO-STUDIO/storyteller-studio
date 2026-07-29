@@ -1,0 +1,70 @@
+name: One-time publication refresh runtime result guard
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-refresh-runtime-result-guard.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: work/publication-refresh-worker-runtime-20260729
+          fetch-depth: 0
+
+      - name: Patch pull-request branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("apps/worker/src/publication-refresh-runtime.test.ts")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          target = '  assert.notEqual(result.status, "disabled");'
+          matches = [index for index, line in enumerate(lines) if line == target]
+          print(f"PUBLICATION_REFRESH_RUNTIME_RESULT_GUARDS:{matches}")
+          if len(matches) != 2:
+              raise SystemExit(
+                  f"PUBLICATION_REFRESH_RUNTIME_RESULT_GUARDS_INVALID:{matches}"
+              )
+          replacement = (
+              '  if (result.status === "disabled") '
+              'throw new Error("enabled publication refresh result required");'
+          )
+          for index in matches:
+              lines[index] = replacement
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+          PY
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add apps/worker/src/publication-refresh-runtime.test.ts
+          git diff --cached --check
+          git commit -m "Narrow enabled publication refresh results"
+          git pull --rebase origin work/publication-refresh-worker-runtime-20260729
+          git push origin HEAD:work/publication-refresh-worker-runtime-20260729
+
+      - name: Self-clean main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-publication-refresh-runtime-result-guard.yml \
+            .github/publication-refresh-runtime-result-guard.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication refresh result guard repair"
+          git pull --rebase origin main
+          git push origin HEAD:main
