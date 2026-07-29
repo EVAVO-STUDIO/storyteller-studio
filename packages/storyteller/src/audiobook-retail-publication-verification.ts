@@ -1138,8 +1138,7 @@ export function audiobookRetailPublicationVerificationPublicView(
 function toEnvelope(
   envelope: StoredEnvelope<Record<string, unknown>>,
 ): StoredEnvelope<AudiobookRetailPublicationVerification> {
-  const verification = envelope.payload
-    as unknown as AudiobookRetailPublicationVerification;
+  const verification = envelope.payload as unknown as AudiobookRetailPublicationVerification;
   assertAudiobookRetailPublicationVerification(verification);
   if (
     envelope.entityType !== AUDIOBOOK_RETAIL_PUBLICATION_VERIFICATION_ENTITY_TYPE
@@ -1150,8 +1149,7 @@ function toEnvelope(
       "AUDIOBOOK_RETAIL_PUBLICATION_STORE_ENVELOPE_SCOPE_MISMATCH",
     );
   }
-  return envelope
-    as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;
+  return envelope as unknown as StoredEnvelope<AudiobookRetailPublicationVerification>;
 }
 
 export class FileAudiobookRetailPublicationVerificationStore {
