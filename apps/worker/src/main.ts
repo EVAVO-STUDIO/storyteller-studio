@@ -15,6 +15,11 @@ import {
 } from "./publication-alert-configuration.js";
 import { runConfiguredPublicationAlertRuntime } from "./publication-alert-runtime.js";
 import {
+  publicationEvidenceGatewayConfigurationSummary,
+  resolvePublicationEvidenceGatewayConfiguration,
+} from "./publication-evidence-gateway-configuration.js";
+import { runConfiguredPublicationEvidenceGateway } from "./publication-evidence-gateway-runtime.js";
+import {
   publicationRefreshRuntimeConfigurationSummary,
   resolvePublicationRefreshRuntimeConfiguration,
 } from "./publication-refresh-configuration.js";
@@ -25,7 +30,8 @@ import { runConfiguredWorkerRuntime } from "./runtime.js";
 type StorytellerWorkerProcessRole = "generation" | "publication-alerts";
 type StorytellerExtendedWorkerProcessRole =
   | StorytellerWorkerProcessRole
-  | "publication-refresh";
+  | "publication-refresh"
+  | "publication-evidence-gateway";
 
 function resolveProcessRole(
   value: string | undefined,
@@ -35,6 +41,7 @@ function resolveProcessRole(
     role !== "generation"
     && role !== "publication-alerts"
     && role !== "publication-refresh"
+    && role !== "publication-evidence-gateway"
   ) {
     throw new Error("WORKER_PROCESS_ROLE_INVALID");
   }
@@ -136,6 +143,26 @@ async function startPublicationRefreshWorker(): Promise<void> {
   }));
 }
 
+async function startPublicationEvidenceGateway(): Promise<void> {
+  const environment = process.env;
+  const configuration = resolvePublicationEvidenceGatewayConfiguration(environment);
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-evidence-gateway",
+    event: "configuration",
+    configuration: publicationEvidenceGatewayConfigurationSummary(configuration),
+  }));
+  const result = await runConfiguredPublicationEvidenceGateway(configuration, {
+    environment,
+  });
+  console.info(JSON.stringify({
+    service: "storyteller-studio-worker",
+    role: "publication-evidence-gateway",
+    event: "stopped",
+    result,
+  }));
+}
+
 export async function startStorytellerWorker(): Promise<void> {
   const role = resolveProcessRole(process.env.STORYTELLER_WORKER_ROLE);
   if (role === "publication-alerts") {
@@ -144,6 +171,10 @@ export async function startStorytellerWorker(): Promise<void> {
   }
   if (role === "publication-refresh") {
     await startPublicationRefreshWorker();
+    return;
+  }
+  if (role === "publication-evidence-gateway") {
+    await startPublicationEvidenceGateway();
     return;
   }
   await startGenerationWorker();

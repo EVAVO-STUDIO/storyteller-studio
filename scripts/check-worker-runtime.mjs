@@ -272,7 +272,11 @@ if (!runtimeSource.includes("budgetController,") || !runtimeSource.includes("req
   problems.push("private runtime does not require its configured budget controller");
 }
 
+const privateHttpGatewayFiles = new Set([
+  "apps/worker/src/publication-evidence-gateway-runtime.ts",
+]);
 for (const path of collectRuntimeFiles("apps/worker/src")) {
+  if (privateHttpGatewayFiles.has(path)) continue;
   const source = read(path);
   for (const forbidden of [
     'from "node:http"',
