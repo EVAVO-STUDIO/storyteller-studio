@@ -144,6 +144,65 @@ services:
       - --snapshot
       - /var/backups/storyteller/${STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID:?set STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID}
 
+  publication-backup-retention-plan:
+    <<: *worker-base
+    profiles:
+      - maintenance
+    restart: "no"
+    network_mode: none
+    volumes:
+      - publication-backups:/var/backups/storyteller:ro
+      - publication-maintenance-receipts:/var/lib/storyteller-maintenance
+    command:
+      - npm
+      - run
+      - publication-operations-backup-retention-plan
+      - --
+      - --backup-dir
+      - /var/backups/storyteller
+      - --evaluated-at
+      - ${STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT:?set STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT}
+      - --keep-latest
+      - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST:-7}
+      - --keep-daily-days
+      - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_DAILY_DAYS:-30}
+      - --keep-weekly-weeks
+      - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_WEEKLY_WEEKS:-12}
+      - --output
+      - /var/lib/storyteller-maintenance/${STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE:-retention-plan.json}
+
+  publication-backup-prune:
+    <<: *worker-base
+    profiles:
+      - maintenance
+    restart: "no"
+    network_mode: none
+    volumes:
+      - publication-backups:/var/backups/storyteller
+      - publication-maintenance-receipts:/var/lib/storyteller-maintenance
+    command:
+      - npm
+      - run
+      - publication-operations-backup-prune
+      - --
+      - --backup-dir
+      - /var/backups/storyteller
+      - --evaluated-at
+      - ${STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT:?set STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT}
+      - --keep-latest
+      - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST:-7}
+      - --keep-daily-days
+      - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_DAILY_DAYS:-30}
+      - --keep-weekly-weeks
+      - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_WEEKLY_WEEKS:-12}
+      - --plan-fingerprint
+      - ${STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT:?set STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT from the reviewed plan}
+      - --actor-id
+      - ${STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID:?set STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID}
+      - --offline-confirmed
+      - --output
+      - /var/lib/storyteller-maintenance/${STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE:-retention-receipt.json}
+
   publication-restore:
     <<: *worker-base
     profiles:
@@ -171,3 +230,5 @@ volumes:
     name: ${STORYTELLER_PUBLICATION_DATA_VOLUME:-storyteller-publication-data}
   publication-backups:
     name: ${STORYTELLER_PUBLICATION_BACKUP_VOLUME:-storyteller-publication-backups}
+  publication-maintenance-receipts:
+    name: ${STORYTELLER_PUBLICATION_MAINTENANCE_RECEIPT_VOLUME:-storyteller-publication-maintenance-receipts}
