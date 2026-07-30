@@ -1,1 +1,1 @@
-fix backup compatibility manifest type
+fix backup compatibility manifest type after workflow registration
