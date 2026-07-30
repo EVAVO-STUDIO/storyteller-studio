@@ -95,29 +95,40 @@ function verification(input: Readonly<{
   });
 }
 
-function degradedMonitor(): AudiobookRetailPublicationMonitor {
+function degradedMonitor(): Readonly<{
+  initial: AudiobookRetailPublicationMonitor;
+  current: AudiobookRetailPublicationMonitor;
+}> {
   const initial = createAudiobookRetailPublicationMonitor({
     id: "readiness_monitor_001",
     verification: verification({ suffix: "initial", observedMinute: 10 }),
     refreshIntervalHours: 1,
     createdAt: atMinute(12),
   });
-  return recordAudiobookRetailPublicationRefresh(
+  const current = recordAudiobookRetailPublicationRefresh(
     initial,
     verification({ suffix: "degraded", observedMinute: 70, degraded: true }),
     atMinute(72),
   );
+  return Object.freeze({ initial, current });
 }
 
 async function populateAttentionState(dataDirectory: string): Promise<void> {
   const stateRoot = resolve(dataDirectory, "publication-operations");
   const store = new FileProjectStore(stateRoot);
-  const monitor = degradedMonitor();
+  const { initial, current: monitor } = degradedMonitor();
   await store.create(
     "audiobook-retail-publication-monitor",
+    initial.id,
+    initial as unknown as Record<string, unknown>,
+    new Date(initial.createdAt),
+  );
+  await store.replace(
+    "audiobook-retail-publication-monitor",
     monitor.id,
+    1,
     monitor as unknown as Record<string, unknown>,
-    new Date(monitor.createdAt),
+    new Date(monitor.updatedAt),
   );
   const alert = createAudiobookRetailPublicationAlert({
     monitor,
@@ -286,7 +297,7 @@ test("readiness CLI emits a redacted readiness-only result and safe failures", a
     const failed = new CaptureOutput();
     const failedExit = await runPublicationOperationsReadinessCli(
       ["--data-dir", ""],
-      { stdout: new CaptureOutput(), stderr: failed },
+      { environment: {}, stdout: new CaptureOutput(), stderr: failed },
     );
     assert.equal(failedExit, 1);
     assert.equal(failed.value.includes("status"), true);
