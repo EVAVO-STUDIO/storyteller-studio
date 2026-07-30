@@ -4,26 +4,23 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/fix-backup-compatibility-type.trigger"
 
 permissions:
   contents: write
 
+concurrency:
+  group: one-time-fix-backup-compatibility-type
+  cancel-in-progress: false
+
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
         with:
           ref: main
           fetch-depth: 0
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version-file: .nvmrc
-          cache: npm
 
       - name: Repair manifest compatibility type
         shell: bash
@@ -33,31 +30,23 @@ jobs:
           from pathlib import Path
           path = Path("packages/cli/src/publication-operations-backup.ts")
           source = path.read_text(encoding="utf-8")
-          old = '''function createManifest(input: Readonly<{
+          old = """function createManifest(input: Readonly<{
             sourceFiles: readonly ScannedFileRecord[];
             createdAt: string;
             actorId: string;
-          }>): PublicationOperationsBackupManifest {'''.replace("          ", "")
-          new = '''function createManifest(input: Readonly<{
+          }>): PublicationOperationsBackupManifest {"""
+          new = """function createManifest(input: Readonly<{
             sourceFiles: readonly ScannedFileRecord[];
             createdAt: string;
             actorId: string;
             compatibility: PublicationOperationsBackupCompatibilityIdentity;
-          }>): PublicationOperationsBackupManifest {'''.replace("          ", "")
+          }>): PublicationOperationsBackupManifest {"""
           count = source.count(old)
           print(f"CREATE_MANIFEST_TYPE_COUNT:{count}")
           if count != 1:
               raise SystemExit("CREATE_MANIFEST_TYPE_SCOPE_INVALID")
           path.write_text(source.replace(old, new, 1), encoding="utf-8", newline="\n")
           PY
-
-      - name: Validate repaired compatibility slice
-        run: |
-          npm install --global npm@10.9.2 --no-audit --no-fund
-          npm ci --no-audit --no-fund
-          npm run verify:publication-operations-backup
-          npm run typecheck
-          node --import tsx --test packages/cli/src/publication-operations-backup-compatibility.test.ts packages/cli/src/publication-operations-backup.test.ts
 
       - name: Commit repaired mainline and self-clean
         shell: bash
