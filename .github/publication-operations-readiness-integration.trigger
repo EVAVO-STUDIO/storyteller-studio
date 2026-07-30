@@ -1,1 +1,1 @@
-trigger publication operations readiness integration
+retry publication operations readiness integration after release-contract verification
