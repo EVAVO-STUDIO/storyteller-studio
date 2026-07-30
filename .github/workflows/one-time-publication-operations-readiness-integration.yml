@@ -1,0 +1,181 @@
+name: One-time publication operations readiness integration
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-operations-readiness-integration.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          ref: work/publication-operations-readiness-20260730
+          fetch-depth: 0
+
+      - name: Apply deterministic readiness integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          source_path = Path("packages/cli/src/publication-operations-readiness.ts")
+          source = source_path.read_text(encoding="utf-8")
+          old_type = "  type AudiobookRetailPublicationHealth,\n"
+          count = source.count(old_type)
+          print(f"READINESS_HEALTH_IMPORT_COUNT:{count}")
+          if count != 1:
+              raise SystemExit("READINESS_HEALTH_IMPORT_SCOPE_INVALID")
+          source = source.replace(old_type, "", 1)
+          anchor = '''export type PublicationOperationsOperationalStatus =
+  | "empty"
+  | "healthy"
+  | "attention";
+'''
+          health_type = '''export type PublicationOperationsOperationalStatus =
+  | "empty"
+  | "healthy"
+  | "attention";
+
+type AudiobookRetailPublicationHealth =
+  | "healthy-live"
+  | "degraded"
+  | "unavailable"
+  | "mismatch"
+  | "stale";
+'''
+          if source.count(anchor) != 1:
+              raise SystemExit("READINESS_HEALTH_TYPE_ANCHOR_INVALID")
+          source = source.replace(anchor, health_type, 1)
+          source_path.write_text(source, encoding="utf-8", newline="\n")
+
+          test_path = Path("packages/cli/src/publication-operations-readiness.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+          old = '''      ["--data-dir", ""],
+      { stdout: new CaptureOutput(), stderr: failed },
+'''
+          new = '''      ["--data-dir", ""],
+      { environment: {}, stdout: new CaptureOutput(), stderr: failed },
+'''
+          count = tests.count(old)
+          print(f"READINESS_FAILED_FIXTURE_COUNT:{count}")
+          if count != 1:
+              raise SystemExit("READINESS_FAILED_FIXTURE_SCOPE_INVALID")
+          test_path.write_text(tests.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          package_path = Path("package.json")
+          package = json.loads(package_path.read_text(encoding="utf-8"))
+          scripts = package.setdefault("scripts", {})
+          scripts["publication-operations-readiness"] = (
+              "tsx packages/cli/src/publication-operations-readiness-main.ts"
+          )
+          scripts["verify:publication-operations-readiness"] = (
+              "node scripts/check-publication-operations-readiness.mjs"
+          )
+          verify_runtime = scripts.get("verify:runtime", "")
+          token = "npm run verify:publication-operations-readiness"
+          if not verify_runtime:
+              raise SystemExit("READINESS_VERIFY_RUNTIME_MISSING")
+          if token not in verify_runtime:
+              scripts["verify:runtime"] = verify_runtime + " && " + token
+          package_path.write_text(
+              json.dumps(package, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          compose_path = Path("compose.publication-operations.yml")
+          compose = compose_path.read_text(encoding="utf-8")
+          if "npm run publication-operations-readiness" not in compose:
+              marker = "node -e \"const net=require('node:net');"
+              count = compose.count(marker)
+              print(f"READINESS_COMPOSE_TCP_MARKER_COUNT:{count}")
+              if count != 1:
+                  raise SystemExit("READINESS_COMPOSE_HEALTH_SCOPE_INVALID")
+              compose = compose.replace(
+                  marker,
+                  "npm run publication-operations-readiness -- --data-dir /var/lib/storyteller --readiness-only >/dev/null && node -e \"const net=require('node:net');",
+                  1,
+              )
+              compose_path.write_text(compose, encoding="utf-8", newline="\n")
+
+          docker_doc = Path("docs/PUBLICATION_OPERATIONS_DOCKER.md")
+          document = docker_doc.read_text(encoding="utf-8")
+          heading = "## Application-level readiness"
+          if heading not in document:
+              document += '''
+
+## Application-level readiness
+
+The evidence-gateway container health check requires both the private loopback listener and the read-only publication-operations readiness diagnostic.
+
+The readiness diagnostic reopens and domain-validates every persisted monitor, evidence-inbox item and alert, checks audit JSONL partitions, rejects unsafe filesystem entries and stale atomic temporary files, and reports only aggregate state. A publication incident produces operational `attention`; it does not create a container restart loop.
+
+Run the same diagnostic after restore rehearsal and before selecting a restored volume for production:
+
+```bash
+npm run publication-operations-readiness -- \\
+  --data-dir ./storage
+```
+
+A successful result proves structural readability for the current application revision. It does not prove external email or retailer connectivity and does not replace startup preflight.
+'''
+              docker_doc.write_text(document, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Install exact workspace graph
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate readiness slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:publication-operations-readiness
+          npm run typecheck
+          node --import tsx --test packages/cli/src/publication-operations-readiness.test.ts
+
+      - name: Commit validated readiness branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add \
+            packages/cli/src/publication-operations-readiness.ts \
+            packages/cli/src/publication-operations-readiness-main.ts \
+            packages/cli/src/publication-operations-readiness.test.ts \
+            docs/PUBLICATION_OPERATIONS_READINESS.md \
+            docs/PUBLICATION_OPERATIONS_DOCKER.md \
+            scripts/check-publication-operations-readiness.mjs \
+            package.json \
+            compose.publication-operations.yml
+          git diff --cached --check
+          git commit -m "Add publication operations readiness diagnostic"
+          git pull --rebase origin work/publication-operations-readiness-20260730
+          git push origin HEAD:work/publication-operations-readiness-20260730
+
+      - name: Remove temporary workflow from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          rm -f \
+            .github/workflows/one-time-publication-operations-readiness-integration.yml \
+            .github/publication-operations-readiness-integration.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication readiness integration workflow"
+          git pull --rebase origin main
+          git push origin HEAD:main
