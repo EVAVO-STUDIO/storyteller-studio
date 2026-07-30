@@ -115,6 +115,12 @@ for (const token of [
   "publication: \"disabled\"",
   "deployment: \"disabled\"",
   "mode: 0o600",
+  "import { readFileSync, writeFileSync } from \"node:fs\";",
+  "const persisted = JSON.parse(readFileSync(receiptPath, \"utf8\"));",
+  "VERIFICATION_RECEIPT_PERSISTENCE_MISMATCH",
+  "VERIFICATION_RECEIPT_STAGE_OUTCOME_INVALID",
+  "VERIFICATION_RECEIPT_SHA_MISMATCH",
+  "if: always() && steps.receipt.outcome == 'success'",
   "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
   "retention-days: 14",
 ]) {
@@ -164,6 +170,8 @@ const report = {
   receiptSchemaVersion: "1.1",
   failedReceiptDistinguished: true,
   stageOutcomesRecorded: true,
+  receiptPersistenceVerified: true,
+  invalidReceiptUploadAllowed: false,
   passed: errors.length === 0,
   errors,
 };
