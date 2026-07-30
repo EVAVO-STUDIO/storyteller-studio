@@ -57,7 +57,6 @@ requireTokens("packages/cli/src/publication-operations-backup.ts", [
   "storyteller-publication-operations-backup-v2",
   "compatibilityBound: true",
   "resolvePublicationOperationsRestoreCompatibility",
-  "PUBLICATION_OPERATIONS_RESTORE_APPLICATION_REVISION_MISMATCH",
   "createPublicationOperationsBackup",
   "verifyPublicationOperationsBackupSnapshot",
   "restorePublicationOperationsBackup",
