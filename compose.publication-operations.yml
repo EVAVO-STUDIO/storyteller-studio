@@ -45,11 +45,12 @@ services:
       test:
         - CMD-SHELL
         - >-
+          npm run publication-operations-readiness -- --data-dir /var/lib/storyteller --readiness-only >/dev/null &&
           node -e "const net=require('node:net');const s=net.connect({host:'127.0.0.1',port:Number(process.env.STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_PORT||8789)},()=>{s.end();process.exit(0)});s.setTimeout(2000,()=>{s.destroy();process.exit(1)});s.on('error',()=>process.exit(1));"
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 15s
+      interval: 30s
+      timeout: 20s
+      retries: 6
+      start_period: 30s
 
   publication-operations-preflight:
     <<: *worker-base
