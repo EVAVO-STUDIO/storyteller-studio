@@ -95,6 +95,8 @@ requireTokens("compose.publication-operations.yml", [
   "publication-alerts:",
   "publication-backup:",
   "publication-backup-verify:",
+  "publication-backup-retention-plan:",
+  "publication-backup-prune:",
   "publication-restore:",
   "network_mode: service:publication-evidence-gateway",
   "condition: service_healthy",
@@ -110,7 +112,9 @@ requireTokens("compose.publication-operations.yml", [
   "STORYTELLER_FILE_PUBLICATION_EVIDENCE_GATEWAY_SINGLE_HOST: \"true\"",
   "STORYTELLER_PUBLICATION_DATA_VOLUME",
   "STORYTELLER_PUBLICATION_BACKUP_VOLUME",
+  "STORYTELLER_PUBLICATION_MAINTENANCE_RECEIPT_VOLUME",
   "publication-backups:",
+  "publication-maintenance-receipts:",
 ]);
 
 if (existsSync(fromRoot("compose.publication-operations.yml"))) {
@@ -138,7 +142,9 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
 
   const maintenance = [
     ["publication-backup", "publication-backup-verify"],
-    ["publication-backup-verify", "publication-restore"],
+    ["publication-backup-verify", "publication-backup-retention-plan"],
+    ["publication-backup-retention-plan", "publication-backup-prune"],
+    ["publication-backup-prune", "publication-restore"],
     ["publication-restore", null],
   ];
   for (const [serviceName, nextServiceName] of maintenance) {
@@ -182,7 +188,7 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
   const verify = serviceBlock(
     compose,
     "publication-backup-verify",
-    "publication-restore",
+    "publication-backup-retention-plan",
   );
   for (const token of [
     "publication-backups:/var/backups/storyteller:ro",
@@ -195,6 +201,65 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
   }
   if (verify.includes("publication-data:/var/lib/storyteller")) {
     problems.push("publication-backup-verify must not mount live publication data");
+  }
+
+  const retentionPlan = serviceBlock(
+    compose,
+    "publication-backup-retention-plan",
+    "publication-backup-prune",
+  );
+  for (const token of [
+    "publication-backups:/var/backups/storyteller:ro",
+    "publication-maintenance-receipts:/var/lib/storyteller-maintenance",
+    "publication-operations-backup-retention-plan",
+    "STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_DAILY_DAYS",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_WEEKLY_WEEKS",
+    "STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE",
+  ]) {
+    if (!retentionPlan.includes(token)) {
+      problems.push(`publication-backup-retention-plan is missing token: ${token}`);
+    }
+  }
+  for (const forbidden of [
+    "publication-data:/var/lib/storyteller",
+    "STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT",
+    "--offline-confirmed",
+    "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID",
+  ]) {
+    if (retentionPlan.includes(forbidden)) {
+      problems.push(`publication-backup-retention-plan has forbidden mutation token: ${forbidden}`);
+    }
+  }
+
+  const prune = serviceBlock(
+    compose,
+    "publication-backup-prune",
+    "publication-restore",
+  );
+  for (const token of [
+    "publication-backups:/var/backups/storyteller",
+    "publication-maintenance-receipts:/var/lib/storyteller-maintenance",
+    "publication-operations-backup-prune",
+    "STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_DAILY_DAYS",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_WEEKLY_WEEKS",
+    "STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT",
+    "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID",
+    "STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE",
+    "--offline-confirmed",
+  ]) {
+    if (!prune.includes(token)) {
+      problems.push(`publication-backup-prune is missing token: ${token}`);
+    }
+  }
+  if (
+    prune.includes("publication-backups:/var/backups/storyteller:ro")
+    || prune.includes("publication-data:/var/lib/storyteller")
+  ) {
+    problems.push("publication-backup-prune must have backup write access and no live data mount");
   }
 
   const restore = serviceBlock(compose, "publication-restore", null);
@@ -230,8 +295,16 @@ requireTokens(".gitignore", [
 requireTokens(".env.publication-operations.example", [
   "STORYTELLER_PUBLICATION_DATA_VOLUME=storyteller-publication-data",
   "STORYTELLER_PUBLICATION_BACKUP_VOLUME=storyteller-publication-backups",
+  "STORYTELLER_PUBLICATION_MAINTENANCE_RECEIPT_VOLUME=storyteller-publication-maintenance-receipts",
   "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID=",
   "STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID=",
+  "STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT=",
+  "STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST=",
+  "STORYTELLER_PUBLICATION_RETENTION_KEEP_DAILY_DAYS=",
+  "STORYTELLER_PUBLICATION_RETENTION_KEEP_WEEKLY_WEEKS=",
+  "STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT=",
+  "STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE=",
+  "STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE=",
   "STORYTELLER_APPLICATION_REVISION=replace-with-40-character-git-commit-sha",
   "STORYTELLER_PUBLICATION_ALERT_WORKER_ID=",
   "STORYTELLER_PUBLICATION_REFRESH_WORKER_ID=",
@@ -273,6 +346,8 @@ requireTokens("docs/PUBLICATION_OPERATIONS_MAINTENANCE_PROFILE.md", [
   "Stop mutation roles",
   "Create an offline backup",
   "Verify the snapshot",
+  "Plan backup retention",
+  "Apply backup retention",
   "Isolated restore rehearsal",
   "Production restore by volume cutover",
   "Rollback",
@@ -280,8 +355,9 @@ requireTokens("docs/PUBLICATION_OPERATIONS_MAINTENANCE_PROFILE.md", [
   "No network boundary",
   "No automatic service control",
   "Current boundary",
+  "publication-maintenance-receipts",
   "network_mode: none",
-  "does not schedule backups",
+  "Retention is never invoked automatically",
 ]);
 
 if (existsSync(fromRoot("package.json"))) {
@@ -346,8 +422,9 @@ if (problems.length > 0) {
 console.log("storyteller_publication_operations_compose_check_passed");
 console.log("- one immutable worker image runs four long-lived or startup publication roles");
 console.log("- image runtime matches .nvmrc and build provenance is bound to one exact source revision");
-console.log("- three offline maintenance services are profile-gated and networkless");
-console.log("- backup reads live data only through a read-only mount and writes a separate volume");
+console.log("- five offline maintenance services are profile-gated and networkless");
+console.log("- retention planning mounts backups read-only and writes a separate private plan receipt");
+console.log("- retention apply alone receives backup write access and requires the reviewed plan fingerprint");
 console.log("- verification mounts no live state and restore requires a selected data volume");
 console.log("- gateway and refresh share a loopback-only network namespace with no published port");
 console.log("- startup preflight blocks mutation roles when deployment contracts fail");
