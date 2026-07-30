@@ -67,6 +67,8 @@ The aggregate `operationalStatus` is:
 
 `attention` does not make the container infrastructure-unhealthy. Publication incidents are expected governed state and must remain observable without causing restart loops.
 
+The CLI exits successfully for `empty`, `healthy` and `attention` whenever the store remains structurally ready. Only unsafe or unreadable infrastructure produces a non-zero readiness result.
+
 ## Monitor aggregates
 
 The safe result reports only counts for:
