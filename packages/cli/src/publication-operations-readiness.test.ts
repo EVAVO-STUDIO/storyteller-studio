@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import {
+  FileAudiobookRetailPublicationAlertStore,
   createAudiobookRetailPublicationAlert,
 } from "@evavo/storyteller-engine/audiobook-retail-publication-alert";
 import {
+  FileAudiobookRetailPublicationEvidenceInboxStore,
   createAudiobookRetailPublicationEvidenceRequest,
   submitAudiobookRetailPublicationEvidence,
 } from "@evavo/storyteller-engine/audiobook-retail-publication-evidence-inbox";
 import {
+  FileAudiobookRetailPublicationMonitorStore,
   createAudiobookRetailPublicationMonitor,
   recordAudiobookRetailPublicationRefresh,
   type AudiobookRetailPublicationMonitor,
@@ -95,9 +98,9 @@ function verification(input: Readonly<{
   });
 }
 
-function degradedMonitor(): Readonly<{
+function monitorPair(): Readonly<{
   initial: AudiobookRetailPublicationMonitor;
-  current: AudiobookRetailPublicationMonitor;
+  degraded: AudiobookRetailPublicationMonitor;
 }> {
   const initial = createAudiobookRetailPublicationMonitor({
     id: "readiness_monitor_001",
@@ -105,44 +108,37 @@ function degradedMonitor(): Readonly<{
     refreshIntervalHours: 1,
     createdAt: atMinute(12),
   });
-  const current = recordAudiobookRetailPublicationRefresh(
+  return Object.freeze({
     initial,
-    verification({ suffix: "degraded", observedMinute: 70, degraded: true }),
-    atMinute(72),
-  );
-  return Object.freeze({ initial, current });
+    degraded: recordAudiobookRetailPublicationRefresh(
+      initial,
+      verification({ suffix: "degraded", observedMinute: 70, degraded: true }),
+      atMinute(72),
+    ),
+  });
 }
 
 async function populateAttentionState(dataDirectory: string): Promise<void> {
   const stateRoot = resolve(dataDirectory, "publication-operations");
   const store = new FileProjectStore(stateRoot);
-  const { initial, current: monitor } = degradedMonitor();
-  await store.create(
-    "audiobook-retail-publication-monitor",
-    initial.id,
-    initial as unknown as Record<string, unknown>,
-    new Date(initial.createdAt),
-  );
-  await store.replace(
-    "audiobook-retail-publication-monitor",
-    monitor.id,
-    1,
-    monitor as unknown as Record<string, unknown>,
-    new Date(monitor.updatedAt),
-  );
+  const monitors = new FileAudiobookRetailPublicationMonitorStore(store);
+  const alerts = new FileAudiobookRetailPublicationAlertStore(store);
+  const evidenceInbox = new FileAudiobookRetailPublicationEvidenceInboxStore(store);
+  const pair = monitorPair();
+  await monitors.create(pair.initial, "readiness_monitor_operator_001");
+  await monitors.save(pair.degraded, {
+    expectedRevision: 1,
+    actorId: "readiness_monitor_operator_001",
+    action: "audiobook_retail_publication_monitor.refreshed",
+  });
   const alert = createAudiobookRetailPublicationAlert({
-    monitor,
+    monitor: pair.degraded,
     recipientReferenceHash,
     createdAt: atMinute(73),
   });
-  await store.create(
-    "audiobook-retail-publication-alert",
-    alert.id,
-    alert as unknown as Record<string, unknown>,
-    new Date(alert.createdAt),
-  );
+  await alerts.create(alert, "readiness_alert_operator_001");
   const request = createAudiobookRetailPublicationEvidenceRequest(
-    monitor,
+    pair.degraded,
     atMinute(74),
   );
   const evidence = submitAudiobookRetailPublicationEvidence({
@@ -152,18 +148,13 @@ async function populateAttentionState(dataDirectory: string): Promise<void> {
     receivedByActorId: "readiness_intake_operator_001",
     receivedAt: atMinute(132),
   });
-  await store.create(
-    "audiobook-retail-publication-evidence-inbox",
-    evidence.id,
-    evidence as unknown as Record<string, unknown>,
-    new Date(evidence.receivedAt),
-  );
+  await evidenceInbox.create(evidence, "readiness_intake_operator_001");
   await store.appendAuditEvent({
     actorId: "readiness_audit_operator_001",
     action: "publication_operations.readiness_fixture",
     entityType: "audiobook-retail-publication-monitor",
-    entityId: monitor.id,
-    revision: monitor.revision,
+    entityId: pair.degraded.id,
+    revision: pair.degraded.revision,
     occurredAt: atMinute(133),
     metadata: { fixture: true },
   });
@@ -218,7 +209,7 @@ test("readiness validates persisted entities and reports aggregate attention sta
     assert.equal(result.alerts.open, 1);
     assert.equal(result.alerts.deliveryPending, 1);
     assert.equal(result.store.auditPartitionCount, 1);
-    assert.equal(result.store.auditEventCount, 1);
+    assert.equal(result.store.auditEventCount, 5);
     assert.equal(JSON.stringify(result).includes("readiness_monitor_001"), false);
     assert.equal(JSON.stringify(result).includes(recipientReferenceHash), false);
   } finally {
