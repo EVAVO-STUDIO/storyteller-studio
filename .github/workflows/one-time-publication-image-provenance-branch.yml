@@ -1,0 +1,238 @@
+name: One-time publication image provenance branch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/publication-image-provenance-branch.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  commit-branch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          ref: work/publication-image-provenance-20260730
+          fetch-depth: 0
+
+      - name: Apply exact image provenance changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dockerfile = '''FROM node:24.18.0-bookworm-slim
+
+          ARG STORYTELLER_APPLICATION_REVISION
+
+          RUN node -e "const revision=process.env.STORYTELLER_APPLICATION_REVISION??'';if(!/^[a-f0-9]{40}$/.test(revision)){throw new Error('STORYTELLER_APPLICATION_REVISION_INVALID')}"
+
+          LABEL org.opencontainers.image.revision="${STORYTELLER_APPLICATION_REVISION}"
+
+          WORKDIR /opt/storyteller
+
+          COPY . .
+
+          RUN npm ci --no-audit --no-fund \\
+            && npm run typecheck \\
+            && npm run build \\
+            && mkdir -p /var/lib/storyteller \\
+            && chown -R node:node /opt/storyteller /var/lib/storyteller
+
+          ENV NODE_ENV=production \\
+            HOME=/tmp \\
+            STORYTELLER_DATA_DIR=/var/lib/storyteller \\
+            STORYTELLER_APPLICATION_REVISION=${STORYTELLER_APPLICATION_REVISION}
+
+          USER node
+
+          CMD ["npm", "run", "start", "--workspace=@evavo/storyteller-worker"]
+          '''.replace("          ", "")
+          Path("Dockerfile.publication-operations").write_text(
+              dockerfile, encoding="utf-8", newline="\n"
+          )
+
+          compose_path = Path("compose.publication-operations.yml")
+          compose = compose_path.read_text(encoding="utf-8")
+          build_anchor = "    dockerfile: Dockerfile.publication-operations\n"
+          if compose.count(build_anchor) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_BUILD_ANCHOR_INVALID")
+          compose = compose.replace(
+              build_anchor,
+              build_anchor
+              + "    args:\n"
+              + "      STORYTELLER_APPLICATION_REVISION: ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}\n",
+              1,
+          )
+          environment_anchor = (
+              "  environment:\n"
+              "    NODE_ENV: production\n"
+              "    STORYTELLER_DATA_DIR: /var/lib/storyteller\n"
+          )
+          if compose.count(environment_anchor) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_ENVIRONMENT_ANCHOR_INVALID")
+          compose = compose.replace(
+              environment_anchor,
+              environment_anchor
+              + "    STORYTELLER_APPLICATION_REVISION: ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}\n",
+              1,
+          )
+          compose_path.write_text(compose, encoding="utf-8", newline="\n")
+
+          env_path = Path(".env.publication-operations.example")
+          env = env_path.read_text(encoding="utf-8")
+          old_comment = "# Exact 40-character lowercase Git commit SHA for the image/code performing backup or restore."
+          new_comment = "# Exact 40-character lowercase Git commit SHA. Compose passes this to the image build, OCI revision label and every runtime role."
+          if env.count(old_comment) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_ENV_COMMENT_INVALID")
+          env_path.write_text(
+              env.replace(old_comment, new_comment, 1),
+              encoding="utf-8",
+              newline="\n",
+          )
+
+          docs_path = Path("docs/PUBLICATION_OPERATIONS_DOCKER.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          old_runtime = "`Dockerfile.publication-operations` uses Node.js 22.18, installs the locked workspace dependencies, runs strict TypeScript and workspace builds, then runs the worker as the unprivileged `node` user."
+          new_runtime = "`Dockerfile.publication-operations` uses Node.js 24.18.0, matching `.nvmrc`, installs the locked workspace dependencies, runs strict TypeScript and workspace builds, then runs the worker as the unprivileged `node` user."
+          if docs.count(old_runtime) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_DOC_RUNTIME_INVALID")
+          docs = docs.replace(old_runtime, new_runtime, 1)
+          image_anchor = "The image does not publish a port or include an HTTP proxy.\n"
+          if docs.count(image_anchor) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_DOC_IMAGE_ANCHOR_INVALID")
+          section = '''The image does not publish a port or include an HTTP proxy.
+
+          ## Image revision binding
+
+          Before Compose configuration or build, set `STORYTELLER_APPLICATION_REVISION` to the exact reviewed lowercase 40-character Git commit SHA:
+
+          ```bash
+          export STORYTELLER_APPLICATION_REVISION="$(git rev-parse HEAD)"
+          test -z "$(git status --porcelain)"
+          ```
+
+          Compose passes the same value as the Docker build argument and runtime environment. The Dockerfile rejects missing, uppercase, shortened or non-hex revisions, records the value in `org.opencontainers.image.revision`, and exposes it to the private backup and restore CLI.
+
+          The runtime value therefore comes from the immutable image build contract rather than a separately editable container override. Before deployment, confirm the reviewed checkout is clean and the SHA matches the intended release commit.
+          '''.replace("          ", "")
+          docs = docs.replace(image_anchor, section, 1)
+          identity_anchor = "- distinct alert, refresh and gateway identities.\n"
+          if docs.count(identity_anchor) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_DOC_IDENTITY_ANCHOR_INVALID")
+          docs = docs.replace(
+              identity_anchor,
+              "- distinct alert, refresh and gateway identities;\n"
+              "- the exact reviewed `STORYTELLER_APPLICATION_REVISION`.\n",
+              1,
+          )
+          docs_path.write_text(docs, encoding="utf-8", newline="\n")
+
+          checker_path = Path("scripts/check-publication-operations-compose.mjs")
+          checker = checker_path.read_text(encoding="utf-8")
+          old_from = '  "FROM node:22.18.0-bookworm-slim",\n'
+          new_from = (
+              '  "FROM node:24.18.0-bookworm-slim",\n'
+              '  "ARG STORYTELLER_APPLICATION_REVISION",\n'
+              '  "STORYTELLER_APPLICATION_REVISION_INVALID",\n'
+              '  \'LABEL org.opencontainers.image.revision="${STORYTELLER_APPLICATION_REVISION}"\',\n'
+              '  "STORYTELLER_APPLICATION_REVISION=${STORYTELLER_APPLICATION_REVISION}",\n'
+          )
+          if checker.count(old_from) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_CHECKER_FROM_INVALID")
+          checker = checker.replace(old_from, new_from, 1)
+          compose_token = '  "STORYTELLER_PUBLICATION_OPERATIONS_ENV_FILE",\n'
+          if checker.count(compose_token) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_CHECKER_COMPOSE_INVALID")
+          checker = checker.replace(
+              compose_token,
+              compose_token
+              + '  "STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION",\n',
+              1,
+          )
+          docker_block = '''if (existsSync(fromRoot("Dockerfile.publication-operations"))) {
+            const dockerfile = read("Dockerfile.publication-operations");
+          '''.replace("          ", "")
+          if checker.count(docker_block) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_CHECKER_BLOCK_INVALID")
+          checker = checker.replace(
+              docker_block,
+              docker_block
+              + '''  const pinnedRuntime = existsSync(fromRoot(".nvmrc"))
+            ? read(".nvmrc").trim()
+            : "";
+          if (!pinnedRuntime || !dockerfile.includes(`FROM node:${pinnedRuntime}-bookworm-slim`)) {
+            problems.push("publication operations image runtime must exactly match .nvmrc");
+          }
+          '''.replace("          ", ""),
+              1,
+          )
+          env_token = '  "STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID=",\n'
+          if checker.count(env_token) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_CHECKER_ENV_INVALID")
+          checker = checker.replace(
+              env_token,
+              env_token
+              + '  "STORYTELLER_APPLICATION_REVISION=replace-with-40-character-git-commit-sha",\n',
+              1,
+          )
+          docs_token = '  "Included roles",\n'
+          if checker.count(docs_token) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_CHECKER_DOCS_INVALID")
+          checker = checker.replace(
+              docs_token,
+              docs_token
+              + '  "Image revision binding",\n'
+              + '  "org.opencontainers.image.revision",\n',
+              1,
+          )
+          output_token = 'console.log("- one immutable worker image runs four long-lived or startup publication roles");\n'
+          if checker.count(output_token) != 1:
+              raise SystemExit("IMAGE_PROVENANCE_CHECKER_OUTPUT_INVALID")
+          checker = checker.replace(
+              output_token,
+              output_token
+              + 'console.log("- image runtime matches .nvmrc and build provenance is bound to one exact source revision");\n',
+              1,
+          )
+          checker_path.write_text(checker, encoding="utf-8", newline="\n")
+          PY
+
+      - name: Commit branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add \
+            Dockerfile.publication-operations \
+            compose.publication-operations.yml \
+            .env.publication-operations.example \
+            docs/PUBLICATION_OPERATIONS_DOCKER.md \
+            scripts/check-publication-operations-compose.mjs
+          git diff --cached --check
+          git commit -m "Bind publication image to exact source revision"
+          git push origin HEAD:work/publication-image-provenance-20260730
+
+      - name: Clean temporary workflow from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          rm -f \
+            .github/workflows/one-time-publication-image-provenance-branch.yml \
+            .github/publication-image-provenance-branch.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove publication image provenance branch workflow"
+          git pull --rebase origin main
+          git push origin HEAD:main
