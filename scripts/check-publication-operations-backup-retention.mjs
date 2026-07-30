@@ -74,11 +74,13 @@ requireTokens("packages/cli/src/publication-operations-backup-retention-main.ts"
   'args.command === "plan"',
   'args.command === "apply"',
   'stringFlag(args, "backup-dir", true)',
-  'stringFlag(args, "plan-fingerprint"',
+  '"plan-fingerprint"',
+  "expectedPlanFingerprint",
   'stringFlag(args, "actor-id", true)',
   'booleanFlag(args, "offline-confirmed")',
   'PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FLAG_REQUIRED:output',
-  "mode: 0o600",
+  "0o600",
+  "chmod(path, 0o600)",
 ]);
 
 requireTokens("packages/cli/src/publication-operations-backup-retention.test.ts", [
