@@ -1,0 +1,440 @@
+name: One-time retention revision binding
+
+on:
+  push:
+    branches:
+      - work/publication-backup-retention-revision-binding-20260730
+    paths:
+      - ".github/retention-revision-binding.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  bind-revision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          ref: work/publication-backup-retention-revision-binding-20260730
+          fetch-depth: 0
+
+      - name: Apply revision binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(source: str, old: str, new: str, code: str) -> str:
+              count = source.count(old)
+              print(f"{code}:{count}")
+              if count != 1:
+                  raise SystemExit(f"{code}_INVALID:{count}")
+              return source.replace(old, new, 1)
+
+          domain_path = Path("packages/cli/src/publication-operations-backup-retention.ts")
+          domain = domain_path.read_text(encoding="utf-8")
+          domain = replace_once(
+              domain,
+              '"storyteller-publication-operations-backup-retention-plan-v1" as const;',
+              '"storyteller-publication-operations-backup-retention-plan-v2" as const;',
+              "RETENTION_PLAN_SCHEMA",
+          )
+          domain = replace_once(
+              domain,
+              '"storyteller-publication-operations-backup-retention-result-v1" as const;',
+              '"storyteller-publication-operations-backup-retention-result-v2" as const;',
+              "RETENTION_RESULT_SCHEMA",
+          )
+          domain = replace_once(
+              domain,
+              '''  evaluatedAt: string;
+  policy: PublicationOperationsBackupRetentionPolicy;
+''',
+              '''  evaluatedAt: string;
+  applicationRevision: string;
+  policy: PublicationOperationsBackupRetentionPolicy;
+''',
+              "RETENTION_PLAN_REVISION_FIELD",
+          )
+          domain = replace_once(
+              domain,
+              '''  planFingerprint: string;
+  retainedCount: number;
+''',
+              '''  planFingerprint: string;
+  applicationRevision: string;
+  retainedCount: number;
+''',
+              "RETENTION_RESULT_REVISION_FIELD",
+          )
+          domain = replace_once(
+              domain,
+              '''export interface PlanPublicationOperationsBackupRetentionInput {
+  backupDirectory: string;
+''',
+              '''export interface PlanPublicationOperationsBackupRetentionInput {
+  backupDirectory: string;
+  applicationRevision: string;
+''',
+              "RETENTION_INPUT_REVISION_FIELD",
+          )
+          domain = replace_once(
+              domain,
+              '''const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
+''',
+              '''const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
+const APPLICATION_REVISION_PATTERN = /^[a-f0-9]{40}$/u;
+''',
+              "RETENTION_REVISION_PATTERN",
+          )
+          domain = replace_once(
+              domain,
+              '''function requireInteger(
+''',
+              '''function requireApplicationRevision(value: string): string {
+  if (!APPLICATION_REVISION_PATTERN.test(value)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLICATION_REVISION_INVALID",
+    );
+  }
+  return value;
+}
+
+function requireInteger(
+''',
+              "RETENTION_REVISION_VALIDATOR",
+          )
+          domain = replace_once(
+              domain,
+              '''  const retentionPolicy = policy(input);
+''',
+              '''  const applicationRevision = requireApplicationRevision(
+    input.applicationRevision,
+  );
+  const retentionPolicy = policy(input);
+''',
+              "RETENTION_PLAN_REVISION_VALIDATE",
+          )
+          domain = replace_once(
+              domain,
+              '''    evaluatedAt: evaluatedAt.toISOString(),
+    policy: retentionPolicy,
+''',
+              '''    evaluatedAt: evaluatedAt.toISOString(),
+    applicationRevision,
+    policy: retentionPolicy,
+''',
+              "RETENTION_PLAN_REVISION_VALUE",
+          )
+          domain = replace_once(
+              domain,
+              '''    planFingerprint: plan.fingerprint,
+    retainedCount: plan.retained.length,
+''',
+              '''    planFingerprint: plan.fingerprint,
+    applicationRevision: plan.applicationRevision,
+    retainedCount: plan.retained.length,
+''',
+              "RETENTION_RESULT_REVISION_VALUE",
+          )
+          domain_path.write_text(domain, encoding="utf-8", newline="\n")
+
+          cli_path = Path("packages/cli/src/publication-operations-backup-retention-main.ts")
+          cli = cli_path.read_text(encoding="utf-8")
+          cli = cli.replace(
+              '--evaluated-at 2026-07-30T00:00:00Z --keep-latest',
+              '--evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest',
+          )
+          cli = replace_once(
+              cli,
+              '''  return {
+    backupDirectory: stringFlag(args, "backup-dir", true)!,
+''',
+              '''  return {
+    backupDirectory: stringFlag(args, "backup-dir", true)!,
+    applicationRevision: stringFlag(
+      args,
+      "application-revision",
+      true,
+    )!,
+''',
+              "RETENTION_CLI_REVISION_FLAG",
+          )
+          cli_path.write_text(cli, encoding="utf-8", newline="\n")
+
+          test_path = Path("packages/cli/src/publication-operations-backup-retention.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+          tests = replace_once(
+              tests,
+              '''    const input = {
+      backupDirectory: paths.backups,
+''',
+              '''    const input = {
+      backupDirectory: paths.backups,
+      applicationRevision,
+''',
+              "RETENTION_TEST_INPUT_REVISION",
+          )
+          tests = tests.replace(
+              '''    const common = {
+      backupDirectory: paths.backups,
+''',
+              '''    const common = {
+      backupDirectory: paths.backups,
+      applicationRevision,
+''',
+          )
+          tests = tests.replace(
+              '''    const plan = await planPublicationOperationsBackupRetention({
+      backupDirectory: paths.backups,
+''',
+              '''    const plan = await planPublicationOperationsBackupRetention({
+      backupDirectory: paths.backups,
+      applicationRevision,
+''',
+          )
+          tests = tests.replace(
+              '''      planPublicationOperationsBackupRetention({
+        backupDirectory: paths.backups,
+''',
+              '''      planPublicationOperationsBackupRetention({
+        backupDirectory: paths.backups,
+        applicationRevision,
+''',
+          )
+          tests = tests.replace(
+              '''      "--evaluated-at", evaluated,
+      "--keep-latest", "2",
+''',
+              '''      "--evaluated-at", evaluated,
+      "--application-revision", applicationRevision,
+      "--keep-latest", "2",
+''',
+          )
+          test_anchor = '''test("retention rejects unknown root entries, staging state and symbolic links", async (context) => {
+'''
+          revision_test = '''test("application revision change invalidates an approved plan before deletion", async () => {
+  await withDirectories(async (paths) => {
+    await createSnapshots(paths);
+    const common = {
+      backupDirectory: paths.backups,
+      applicationRevision,
+      keepLatest: 2,
+      keepDailyDays: 0,
+      keepWeeklyWeeks: 0,
+      evaluatedAt,
+    } as const;
+    const plan = await planPublicationOperationsBackupRetention(common);
+    assert.equal(plan.applicationRevision, applicationRevision);
+    await assert.rejects(
+      prunePublicationOperationsBackups({
+        ...common,
+        applicationRevision: "2".repeat(40),
+        actorId: "retention_revision_operator_001",
+        offlineConfirmed: true,
+        expectedPlanFingerprint: plan.fingerprint,
+        prunedAt: new Date("2026-07-30T12:05:00.000Z"),
+      }),
+      /PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_STALE/u,
+    );
+    assert.equal((await readdir(paths.backups)).length, snapshotDates.length);
+  });
+});
+
+'''
+          tests = replace_once(
+              tests,
+              test_anchor,
+              revision_test + test_anchor,
+              "RETENTION_TEST_REVISION_CHANGE",
+          )
+          tests = tests.replace(
+              '''      fingerprint: string;
+      delete: unknown[];
+''',
+              '''      fingerprint: string;
+      applicationRevision: string;
+      delete: unknown[];
+''',
+          )
+          tests = replace_once(
+              tests,
+              '''    assert.equal(plan.delete.length > 0, true);
+''',
+              '''    assert.equal(plan.delete.length > 0, true);
+    assert.equal(plan.applicationRevision, applicationRevision);
+''',
+              "RETENTION_TEST_PLAN_RECEIPT_REVISION",
+          )
+          tests = tests.replace(
+              '''      actorId: string;
+      deletedCount: number;
+''',
+              '''      actorId: string;
+      applicationRevision: string;
+      deletedCount: number;
+''',
+          )
+          tests = replace_once(
+              tests,
+              '''    assert.equal(receipt.actorId, "retention_cli_operator_001");
+''',
+              '''    assert.equal(receipt.actorId, "retention_cli_operator_001");
+    assert.equal(receipt.applicationRevision, applicationRevision);
+''',
+              "RETENTION_TEST_APPLY_RECEIPT_REVISION",
+          )
+          test_path.write_text(tests, encoding="utf-8", newline="\n")
+
+          docs_path = Path("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md")
+          docs = docs_path.read_text(encoding="utf-8")
+          docs = docs.replace(
+              '''  --evaluated-at 2026-07-30T00:00:00Z \\
+  --keep-latest''',
+              '''  --evaluated-at 2026-07-30T00:00:00Z \\
+  --application-revision <40-character-git-sha> \\
+  --keep-latest''',
+          )
+          docs = replace_once(
+              docs,
+              '''- evaluation time;
+- keep-latest count;
+''',
+              '''- evaluation time;
+- exact application revision;
+- keep-latest count;
+''',
+              "RETENTION_DOCS_COMMON_REVISION",
+          )
+          docs = replace_once(
+              docs,
+              '''- exact evaluation time;
+- policy and policy fingerprint;
+''',
+              '''- exact evaluation time;
+- exact lowercase 40-character application revision;
+- policy and policy fingerprint;
+''',
+              "RETENTION_DOCS_PLAN_REVISION",
+          )
+          docs = replace_once(
+              docs,
+              '''- approved plan fingerprint;
+- retained and deleted counts;
+''',
+              '''- approved plan fingerprint;
+- exact application revision;
+- retained and deleted counts;
+''',
+              "RETENTION_DOCS_RECEIPT_REVISION",
+          )
+          docs_path.write_text(docs, encoding="utf-8", newline="\n")
+
+          checker_path = Path("scripts/check-publication-operations-backup-retention.mjs")
+          checker = checker_path.read_text(encoding="utf-8")
+          checker = replace_once(
+              checker,
+              '''  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_OFFLINE_CONFIRMATION_REQUIRED",
+''',
+              '''  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_OFFLINE_CONFIRMATION_REQUIRED",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLICATION_REVISION_INVALID",
+  "applicationRevision",
+''',
+              "RETENTION_CHECKER_DOMAIN_REVISION",
+          )
+          checker = replace_once(
+              checker,
+              '''  'stringFlag(args, "backup-dir", true)',
+''',
+              '''  'stringFlag(args, "backup-dir", true)',
+  '"application-revision"',
+''',
+              "RETENTION_CHECKER_CLI_REVISION",
+          )
+          checker = replace_once(
+              checker,
+              '''  "changed inventory invalidates a previously approved plan before deletion",
+''',
+              '''  "changed inventory invalidates a previously approved plan before deletion",
+  "application revision change invalidates an approved plan before deletion",
+''',
+              "RETENTION_CHECKER_TEST_REVISION",
+          )
+          checker = replace_once(
+              checker,
+              '''  "Exact apply gate",
+''',
+              '''  "Exact apply gate",
+  "exact application revision",
+''',
+              "RETENTION_CHECKER_DOC_REVISION",
+          )
+          checker_path.write_text(checker, encoding="utf-8", newline="\n")
+
+          compose_path = Path("compose.publication-operations.yml")
+          compose = compose_path.read_text(encoding="utf-8")
+          command_anchor = '''      - --evaluated-at
+      - ${STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT:?set STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT}
+      - --keep-latest
+'''
+          replacement = '''      - --evaluated-at
+      - ${STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT:?set STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT}
+      - --application-revision
+      - ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}
+      - --keep-latest
+'''
+          count = compose.count(command_anchor)
+          print(f"RETENTION_COMPOSE_REVISION_COUNT:{count}")
+          if count != 2:
+              raise SystemExit(f"RETENTION_COMPOSE_REVISION_SCOPE_INVALID:{count}")
+          compose = compose.replace(command_anchor, replacement)
+          compose_path.write_text(compose, encoding="utf-8", newline="\n")
+
+          compose_checker_path = Path("scripts/check-publication-operations-compose.mjs")
+          compose_checker = compose_checker_path.read_text(encoding="utf-8")
+          compose_checker = compose_checker.replace(
+              '''    "STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST",
+''',
+              '''    "STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT",
+    "--application-revision",
+    "STORYTELLER_APPLICATION_REVISION",
+    "STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST",
+''',
+          )
+          compose_checker_path.write_text(
+              compose_checker,
+              encoding="utf-8",
+              newline="\n",
+          )
+          PY
+
+      - name: Install exact workspace graph
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate revision binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:publication-operations-backup-retention
+          npm run verify:publication-operations-compose
+          npm run typecheck
+          node --import tsx --test packages/cli/src/publication-operations-backup-retention.test.ts
+
+      - name: Commit validated revision binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/one-time-retention-revision-binding.yml \
+            .github/retention-revision-binding.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Bind backup retention to application revision"
+          git pull --rebase origin work/publication-backup-retention-revision-binding-20260730
+          git push origin HEAD:work/publication-backup-retention-revision-binding-20260730
