@@ -13,6 +13,7 @@ npm run publication-operations-backup -- \
   --data-dir ./storage \
   --backup-dir ./backups \
   --actor-id operator_greg \
+  --application-revision "$STORYTELLER_APPLICATION_REVISION" \
   --offline-confirmed \
   --output backup-result.json
 ```
@@ -32,6 +33,7 @@ npm run publication-operations-restore -- \
   --snapshot ./backups/publication_backup_... \
   --data-dir ./restored-storage \
   --actor-id operator_greg \
+  --application-revision "$STORYTELLER_APPLICATION_REVISION" \
   --offline-confirmed \
   --output restore-result.json
 ```
@@ -106,6 +108,8 @@ Repeating an identical backup request returns the already verified snapshot inst
 - snapshot identifier;
 - creation time;
 - private operator identifier;
+- exact creating application revision;
+- durable publication-schema contract version and fingerprint;
 - source fingerprint;
 - sorted file records;
 - file count and total bytes;
@@ -232,6 +236,24 @@ A backup stored only on the same Docker host is not sufficient disaster recovery
 
 Maintain at least one encrypted off-host copy. After transfer, run the verification command against the received snapshot rather than trusting transport success.
 
+
+## Application and durable-schema compatibility
+
+Every new snapshot is bound to the exact 40-character lowercase Git commit SHA supplied through `--application-revision` or `STORYTELLER_APPLICATION_REVISION`.
+
+The manifest also records a deterministic durable-schema fingerprint covering the file-store envelope, audit format, publication monitor, evidence request, evidence inbox and alert schemas plus their entity types. The snapshot identifier and manifest fingerprint include this compatibility identity.
+
+Restore is fail closed:
+
+- the durable-schema fingerprint must match the running code exactly;
+- the creating and restoring application revisions must match by default;
+- durable-schema mismatch cannot be overridden;
+- a different application revision with the same durable schema requires all of `--compatibility-approved-by`, `--compatibility-evidence-hash` and `--compatibility-approved-at`, or the equivalent private environment values.
+
+The approval is bound to the snapshot revision, target revision, durable-schema fingerprint, reviewer, evidence reference and approval time. The restore result exposes only `approved-compatible-revision` and a one-way approval fingerprint. It does not expose commit SHAs, reviewer identities or evidence hashes.
+
+A compatibility approval is not a schema migration. When the durable-schema contract changes, implement and independently verify an explicit migration before restore support is extended.
+
 ## Redacted output
 
 Backup, verification and restore results expose only:
@@ -275,4 +297,4 @@ Before rollback:
 
 This workflow provides deterministic offline snapshots, independent verification and safe restore to new or empty publication state.
 
-It does not stop running services, prevent a writer from restarting, encrypt backups, transfer them off host, automate retention, verify external provider connectivity, create human evidence, guarantee perpetual publication availability or make file-backed persistence multi-host safe.
+It does not stop running services, prevent a writer from restarting, encrypt backups, transfer them off host, automate retention, verify external provider connectivity, create human evidence, guarantee perpetual publication availability, perform schema migrations or make file-backed persistence multi-host safe.

@@ -19,9 +19,16 @@ import {
   sep,
 } from "node:path";
 import { stableHash } from "@evavo/storyteller-engine";
+import {
+  assertPublicationOperationsBackupCompatibilityIdentity,
+  createPublicationOperationsBackupCompatibilityIdentity,
+  resolvePublicationOperationsRestoreCompatibility,
+  type PublicationOperationsBackupCompatibilityIdentity,
+  type PublicationOperationsRestoreCompatibilityApproval,
+} from "./publication-operations-backup-compatibility.js";
 
 export const PUBLICATION_OPERATIONS_BACKUP_SCHEMA_VERSION =
-  "storyteller-publication-operations-backup-v1" as const;
+  "storyteller-publication-operations-backup-v2" as const;
 
 export interface PublicationOperationsBackupFileRecord {
   relativePath: string;
@@ -35,6 +42,7 @@ export interface PublicationOperationsBackupManifest {
   snapshotId: string;
   createdAt: string;
   createdByActorId: string;
+  compatibility: PublicationOperationsBackupCompatibilityIdentity;
   sourceFingerprint: string;
   files: readonly PublicationOperationsBackupFileRecord[];
   fileCount: number;
@@ -49,6 +57,7 @@ export interface PublicationOperationsBackupResult {
   fileCount: number;
   totalBytes: number;
   fingerprint: string;
+  compatibilityBound: true;
 }
 
 export interface PublicationOperationsBackupVerificationResult {
@@ -58,6 +67,7 @@ export interface PublicationOperationsBackupVerificationResult {
   fileCount: number;
   totalBytes: number;
   fingerprint: string;
+  compatibilityBound: true;
 }
 
 export interface PublicationOperationsRestoreResult {
@@ -68,6 +78,8 @@ export interface PublicationOperationsRestoreResult {
   fileCount: number;
   totalBytes: number;
   fingerprint: string;
+  applicationCompatibility: "exact-revision" | "approved-compatible-revision";
+  compatibilityApprovalFingerprint?: string;
 }
 
 export interface CreatePublicationOperationsBackupInput {
@@ -75,6 +87,7 @@ export interface CreatePublicationOperationsBackupInput {
   backupDirectory: string;
   actorId: string;
   offlineConfirmed: true;
+  applicationRevision: string;
   createdAt?: Date;
   afterCopy?: () => Promise<void>;
 }
@@ -84,6 +97,8 @@ export interface RestorePublicationOperationsBackupInput {
   dataDirectory: string;
   actorId: string;
   offlineConfirmed: true;
+  applicationRevision: string;
+  compatibilityApproval?: PublicationOperationsRestoreCompatibilityApproval;
   restoredAt?: Date;
 }
 
@@ -330,12 +345,14 @@ function createManifest(input: Readonly<{
     sourceFingerprint,
     createdAt: input.createdAt,
     actorId: input.actorId,
+    compatibilityFingerprint: input.compatibility.fingerprint,
   }).slice(0, 24)}`;
   const partial: Omit<PublicationOperationsBackupManifest, "fingerprint"> = {
     schemaVersion: PUBLICATION_OPERATIONS_BACKUP_SCHEMA_VERSION,
     snapshotId,
     createdAt: input.createdAt,
     createdByActorId: input.actorId,
+    compatibility: input.compatibility,
     sourceFingerprint,
     files,
     fileCount: files.length,
@@ -367,6 +384,9 @@ function assertManifest(
   requireIdentifier(
     manifest.createdByActorId,
     "PUBLICATION_OPERATIONS_BACKUP_ACTOR_ID_INVALID",
+  );
+  assertPublicationOperationsBackupCompatibilityIdentity(
+    manifest.compatibility,
   );
   requireHash(
     manifest.sourceFingerprint,
@@ -566,6 +586,7 @@ async function verifySnapshotInternal(
       fileCount: manifest.fileCount,
       totalBytes: manifest.totalBytes,
       fingerprint: manifest.fingerprint,
+      compatibilityBound: true,
     }),
   });
 }
@@ -591,6 +612,11 @@ export async function createPublicationOperationsBackup(
     );
   }
 
+  const compatibility =
+    createPublicationOperationsBackupCompatibilityIdentity(
+      input.applicationRevision,
+    );
+
   const sourceRoot = resolve(input.dataDirectory, "publication-operations");
   const backupRoot = resolve(input.backupDirectory);
   rejectNestedPaths(sourceRoot, backupRoot);
@@ -605,6 +631,7 @@ export async function createPublicationOperationsBackup(
     sourceFiles: sourceBefore,
     createdAt: createdAt.toISOString(),
     actorId,
+    compatibility,
   });
   const finalDirectory = join(backupRoot, manifest.snapshotId);
 
@@ -622,6 +649,7 @@ export async function createPublicationOperationsBackup(
       fileCount: manifest.fileCount,
       totalBytes: manifest.totalBytes,
       fingerprint: manifest.fingerprint,
+      compatibilityBound: true,
     });
   } catch (error) {
     if (
@@ -676,6 +704,7 @@ export async function createPublicationOperationsBackup(
     fileCount: manifest.fileCount,
     totalBytes: manifest.totalBytes,
     fingerprint: manifest.fingerprint,
+    compatibilityBound: true,
   });
 }
 
@@ -727,6 +756,13 @@ export async function restorePublicationOperationsBackup(
   const targetRoot = resolve(input.dataDirectory, "publication-operations");
   rejectNestedPaths(snapshotRoot, targetRoot);
   const verified = await verifySnapshotInternal(snapshotRoot);
+  const compatibility = resolvePublicationOperationsRestoreCompatibility({
+    snapshot: verified.manifest.compatibility,
+    applicationRevision: input.applicationRevision,
+    ...(input.compatibilityApproval
+      ? { approval: input.compatibilityApproval }
+      : {}),
+  });
   const state = await targetState(targetRoot);
   await ensurePrivateDirectory(dirname(targetRoot));
 
@@ -768,5 +804,12 @@ export async function restorePublicationOperationsBackup(
     fileCount: verified.manifest.fileCount,
     totalBytes: verified.manifest.totalBytes,
     fingerprint: verified.manifest.fingerprint,
+    applicationCompatibility: compatibility.mode,
+    ...(compatibility.compatibilityApprovalFingerprint
+      ? {
+          compatibilityApprovalFingerprint:
+            compatibility.compatibilityApprovalFingerprint,
+        }
+      : {}),
   });
 }

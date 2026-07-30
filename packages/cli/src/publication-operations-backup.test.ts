@@ -23,6 +23,8 @@ import { runPublicationOperationsBackupCli } from "./publication-operations-back
 
 const createdAt = new Date("2026-07-30T00:00:00.000Z");
 const restoredAt = new Date("2026-07-30T01:00:00.000Z");
+const applicationRevision = "1".repeat(40);
+const compatibleApplicationRevision = "2".repeat(40);
 
 async function createPublicationState(dataDirectory: string): Promise<Readonly<{
   root: string;
@@ -101,11 +103,13 @@ test("offline backup creates one verified immutable snapshot and repeats idempot
       backupDirectory: backups,
       actorId: "publication_backup_operator_001",
       offlineConfirmed: true,
+      applicationRevision,
       createdAt,
     });
     assert.equal(first.status, "created");
     assert.equal(first.fileCount, 3);
     assert.equal(first.totalBytes > 0, true);
+    assert.equal(first.compatibilityBound, true);
     assert.match(first.snapshotId, /^publication_backup_[a-f0-9]{24}$/u);
 
     const snapshot = join(backups, first.snapshotId);
@@ -114,9 +118,11 @@ test("offline backup creates one verified immutable snapshot and repeats idempot
     assert.equal(verified.fingerprint, first.fingerprint);
     assert.equal(verified.fileCount, first.fileCount);
     assert.equal(verified.totalBytes, first.totalBytes);
+    assert.equal(verified.compatibilityBound, true);
 
     const manifest = await snapshotManifest(snapshot);
     assert.equal(manifest.createdByActorId, "publication_backup_operator_001");
+    assert.equal(manifest.compatibility.applicationRevision, applicationRevision);
     assert.deepEqual(
       manifest.files.map((file) => file.mode),
       Array.from({ length: manifest.fileCount }, () => 0o600),
@@ -127,6 +133,7 @@ test("offline backup creates one verified immutable snapshot and repeats idempot
       backupDirectory: backups,
       actorId: "publication_backup_operator_001",
       offlineConfirmed: true,
+      applicationRevision,
       createdAt,
     });
     assert.equal(second.status, "existing");
@@ -143,6 +150,7 @@ test("snapshot verification rejects altered bytes and unexpected extra files", a
       backupDirectory: backups,
       actorId: "publication_backup_operator_tamper_001",
       offlineConfirmed: true,
+      applicationRevision,
       createdAt,
     });
     const snapshot = join(backups, first.snapshotId);
@@ -166,6 +174,7 @@ test("snapshot verification rejects altered bytes and unexpected extra files", a
       backupDirectory: backups,
       actorId: "publication_backup_operator_extra_001",
       offlineConfirmed: true,
+      applicationRevision,
       createdAt,
     });
     const snapshot = join(backups, first.snapshotId);
@@ -192,6 +201,7 @@ test("backup rejects active locks, temporary files and symbolic links", async ()
         backupDirectory: backups,
         actorId: "publication_backup_operator_busy_001",
         offlineConfirmed: true,
+        applicationRevision,
         createdAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_STATE_BUSY/u,
@@ -209,6 +219,7 @@ test("backup rejects active locks, temporary files and symbolic links", async ()
         backupDirectory: backups,
         actorId: "publication_backup_operator_busy_001",
         offlineConfirmed: true,
+        applicationRevision,
         createdAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_STATE_BUSY/u,
@@ -229,6 +240,7 @@ test("backup rejects active locks, temporary files and symbolic links", async ()
         backupDirectory: backups,
         actorId: "publication_backup_operator_symlink_001",
         offlineConfirmed: true,
+        applicationRevision,
         createdAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_SYMLINK_FORBIDDEN/u,
@@ -245,6 +257,7 @@ test("backup detects publication state mutation during the copy window and remov
         backupDirectory: backups,
         actorId: "publication_backup_operator_mutation_001",
         offlineConfirmed: true,
+        applicationRevision,
         createdAt,
         afterCopy: async () => {
           await fixture.state.create(
@@ -274,6 +287,7 @@ test("verified snapshot restores into new state and refuses to overwrite live st
       backupDirectory: backups,
       actorId: "publication_backup_operator_restore_001",
       offlineConfirmed: true,
+      applicationRevision,
       createdAt,
     });
     const snapshot = join(backups, backup.snapshotId);
@@ -283,11 +297,13 @@ test("verified snapshot restores into new state and refuses to overwrite live st
       dataDirectory: restoredData,
       actorId: "publication_restore_operator_001",
       offlineConfirmed: true,
+      applicationRevision,
       restoredAt,
     });
     assert.equal(restored.status, "restored");
     assert.equal(restored.snapshotId, backup.snapshotId);
     assert.equal(restored.fingerprint, backup.fingerprint);
+    assert.equal(restored.applicationCompatibility, "exact-revision");
 
     const restoredState = new FileProjectStore(
       join(restoredData, "publication-operations"),
@@ -318,10 +334,69 @@ test("verified snapshot restores into new state and refuses to overwrite live st
         dataDirectory: restoredData,
         actorId: "publication_restore_operator_001",
         offlineConfirmed: true,
+        applicationRevision,
         restoredAt,
       }),
       /PUBLICATION_OPERATIONS_RESTORE_TARGET_NOT_EMPTY/u,
     );
+  });
+});
+
+
+test("restore fails closed across revisions without approval and records a redacted governed override", async () => {
+  await withDirectories(async ({ root, data, backups }) => {
+    await createPublicationState(data);
+    const backup = await createPublicationOperationsBackup({
+      dataDirectory: data,
+      backupDirectory: backups,
+      actorId: "publication_backup_operator_compatibility_001",
+      offlineConfirmed: true,
+      applicationRevision,
+      createdAt,
+    });
+    const snapshot = join(backups, backup.snapshotId);
+    const restoredData = join(root, "compatible-restored-data");
+    await assert.rejects(
+      restorePublicationOperationsBackup({
+        snapshotDirectory: snapshot,
+        dataDirectory: restoredData,
+        actorId: "publication_restore_operator_compatibility_001",
+        offlineConfirmed: true,
+        applicationRevision: compatibleApplicationRevision,
+        restoredAt,
+      }),
+      /PUBLICATION_OPERATIONS_RESTORE_APPLICATION_REVISION_MISMATCH/u,
+    );
+    const restored = await restorePublicationOperationsBackup({
+      snapshotDirectory: snapshot,
+      dataDirectory: restoredData,
+      actorId: "publication_restore_operator_compatibility_001",
+      offlineConfirmed: true,
+      applicationRevision: compatibleApplicationRevision,
+      compatibilityApproval: {
+        approvedByActorId: "publication_compatibility_reviewer_001",
+        evidenceReferenceHash: "d".repeat(64),
+        approvedAt: new Date("2026-07-30T00:30:00.000Z"),
+      },
+      restoredAt,
+    });
+    assert.equal(
+      restored.applicationCompatibility,
+      "approved-compatible-revision",
+    );
+    assert.match(
+      restored.compatibilityApprovalFingerprint ?? "",
+      /^[a-f0-9]{64}$/u,
+    );
+    const serialised = JSON.stringify(restored);
+    for (const forbidden of [
+      applicationRevision,
+      compatibleApplicationRevision,
+      "publication_compatibility_reviewer_001",
+      "d".repeat(64),
+    ]) {
+      assert.equal(serialised.includes(forbidden), false);
+    }
   });
 });
 
@@ -334,6 +409,7 @@ test("backup and restore require explicit offline confirmation and reject nested
         backupDirectory: backups,
         actorId: "publication_backup_operator_offline_001",
         offlineConfirmed: false as true,
+        applicationRevision,
         createdAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_OFFLINE_CONFIRMATION_REQUIRED/u,
@@ -344,6 +420,7 @@ test("backup and restore require explicit offline confirmation and reject nested
         backupDirectory: join(data, "publication-operations", "backups"),
         actorId: "publication_backup_operator_nested_001",
         offlineConfirmed: true,
+        applicationRevision,
         createdAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_PATH_NESTING_FORBIDDEN/u,
@@ -368,7 +445,7 @@ test("standalone CLI emits redacted backup, verify and restore results", async (
           "--output", backupOutput,
         ],
         {
-          environment: {},
+          environment: { STORYTELLER_APPLICATION_REVISION: applicationRevision },
           stdout: { write: (value) => stdout.push(String(value)) },
         },
       ),
@@ -386,7 +463,7 @@ test("standalone CLI emits redacted backup, verify and restore results", async (
           "--snapshot", snapshot,
           "--output", verifyOutput,
         ],
-        { environment: {}, stdout: { write: () => true } },
+        { environment: { STORYTELLER_APPLICATION_REVISION: applicationRevision }, stdout: { write: () => true } },
       ),
       0,
     );
@@ -403,7 +480,7 @@ test("standalone CLI emits redacted backup, verify and restore results", async (
           "--restored-at", restoredAt.toISOString(),
           "--output", restoreOutput,
         ],
-        { environment: {}, stdout: { write: () => true } },
+        { environment: { STORYTELLER_APPLICATION_REVISION: applicationRevision }, stdout: { write: () => true } },
       ),
       0,
     );
@@ -420,6 +497,9 @@ test("standalone CLI emits redacted backup, verify and restore results", async (
         "publication_restore_cli_operator_001",
         "createdByActorId",
         "sourceFingerprint",
+        applicationRevision,
+        "applicationRevision",
+        "durableSchemaFingerprint",
         "relativePath",
         "contentHash",
       ]) {

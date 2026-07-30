@@ -61,6 +61,8 @@ STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID
 
 The actor identifier is stored privately in the backup manifest. The snapshot identifier is used only by verification and restore.
 
+`STORYTELLER_APPLICATION_REVISION` must be the exact lowercase 40-character Git commit SHA used to build the maintenance image. Backup binds it into the private manifest. Restore requires the same revision unless a separately reviewed same-schema compatibility approval is supplied through the private compatibility environment fields.
+
 Do not place a filesystem path in `STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID`. Use the exact `publication_backup_<24-hex>` identifier returned by the backup command.
 
 ## Stop mutation roles

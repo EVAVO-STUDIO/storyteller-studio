@@ -42,15 +42,22 @@ function collectRuntimeFiles(directory, output = []) {
 
 for (const path of [
   "packages/cli/src/publication-operations-backup.ts",
+  "packages/cli/src/publication-operations-backup-compatibility.ts",
+  "packages/cli/src/publication-operations-backup-compatibility.test.ts",
   "packages/cli/src/publication-operations-backup-main.ts",
   "packages/cli/src/publication-operations-backup.test.ts",
   "package.json",
   ".gitignore",
   "docs/PUBLICATION_OPERATIONS_BACKUP.md",
+  ".env.publication-operations.example",
 ]) requireFile(path);
 
 requireTokens("packages/cli/src/publication-operations-backup.ts", [
   "PUBLICATION_OPERATIONS_BACKUP_SCHEMA_VERSION",
+  "storyteller-publication-operations-backup-v2",
+  "compatibilityBound: true",
+  "resolvePublicationOperationsRestoreCompatibility",
+  "PUBLICATION_OPERATIONS_RESTORE_APPLICATION_REVISION_MISMATCH",
   "createPublicationOperationsBackup",
   "verifyPublicationOperationsBackupSnapshot",
   "restorePublicationOperationsBackup",
@@ -73,6 +80,16 @@ requireTokens("packages/cli/src/publication-operations-backup.ts", [
   "await rename(stagingDirectory, targetRoot)",
 ]);
 
+requireTokens("packages/cli/src/publication-operations-backup-compatibility.ts", [
+  "PUBLICATION_OPERATIONS_DURABLE_SCHEMA_CONTRACT_VERSION",
+  "PUBLICATION_OPERATIONS_DURABLE_SCHEMA_FINGERPRINT",
+  "createPublicationOperationsBackupCompatibilityIdentity",
+  "resolvePublicationOperationsRestoreCompatibility",
+  "PUBLICATION_OPERATIONS_RESTORE_DURABLE_SCHEMA_INCOMPATIBLE",
+  "PUBLICATION_OPERATIONS_RESTORE_APPLICATION_REVISION_MISMATCH",
+  "compatibilityApprovalFingerprint",
+]);
+
 requireTokens("packages/cli/src/publication-operations-backup-main.ts", [
   "runPublicationOperationsBackupCli",
   'args.command === "backup"',
@@ -83,6 +100,8 @@ requireTokens("packages/cli/src/publication-operations-backup-main.ts", [
   'stringFlag(args, "snapshot", true)',
   'stringFlag(args, "actor-id", true)',
   'booleanFlag(args, "offline-confirmed")',
+  'applicationRevision(args, environment)',
+  'compatibilityApproval(args, environment)',
   'dateFlag(args, "created-at")',
   'dateFlag(args, "restored-at")',
   "await chmod(path, 0o600)",
@@ -96,6 +115,7 @@ requireTokens("packages/cli/src/publication-operations-backup.test.ts", [
   "verified snapshot restores into new state and refuses to overwrite live state",
   "backup and restore require explicit offline confirmation and reject nested paths",
   "standalone CLI emits redacted backup, verify and restore results",
+  "restore fails closed across revisions without approval and records a redacted governed override",
   "PUBLICATION_OPERATIONS_BACKUP_SOURCE_CHANGED",
   "PUBLICATION_OPERATIONS_RESTORE_TARGET_NOT_EMPTY",
 ]);
@@ -115,8 +135,17 @@ requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP.md", [
   "Redacted output",
   "Audit boundary",
   "Rollback boundary",
+  "Application and durable-schema compatibility",
+  "durable-schema mismatch cannot be overridden",
   "Current boundary",
   "does not stop running services",
+]);
+
+requireTokens(".env.publication-operations.example", [
+  "STORYTELLER_APPLICATION_REVISION",
+  "STORYTELLER_PUBLICATION_RESTORE_COMPATIBILITY_APPROVED_BY",
+  "STORYTELLER_PUBLICATION_RESTORE_COMPATIBILITY_EVIDENCE_HASH",
+  "STORYTELLER_PUBLICATION_RESTORE_COMPATIBILITY_APPROVED_AT",
 ]);
 
 requireTokens(".gitignore", [
@@ -177,5 +206,7 @@ console.log("- offline confirmation and absence of locks or temporary files are 
 console.log("- source and copied bytes are independently rescanned before atomic publication");
 console.log("- verification rejects missing, extra, altered, linked and unsafe snapshot content");
 console.log("- restore only targets absent or empty publication state and verifies final bytes");
+console.log("- snapshots bind the creating application revision and durable publication schema");
+console.log("- cross-revision restore requires redacted approval evidence and cannot bypass schema drift");
 console.log("- command output omits paths, actors, source fingerprints and individual file evidence");
 console.log("- normal API and web runtimes cannot invoke publication backup or restore controls");

@@ -77,6 +77,57 @@ function booleanFlag(args: ParsedArguments, key: string): boolean {
   return false;
 }
 
+function applicationRevision(
+  args: ParsedArguments,
+  environment: Readonly<Record<string, string | undefined>>,
+): string {
+  const value = stringFlag(args, "application-revision")
+    ?? environment.STORYTELLER_APPLICATION_REVISION?.trim();
+  if (!value) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_CLI_FLAG_REQUIRED:application-revision",
+    );
+  }
+  return value;
+}
+
+function compatibilityApproval(
+  args: ParsedArguments,
+  environment: Readonly<Record<string, string | undefined>>,
+): Readonly<{
+  approvedByActorId: string;
+  evidenceReferenceHash: string;
+  approvedAt: Date;
+}> | undefined {
+  const approvedByActorId = stringFlag(args, "compatibility-approved-by")
+    ?? environment.STORYTELLER_PUBLICATION_RESTORE_COMPATIBILITY_APPROVED_BY?.trim();
+  const evidenceReferenceHash = stringFlag(
+    args,
+    "compatibility-evidence-hash",
+  ) ?? environment.STORYTELLER_PUBLICATION_RESTORE_COMPATIBILITY_EVIDENCE_HASH?.trim();
+  const approvedAtValue = stringFlag(args, "compatibility-approved-at")
+    ?? environment.STORYTELLER_PUBLICATION_RESTORE_COMPATIBILITY_APPROVED_AT?.trim();
+  const supplied = [approvedByActorId, evidenceReferenceHash, approvedAtValue]
+    .filter(Boolean).length;
+  if (supplied === 0) return undefined;
+  if (supplied !== 3) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_CLI_COMPATIBILITY_APPROVAL_INCOMPLETE",
+    );
+  }
+  const approvedAt = new Date(approvedAtValue!);
+  if (Number.isNaN(approvedAt.getTime())) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_CLI_DATE_INVALID:compatibility-approved-at",
+    );
+  }
+  return Object.freeze({
+    approvedByActorId: approvedByActorId!,
+    evidenceReferenceHash: evidenceReferenceHash!,
+    approvedAt,
+  });
+}
+
 async function emit(
   value: unknown,
   outputPath: string | undefined,
@@ -109,11 +160,11 @@ function help(stdout: PublicationOperationsBackupTextOutput): void {
   stdout.write("  verify   Verify one immutable snapshot and reject missing, extra or changed files.\n");
   stdout.write("  restore  Restore a verified snapshot only into absent or empty publication state.\n\n");
   stdout.write("Backup example:\n");
-  stdout.write("  npm run publication-operations-backup -- --data-dir ./storage --backup-dir ./backups --actor-id operator_greg --offline-confirmed --output backup.json\n\n");
+  stdout.write("  npm run publication-operations-backup -- --data-dir ./storage --backup-dir ./backups --actor-id operator_greg --application-revision <40-char-sha> --offline-confirmed --output backup.json\n\n");
   stdout.write("Verify example:\n");
   stdout.write("  npm run publication-operations-backup-verify -- --snapshot ./backups/publication_backup_... --output verification.json\n\n");
   stdout.write("Restore example:\n");
-  stdout.write("  npm run publication-operations-restore -- --snapshot ./backups/publication_backup_... --data-dir ./restored-storage --actor-id operator_greg --offline-confirmed --output restore.json\n");
+  stdout.write("  npm run publication-operations-restore -- --snapshot ./backups/publication_backup_... --data-dir ./restored-storage --actor-id operator_greg --application-revision <40-char-sha> --offline-confirmed --output restore.json\n");
 }
 
 export async function runPublicationOperationsBackupCli(
@@ -143,6 +194,7 @@ export async function runPublicationOperationsBackupCli(
       backupDirectory: stringFlag(args, "backup-dir", true)!,
       actorId: stringFlag(args, "actor-id", true)!,
       offlineConfirmed: booleanFlag(args, "offline-confirmed") as true,
+      applicationRevision: applicationRevision(args, environment),
       ...(createdAt ? { createdAt } : {}),
     });
     await emit(result, output, force, stdout);
@@ -164,11 +216,14 @@ export async function runPublicationOperationsBackupCli(
       throw new Error("PUBLICATION_OPERATIONS_BACKUP_CLI_FLAG_REQUIRED:data-dir");
     }
     const restoredAt = dateFlag(args, "restored-at");
+    const approval = compatibilityApproval(args, environment);
     const result = await restorePublicationOperationsBackup({
       snapshotDirectory: stringFlag(args, "snapshot", true)!,
       dataDirectory,
       actorId: stringFlag(args, "actor-id", true)!,
       offlineConfirmed: booleanFlag(args, "offline-confirmed") as true,
+      applicationRevision: applicationRevision(args, environment),
+      ...(approval ? { compatibilityApproval: approval } : {}),
       ...(restoredAt ? { restoredAt } : {}),
     });
     await emit(result, output, force, stdout);
