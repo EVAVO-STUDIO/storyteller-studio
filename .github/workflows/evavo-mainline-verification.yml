@@ -116,7 +116,7 @@ jobs:
         run: |
           mkdir -p artifacts/verification
           node --input-type=module <<'NODE'
-          import { writeFileSync } from "node:fs";
+          import { readFileSync, writeFileSync } from "node:fs";
 
           const stages = {
             dispatchInput: process.env.VALIDATE_OUTCOME,
@@ -149,15 +149,39 @@ jobs:
             publication: "disabled",
             deployment: "disabled",
           };
+          const receiptPath = "artifacts/verification/receipt.json";
           writeFileSync(
-            "artifacts/verification/receipt.json",
+            receiptPath,
             `${JSON.stringify(receipt, null, 2)}\n`,
             { encoding: "utf8", mode: 0o600 },
           );
+          const persisted = JSON.parse(readFileSync(receiptPath, "utf8"));
+          const allowedOutcomes = new Set([
+            "success",
+            "failure",
+            "cancelled",
+            "skipped",
+          ]);
+          if (JSON.stringify(persisted) !== JSON.stringify(receipt)) {
+            throw new Error("VERIFICATION_RECEIPT_PERSISTENCE_MISMATCH");
+          }
+          if (
+            Object.values(persisted.stages).some(
+              (outcome) => !allowedOutcomes.has(outcome),
+            )
+          ) {
+            throw new Error("VERIFICATION_RECEIPT_STAGE_OUTCOME_INVALID");
+          }
+          if (
+            persisted.result === "passed"
+            && persisted.checkedOutSha !== persisted.expectedSha
+          ) {
+            throw new Error("VERIFICATION_RECEIPT_SHA_MISMATCH");
+          }
           NODE
 
       - name: Upload bounded verification evidence
-        if: always()
+        if: always() && steps.receipt.outcome == 'success'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: storyteller-${{ inputs.expected_sha }}
