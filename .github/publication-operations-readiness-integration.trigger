@@ -1,0 +1,1 @@
+trigger publication operations readiness integration
