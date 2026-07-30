@@ -43,6 +43,8 @@ The plan and apply steps must use the same:
 - weekly window;
 - protected snapshot identifiers.
 
+Review and approve the plan from the same verified application revision used for apply. A repository or runtime upgrade requires a new plan and approval, even when the visible keep policy is unchanged.
+
 ## Verified inventory
 
 Planning enumerates every entry beneath the backup root.
