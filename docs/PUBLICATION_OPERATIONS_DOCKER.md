@@ -139,12 +139,39 @@ docker compose \
 Startup ordering is fail closed:
 
 1. evidence gateway starts;
-2. gateway TCP health check passes;
+2. the gateway health check verifies structurally readable publication state and a listening private TCP socket;
 3. preflight runs once;
 4. preflight validates shared state, token pairing, route mapping, endpoint alignment, identities and deadlines;
 5. refresh and alert delivery start only after preflight exits successfully.
 
-A failed preflight leaves refresh and alert delivery stopped.
+A failed readiness scan or preflight leaves refresh and alert delivery stopped.
+
+## Application-level readiness
+
+The evidence-gateway health check runs:
+
+```bash
+npm run publication-operations-readiness -- \
+  --data-dir /var/lib/storyteller \
+  --readiness-only
+```
+
+before opening a loopback TCP connection to the gateway.
+
+The readiness diagnostic:
+
+- reopens every publication monitor, evidence-inbox item and alert through the existing integrity-checked store;
+- runs the existing domain assertion for every payload;
+- verifies envelope and payload revision scope;
+- reads every dated audit JSONL partition;
+- rejects malformed entity and audit data;
+- rejects symbolic links and special filesystem entries;
+- rejects stale atomic temporary files;
+- emits no path, identity, evidence, recipient, provider or audit details.
+
+A current publication problem is represented as aggregate operational `attention`. It does not fail infrastructure readiness or create a container restart loop. Structural corruption and unsafe filesystem state do fail readiness.
+
+The readiness check does not contact the retailer, email gateway or evidence provider. External availability remains governed by the publication monitor and alert lifecycle.
 
 ## Status and logs
 
@@ -180,7 +207,7 @@ docker compose \
   restart publication-evidence-gateway publication-refresh publication-alerts
 ```
 
-For configuration changes, recreate the stack so preflight runs again:
+For configuration changes, recreate the stack so readiness and preflight run again:
 
 ```bash
 docker compose \
@@ -213,11 +240,20 @@ docker compose \
   stop publication-refresh publication-alerts publication-evidence-gateway
 ```
 
-Create a host backup from the named volume using a trusted utility image or host volume tooling. Preserve file ownership and permissions.
+Create a host backup from the named volume using the governed maintenance profile or trusted host volume tooling. Preserve file ownership and permissions.
 
-Restart with `up -d`; the startup preflight runs again.
+Restart with `up -d`; application readiness and startup preflight run again.
 
 A backup is not verified until it has been restored into an isolated environment and the repository's integrity checks can read every envelope and audit partition.
+
+Run the complete diagnostic after an isolated restore rehearsal and before selecting the restored volume for cutover:
+
+```bash
+npm run publication-operations-readiness -- \
+  --data-dir ./storage
+```
+
+A successful result proves structural readability for the current application revision. It does not prove that the snapshot belongs to the intended business environment, that external providers are reachable, or that an older application revision remains schema-compatible.
 
 ## Upgrade
 
@@ -226,7 +262,7 @@ A backup is not verified until it has been restored into an isolated environment
 3. rebuild with `build --pull`;
 4. run `docker compose config` securely;
 5. recreate the stack;
-6. confirm preflight exits successfully;
+6. confirm application readiness and preflight succeed;
 7. inspect service logs and monitor refresh/alert counts.
 
 Do not run different application revisions concurrently against the same file-backed volume.
@@ -252,21 +288,25 @@ Changing the evidence-gateway token requires coordinated refresh and gateway rec
 
 ## Health boundary
 
-The gateway has a TCP health check that proves only that its private listener accepts a connection.
+The gateway health check proves two local facts:
+
+- the publication state is structurally readable by the current application revision; and
+- the private gateway listener accepts a loopback connection.
 
 It does not prove:
 
-- bearer authentication succeeds;
-- evidence exists;
-- monitor scope is current;
+- bearer authentication succeeds for a particular client request;
+- current evidence exists;
+- monitor scope is current at a later instant;
 - email delivery works;
 - retailer evidence is current;
-- publication remains live.
+- publication remains live;
+- external providers are reachable.
 
-Application preflight validates configuration compatibility, not external provider connectivity.
+Application preflight validates configuration compatibility, not external provider connectivity. Publication incidents remain governed operational state rather than infrastructure failure.
 
 ## Current boundary
 
 This topology provides one reproducible, private, fail-closed deployment for the publication operations loop on a single Docker host.
 
-It does not provide multi-host locking, shared transactional storage, automatic backups, managed TLS, public ingress, retailer scraping, human verification, email-provider guarantees or perpetual publication availability.
+It does not provide multi-host locking, shared transactional storage, automatic off-host backups, managed TLS, public ingress, retailer scraping, human verification, email-provider guarantees or perpetual publication availability.
