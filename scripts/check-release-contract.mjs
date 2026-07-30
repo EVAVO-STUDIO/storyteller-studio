@@ -57,6 +57,8 @@ for (const [name, expected] of Object.entries({
   build: "npm run build --workspaces --if-present",
   typecheck: "tsc --noEmit",
   test: "node scripts/run-tests.mjs all",
+  "verify:release": "node scripts/check-release-contract.mjs",
+  "verify:foundation": "node scripts/check-foundation.mjs && node scripts/check-web-artifact-surface.mjs && node scripts/check-web-calibration-surface.mjs && npm run verify:release",
 })) {
   if (packageDocument.scripts?.[name] !== expected) {
     errors.push(`package.json scripts.${name} must remain ${expected}.`);
@@ -172,6 +174,7 @@ const report = {
   stageOutcomesRecorded: true,
   receiptPersistenceVerified: true,
   invalidReceiptUploadAllowed: false,
+  normalVerificationIncludesReleaseContract: true,
   passed: errors.length === 0,
   errors,
 };
