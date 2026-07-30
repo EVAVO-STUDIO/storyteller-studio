@@ -338,6 +338,7 @@ function createManifest(input: Readonly<{
   sourceFiles: readonly ScannedFileRecord[];
   createdAt: string;
   actorId: string;
+  compatibility: PublicationOperationsBackupCompatibilityIdentity;
 }>): PublicationOperationsBackupManifest {
   const files = normalisedSnapshotFiles(input.sourceFiles);
   const sourceFingerprint = stableHash(input.sourceFiles);
