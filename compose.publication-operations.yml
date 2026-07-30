@@ -4,12 +4,15 @@ x-worker-base: &worker-base
   build:
     context: .
     dockerfile: Dockerfile.publication-operations
+    args:
+      STORYTELLER_APPLICATION_REVISION: ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}
   image: storyteller-publication-operations:local
   env_file:
     - ${STORYTELLER_PUBLICATION_OPERATIONS_ENV_FILE:-.env.publication-operations}
   environment:
     NODE_ENV: production
     STORYTELLER_DATA_DIR: /var/lib/storyteller
+    STORYTELLER_APPLICATION_REVISION: ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}
   init: true
   read_only: true
   user: node
