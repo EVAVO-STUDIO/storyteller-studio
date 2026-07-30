@@ -1,4 +1,10 @@
-FROM node:22.18.0-bookworm-slim
+FROM node:24.18.0-bookworm-slim
+
+ARG STORYTELLER_APPLICATION_REVISION
+
+RUN node -e "const revision=process.env.STORYTELLER_APPLICATION_REVISION??'';if(!/^[a-f0-9]{40}$/.test(revision)){throw new Error('STORYTELLER_APPLICATION_REVISION_INVALID')}"
+
+LABEL org.opencontainers.image.revision="${STORYTELLER_APPLICATION_REVISION}"
 
 WORKDIR /opt/storyteller
 
@@ -12,7 +18,8 @@ RUN npm ci --no-audit --no-fund \
 
 ENV NODE_ENV=production \
   HOME=/tmp \
-  STORYTELLER_DATA_DIR=/var/lib/storyteller
+  STORYTELLER_DATA_DIR=/var/lib/storyteller \
+  STORYTELLER_APPLICATION_REVISION=${STORYTELLER_APPLICATION_REVISION}
 
 USER node
 

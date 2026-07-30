@@ -17,11 +17,24 @@ Each role uses the existing Storyteller worker entry point and a distinct `STORY
 
 ## Image
 
-`Dockerfile.publication-operations` uses Node.js 22.18, installs the locked workspace dependencies, runs strict TypeScript and workspace builds, then runs the worker as the unprivileged `node` user.
+`Dockerfile.publication-operations` uses Node.js 24.18.0, matching `.nvmrc`, installs the locked workspace dependencies, runs strict TypeScript and workspace builds, then runs the worker as the unprivileged `node` user.
 
 The image contains source and `tsx` because the repository's production worker entry point currently executes TypeScript directly.
 
 The image does not publish a port or include an HTTP proxy.
+
+## Image revision binding
+
+Before Compose configuration or build, set `STORYTELLER_APPLICATION_REVISION` to the exact reviewed lowercase 40-character Git commit SHA:
+
+```bash
+export STORYTELLER_APPLICATION_REVISION="$(git rev-parse HEAD)"
+test -z "$(git status --porcelain)"
+```
+
+Compose passes the same value as the Docker build argument and runtime environment. The Dockerfile rejects missing, uppercase, shortened or non-hex revisions, records the value in `org.opencontainers.image.revision`, and exposes it to the private backup and restore CLI.
+
+The runtime value therefore comes from the immutable image build contract rather than a separately editable container override. Before deployment, confirm the reviewed checkout is clean and the SHA matches the intended release commit.
 
 ## Private evidence route
 
@@ -97,7 +110,8 @@ Replace every placeholder, especially:
 - sender email;
 - email gateway endpoint;
 - route reference hash;
-- distinct alert, refresh and gateway identities.
+- distinct alert, refresh and gateway identities;
+- the exact reviewed `STORYTELLER_APPLICATION_REVISION`.
 
 Do not commit `.env.publication-operations`.
 

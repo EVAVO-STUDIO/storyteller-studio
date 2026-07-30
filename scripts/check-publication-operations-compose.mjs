@@ -45,7 +45,11 @@ for (const path of [
 ]) requireFile(path);
 
 requireTokens("Dockerfile.publication-operations", [
-  "FROM node:22.18.0-bookworm-slim",
+  "FROM node:24.18.0-bookworm-slim",
+  "ARG STORYTELLER_APPLICATION_REVISION",
+  "STORYTELLER_APPLICATION_REVISION_INVALID",
+  'LABEL org.opencontainers.image.revision="${STORYTELLER_APPLICATION_REVISION}"',
+  "STORYTELLER_APPLICATION_REVISION=${STORYTELLER_APPLICATION_REVISION}",
   "npm ci --no-audit --no-fund",
   "npm run typecheck",
   "npm run build",
@@ -59,6 +63,12 @@ requireTokens("Dockerfile.publication-operations", [
 
 if (existsSync(fromRoot("Dockerfile.publication-operations"))) {
   const dockerfile = read("Dockerfile.publication-operations");
+  const pinnedRuntime = existsSync(fromRoot(".nvmrc"))
+    ? read(".nvmrc").trim()
+    : "";
+  if (!pinnedRuntime || !dockerfile.includes(`FROM node:${pinnedRuntime}-bookworm-slim`)) {
+    problems.push("publication operations image runtime must exactly match .nvmrc");
+  }
   for (const forbidden of ["EXPOSE ", "USER root", "npm install "]) {
     if (dockerfile.includes(forbidden)) {
       problems.push(`Dockerfile.publication-operations contains unsafe token: ${forbidden}`);
@@ -70,6 +80,7 @@ requireTokens("compose.publication-operations.yml", [
   "name: storyteller-publication-operations",
   "Dockerfile.publication-operations",
   "STORYTELLER_PUBLICATION_OPERATIONS_ENV_FILE",
+  "STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION",
   "read_only: true",
   "user: node",
   "cap_drop:",
@@ -221,6 +232,7 @@ requireTokens(".env.publication-operations.example", [
   "STORYTELLER_PUBLICATION_BACKUP_VOLUME=storyteller-publication-backups",
   "STORYTELLER_PUBLICATION_MAINTENANCE_ACTOR_ID=",
   "STORYTELLER_PUBLICATION_BACKUP_SNAPSHOT_ID=",
+  "STORYTELLER_APPLICATION_REVISION=replace-with-40-character-git-commit-sha",
   "STORYTELLER_PUBLICATION_ALERT_WORKER_ID=",
   "STORYTELLER_PUBLICATION_REFRESH_WORKER_ID=",
   "STORYTELLER_PUBLICATION_EVIDENCE_GATEWAY_ID=",
@@ -236,6 +248,8 @@ requireTokens(".env.publication-operations.example", [
 
 requireTokens("docs/PUBLICATION_OPERATIONS_DOCKER.md", [
   "Included roles",
+  "Image revision binding",
+  "org.opencontainers.image.revision",
   "Private evidence route",
   "Shared state",
   "Container hardening",
@@ -331,6 +345,7 @@ if (problems.length > 0) {
 
 console.log("storyteller_publication_operations_compose_check_passed");
 console.log("- one immutable worker image runs four long-lived or startup publication roles");
+console.log("- image runtime matches .nvmrc and build provenance is bound to one exact source revision");
 console.log("- three offline maintenance services are profile-gated and networkless");
 console.log("- backup reads live data only through a read-only mount and writes a separate volume");
 console.log("- verification mounts no live state and restore requires a selected data volume");
