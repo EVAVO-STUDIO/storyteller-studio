@@ -32,6 +32,7 @@ jobs:
 
     steps:
       - name: Validate dispatch input
+        id: validate_input
         shell: bash
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
@@ -47,6 +48,7 @@ jobs:
           fi
 
       - name: Check out exact mainline commit
+        id: checkout
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           ref: ${{ inputs.expected_sha }}
@@ -54,6 +56,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify checked-out commit
+        id: mainline
         shell: bash
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
@@ -61,39 +64,97 @@ jobs:
           ACTUAL_SHA="$(git rev-parse HEAD)"
           test "$ACTUAL_SHA" = "$EXPECTED_SHA"
           git merge-base --is-ancestor "$EXPECTED_SHA" origin/main
+          echo "actual_sha=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Set up exact Node.js runtime
+        id: setup_node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Activate exact npm
+        id: activate_npm
         shell: bash
         run: |
           npm install --global npm@10.9.2 --no-audit --no-fund
           test "$(npm --version)" = "10.9.2"
 
       - name: Verify release contract
+        id: release_contract
         run: node scripts/check-release-contract.mjs
 
       - name: Install committed workspace graph
+        id: install
         run: npm ci --no-audit --no-fund
 
       - name: Run complete provider-neutral verification
+        id: verify
         run: npm run verify
 
       - name: Build all production workspaces
+        id: build
         run: npm run build
 
       - name: Record verification receipt
+        id: receipt
         if: always()
         shell: bash
         env:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
+          REQUEST_SOURCE: ${{ inputs.request_source }}
+          CHECKED_OUT_SHA: ${{ steps.mainline.outputs.actual_sha }}
+          VALIDATE_OUTCOME: ${{ steps.validate_input.outcome }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          MAINLINE_OUTCOME: ${{ steps.mainline.outcome }}
+          SETUP_NODE_OUTCOME: ${{ steps.setup_node.outcome }}
+          ACTIVATE_NPM_OUTCOME: ${{ steps.activate_npm.outcome }}
+          RELEASE_CONTRACT_OUTCOME: ${{ steps.release_contract.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
         run: |
           mkdir -p artifacts/verification
-          printf '{"schemaVersion":"1.0","repository":"EVAVO-STUDIO/storyteller-studio","sha":"%s","workflow":"evavo-mainline-verification.yml","node":"24.18.0","npm":"10.9.2","providerCredentials":"not-required","publication":"disabled","deployment":"disabled"}\n' "$EXPECTED_SHA" > artifacts/verification/receipt.json
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from "node:fs";
+
+          const stages = {
+            dispatchInput: process.env.VALIDATE_OUTCOME,
+            checkout: process.env.CHECKOUT_OUTCOME,
+            mainlineBinding: process.env.MAINLINE_OUTCOME,
+            nodeRuntime: process.env.SETUP_NODE_OUTCOME,
+            npmRuntime: process.env.ACTIVATE_NPM_OUTCOME,
+            releaseContract: process.env.RELEASE_CONTRACT_OUTCOME,
+            dependencyInstall: process.env.INSTALL_OUTCOME,
+            verification: process.env.VERIFY_OUTCOME,
+            build: process.env.BUILD_OUTCOME,
+          };
+          const result = Object.values(stages).every(
+            (outcome) => outcome === "success",
+          ) ? "passed" : "failed";
+          const receipt = {
+            schemaVersion: "1.1",
+            repository: process.env.GITHUB_REPOSITORY,
+            workflow: process.env.GITHUB_WORKFLOW,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            requestSource: process.env.REQUEST_SOURCE,
+            expectedSha: process.env.EXPECTED_SHA,
+            checkedOutSha: process.env.CHECKED_OUT_SHA || null,
+            result,
+            stages,
+            node: "24.18.0",
+            npm: "10.9.2",
+            providerCredentials: "not-required",
+            publication: "disabled",
+            deployment: "disabled",
+          };
+          writeFileSync(
+            "artifacts/verification/receipt.json",
+            `${JSON.stringify(receipt, null, 2)}\n`,
+            { encoding: "utf8", mode: 0o600 },
+          );
+          NODE
 
       - name: Upload bounded verification evidence
         if: always()
