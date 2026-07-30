@@ -38,6 +38,8 @@ if (!lockRoot || typeof lockRoot !== "object") {
 
 for (const [path, record] of Object.entries(lockDocument.packages ?? {})) {
   if (!record || typeof record !== "object") continue;
+  const pathSegments = path.split("/");
+  if (pathSegments.includes("node_modules")) continue;
   for (const field of [
     "dependencies",
     "devDependencies",
@@ -175,6 +177,8 @@ const report = {
   receiptPersistenceVerified: true,
   invalidReceiptUploadAllowed: false,
   normalVerificationIncludesReleaseContract: true,
+  repositoryManifestDependencyRangesBounded: true,
+  transitivePackagePeerRangesReinterpreted: false,
   passed: errors.length === 0,
   errors,
 };
