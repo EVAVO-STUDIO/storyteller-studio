@@ -130,6 +130,7 @@ test("retention planning verifies every snapshot and is deterministic without de
     ).result.snapshotId;
     const input = {
       backupDirectory: paths.backups,
+      applicationRevision,
       keepLatest: 2,
       keepDailyDays: 0,
       keepWeeklyWeeks: 0,
@@ -158,6 +159,7 @@ test("daily and weekly buckets retain the newest verified snapshot in each UTC b
     await createSnapshots(paths);
     const plan = await planPublicationOperationsBackupRetention({
       backupDirectory: paths.backups,
+      applicationRevision,
       keepLatest: 1,
       keepDailyDays: 3,
       keepWeeklyWeeks: 8,
@@ -188,6 +190,7 @@ test("offline apply deletes only the exact verified plan and preserves retained 
     ).result.snapshotId;
     const common = {
       backupDirectory: paths.backups,
+      applicationRevision,
       keepLatest: 2,
       keepDailyDays: 0,
       keepWeeklyWeeks: 0,
@@ -236,6 +239,7 @@ test("changed inventory invalidates a previously approved plan before deletion",
     await createSnapshots(paths);
     const common = {
       backupDirectory: paths.backups,
+      applicationRevision,
       keepLatest: 2,
       keepDailyDays: 0,
       keepWeeklyWeeks: 0,
@@ -264,6 +268,34 @@ test("changed inventory invalidates a previously approved plan before deletion",
   });
 });
 
+test("application revision change invalidates an approved plan before deletion", async () => {
+  await withDirectories(async (paths) => {
+    await createSnapshots(paths);
+    const common = {
+      backupDirectory: paths.backups,
+      applicationRevision,
+      keepLatest: 2,
+      keepDailyDays: 0,
+      keepWeeklyWeeks: 0,
+      evaluatedAt,
+    } as const;
+    const plan = await planPublicationOperationsBackupRetention(common);
+    assert.equal(plan.applicationRevision, applicationRevision);
+    await assert.rejects(
+      prunePublicationOperationsBackups({
+        ...common,
+        applicationRevision: "2".repeat(40),
+        actorId: "retention_revision_operator_001",
+        offlineConfirmed: true,
+        expectedPlanFingerprint: plan.fingerprint,
+        prunedAt: new Date("2026-07-30T12:05:00.000Z"),
+      }),
+      /PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_STALE/u,
+    );
+    assert.equal((await readdir(paths.backups)).length, snapshotDates.length);
+  });
+});
+
 test("retention rejects unknown root entries, staging state and symbolic links", async (context) => {
   await withDirectories(async (paths) => {
     await createSnapshots(paths);
@@ -271,6 +303,7 @@ test("retention rejects unknown root entries, staging state and symbolic links",
     await assert.rejects(
       planPublicationOperationsBackupRetention({
         backupDirectory: paths.backups,
+        applicationRevision,
         evaluatedAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_RETENTION_ROOT_LAYOUT_INVALID/u,
@@ -283,6 +316,7 @@ test("retention rejects unknown root entries, staging state and symbolic links",
     await assert.rejects(
       planPublicationOperationsBackupRetention({
         backupDirectory: paths.backups,
+        applicationRevision,
         evaluatedAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_RETENTION_DIRECTORY_BUSY/u,
@@ -299,6 +333,7 @@ test("retention rejects unknown root entries, staging state and symbolic links",
     await assert.rejects(
       planPublicationOperationsBackupRetention({
         backupDirectory: paths.backups,
+        applicationRevision,
         evaluatedAt,
       }),
       /PUBLICATION_OPERATIONS_BACKUP_RETENTION_SYMLINK_FORBIDDEN/u,
@@ -317,6 +352,7 @@ test("retention CLI requires a private apply receipt and writes mode-0600 eviden
       "plan",
       "--backup-dir", paths.backups,
       "--evaluated-at", evaluated,
+      "--application-revision", applicationRevision,
       "--keep-latest", "2",
       "--keep-daily-days", "0",
       "--keep-weekly-weeks", "0",
@@ -325,9 +361,11 @@ test("retention CLI requires a private apply receipt and writes mode-0600 eviden
     assert.equal(planExit, 0);
     const plan = JSON.parse(await readFile(planPath, "utf8")) as {
       fingerprint: string;
+      applicationRevision: string;
       delete: unknown[];
     };
     assert.equal(plan.delete.length > 0, true);
+    assert.equal(plan.applicationRevision, applicationRevision);
 
     await assert.rejects(
       runPublicationOperationsBackupRetentionCli([
@@ -348,6 +386,7 @@ test("retention CLI requires a private apply receipt and writes mode-0600 eviden
       "apply",
       "--backup-dir", paths.backups,
       "--evaluated-at", evaluated,
+      "--application-revision", applicationRevision,
       "--keep-latest", "2",
       "--keep-daily-days", "0",
       "--keep-weekly-weeks", "0",
@@ -361,10 +400,12 @@ test("retention CLI requires a private apply receipt and writes mode-0600 eviden
     const receipt = JSON.parse(await readFile(receiptPath, "utf8")) as {
       status: string;
       actorId: string;
+      applicationRevision: string;
       deletedCount: number;
     };
     assert.equal(receipt.status, "pruned");
     assert.equal(receipt.actorId, "retention_cli_operator_001");
+    assert.equal(receipt.applicationRevision, applicationRevision);
     assert.equal(receipt.deletedCount > 0, true);
     assert.equal((await stat(receiptPath)).mode & 0o777, 0o600);
     assert.equal(JSON.stringify(receipt).includes(paths.backups), false);

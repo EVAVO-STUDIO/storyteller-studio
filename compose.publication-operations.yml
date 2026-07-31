@@ -162,6 +162,8 @@ services:
       - /var/backups/storyteller
       - --evaluated-at
       - ${STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT:?set STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT}
+      - --application-revision
+      - ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}
       - --keep-latest
       - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST:-7}
       - --keep-daily-days
@@ -189,6 +191,8 @@ services:
       - /var/backups/storyteller
       - --evaluated-at
       - ${STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT:?set STORYTELLER_PUBLICATION_RETENTION_EVALUATED_AT}
+      - --application-revision
+      - ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}
       - --keep-latest
       - ${STORYTELLER_PUBLICATION_RETENTION_KEEP_LATEST:-7}
       - --keep-daily-days

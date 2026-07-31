@@ -138,9 +138,9 @@ function help(stdout: PublicationOperationsBackupRetentionTextOutput): void {
   stdout.write("  plan   Verify all snapshots and create a non-destructive retention plan.\n");
   stdout.write("  apply  Recompute and apply an unchanged plan while publication writers are stopped.\n\n");
   stdout.write("Plan example:\n");
-  stdout.write("  npm run publication-operations-backup-retention-plan -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --output retention-plan.json\n\n");
+  stdout.write("  npm run publication-operations-backup-retention-plan -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --output retention-plan.json\n\n");
   stdout.write("Apply example:\n");
-  stdout.write("  npm run publication-operations-backup-prune -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --plan-fingerprint <sha256> --actor-id operator_greg --offline-confirmed --output retention-receipt.json\n");
+  stdout.write("  npm run publication-operations-backup-prune -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --plan-fingerprint <sha256> --actor-id operator_greg --offline-confirmed --output retention-receipt.json\n");
 }
 
 function commonInput(args: ParsedArguments) {
@@ -150,6 +150,11 @@ function commonInput(args: ParsedArguments) {
   const keepWeeklyWeeks = integerFlag(args, "keep-weekly-weeks");
   return {
     backupDirectory: stringFlag(args, "backup-dir", true)!,
+    applicationRevision: stringFlag(
+      args,
+      "application-revision",
+      true,
+    )!,
     ...(keepLatest !== undefined ? { keepLatest } : {}),
     ...(keepDailyDays !== undefined ? { keepDailyDays } : {}),
     ...(keepWeeklyWeeks !== undefined ? { keepWeeklyWeeks } : {}),

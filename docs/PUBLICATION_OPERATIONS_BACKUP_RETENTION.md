@@ -12,6 +12,7 @@ Create a non-destructive plan:
 npm run publication-operations-backup-retention-plan -- \
   --backup-dir ./backups \
   --evaluated-at 2026-07-30T00:00:00Z \
+  --application-revision <40-character-git-sha> \
   --keep-latest 7 \
   --keep-daily-days 30 \
   --keep-weekly-weeks 12 \
@@ -24,6 +25,7 @@ Apply the exact approved plan while publication backup writers are stopped:
 npm run publication-operations-backup-prune -- \
   --backup-dir ./backups \
   --evaluated-at 2026-07-30T00:00:00Z \
+  --application-revision <40-character-git-sha> \
   --keep-latest 7 \
   --keep-daily-days 30 \
   --keep-weekly-weeks 12 \
@@ -38,6 +40,7 @@ The plan and apply steps must use the same:
 
 - backup directory;
 - evaluation time;
+- exact application revision;
 - keep-latest count;
 - daily window;
 - weekly window;
@@ -105,6 +108,7 @@ A snapshot may have multiple keep reasons. Reasons are recorded in deterministic
 The plan records:
 
 - exact evaluation time;
+- exact lowercase 40-character application revision;
 - policy and policy fingerprint;
 - complete snapshot and byte totals;
 - retained snapshots and reasons;
@@ -155,6 +159,7 @@ The mode-0600 JSON receipt records:
 - actor identity;
 - apply time;
 - approved plan fingerprint;
+- exact application revision;
 - retained and deleted counts;
 - reclaimed bytes;
 - deleted snapshot identifiers;
