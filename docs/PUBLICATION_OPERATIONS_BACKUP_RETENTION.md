@@ -36,6 +36,8 @@ npm run publication-operations-backup-prune -- \
   --output retention-receipt.json
 ```
 
+Both plan and apply require `--output`. The full plan or apply receipt is never written to standard output. A successful command emits only a bounded acknowledgement identifying whether a private `plan` or `apply` receipt was written.
+
 The plan and apply steps must use the same:
 
 - backup directory;
@@ -116,9 +118,9 @@ The plan records:
 - retained and reclaimable bytes;
 - plan fingerprint.
 
-Repeated planning with unchanged inventory, policy and evaluation time returns the same fingerprint.
+Repeated planning with unchanged inventory, policy, application revision and evaluation time returns the same fingerprint.
 
-Planning does not modify the backup directory.
+Planning does not modify the backup directory. The complete plan must be persisted to the mandatory private output receipt for review; it is never dumped into service logs or an interactive terminal by default.
 
 ## Exact apply gate
 
@@ -126,12 +128,13 @@ Apply requires:
 
 - the complete same policy;
 - the same evaluation time;
+- the exact same application revision;
 - the expected plan fingerprint;
 - an identified actor;
 - `--offline-confirmed`;
 - a mandatory private output receipt.
 
-Apply recomputes and verifies the complete plan immediately before deletion. Any new, removed, altered or newly corrupt snapshot changes the plan and fails with:
+Apply recomputes and verifies the complete plan immediately before deletion. Any new, removed, altered or newly corrupt snapshot, policy change, evaluation-time change or application-revision change changes the plan and fails with:
 
 ```text
 PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_STALE
@@ -149,11 +152,13 @@ The snapshot directory is renamed to a private `.pruning` staging name before re
 
 After deletion, the remaining directory set must exactly equal the retained set from the approved plan.
 
-## Required receipt
+## Required private receipts
 
-Destructive apply requires `--output`.
+Both planning and destructive apply require `--output`.
 
-The mode-0600 JSON receipt records:
+The private plan receipt records the complete verified inventory decision, including retained snapshots, deletion candidates, reasons, byte totals, application revision and plan fingerprint.
+
+The mode-0600 apply receipt records:
 
 - `pruned` or `unchanged` status;
 - actor identity;
@@ -165,9 +170,31 @@ The mode-0600 JSON receipt records:
 - deleted snapshot identifiers;
 - receipt fingerprint.
 
-The receipt omits the backup filesystem path and snapshot file contents.
+The receipts omit the backup filesystem path and snapshot file contents. They remain private operational evidence because snapshot identifiers, actor identity and retention decisions can still reveal internal state.
 
-Store the receipt in a private maintenance evidence location outside the backup root. Files inside the backup root that are not canonical snapshot directories intentionally make future retention fail closed.
+Standard output contains only one of these bounded acknowledgements:
+
+```json
+{"status":"written","receipt":"plan"}
+```
+
+```json
+{"status":"written","receipt":"apply"}
+```
+
+The acknowledgement omits output paths, application revisions, plan fingerprints, snapshot identifiers, actor identities and deletion details.
+
+Store receipts in a private maintenance evidence location outside the backup root. Files inside the backup root that are not canonical snapshot directories intentionally make future retention fail closed.
+
+## Atomic receipt publication
+
+Receipt bytes are first written to a unique sibling staging file using exclusive creation and mode `0600`. The file is flushed before publication.
+
+Without `--force`, the staging inode is linked into the requested output path only when that path does not already exist. An existing receipt is never silently overwritten.
+
+With `--force`, the fully written staging file replaces the requested path through an atomic rename. Failed publication removes the staging file. Successful publication leaves no `.tmp` receipt beside the final evidence file.
+
+This boundary prevents partially written JSON from being mistaken for an approved plan or completed apply receipt. It does not make the containing filesystem durable against host loss; private maintenance evidence still needs appropriate encrypted storage and backup.
 
 ## Offline maintenance boundary
 

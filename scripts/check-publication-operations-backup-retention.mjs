@@ -44,6 +44,7 @@ for (const path of [
   "packages/cli/src/publication-operations-backup-retention.ts",
   "packages/cli/src/publication-operations-backup-retention-main.ts",
   "packages/cli/src/publication-operations-backup-retention.test.ts",
+  "packages/cli/src/publication-operations-backup-retention-output.test.ts",
   "docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md",
   "package.json",
 ]) requireFile(path);
@@ -76,12 +77,19 @@ requireTokens("packages/cli/src/publication-operations-backup-retention-main.ts"
   'args.command === "plan"',
   'args.command === "apply"',
   'stringFlag(args, "backup-dir", true)',
+  'stringFlag(args, "output", true)',
   '"application-revision"',
   '"plan-fingerprint"',
   "expectedPlanFingerprint",
   'stringFlag(args, "actor-id", true)',
   'booleanFlag(args, "offline-confirmed")',
-  'PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FLAG_REQUIRED:output',
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_EXISTS",
+  "randomUUID",
+  'open(stagingPath, "wx", 0o600)',
+  "handle.sync()",
+  "link(stagingPath, path)",
+  "rename(stagingPath, path)",
+  'status: "written"',
   "0o600",
   "chmod(path, 0o600)",
 ]);
@@ -98,6 +106,16 @@ requireTokens("packages/cli/src/publication-operations-backup-retention.test.ts"
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_SYMLINK_FORBIDDEN",
 ]);
 
+requireTokens("packages/cli/src/publication-operations-backup-retention-output.test.ts", [
+  "retention plan and apply both require private output receipts",
+  "retention receipts publish atomically with bounded path-free acknowledgements",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FLAG_REQUIRED:output",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_EXISTS",
+  'receipt: "plan"',
+  'receipt: "apply"',
+  'name.endsWith(".tmp")',
+]);
+
 requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md", [
   "Verified inventory",
   "Retention policy",
@@ -105,7 +123,9 @@ requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md", [
   "Exact apply gate",
   "exact application revision",
   "Verified deletion",
-  "Required receipt",
+  "Required private receipts",
+  "Atomic receipt publication",
+  "bounded acknowledgement",
   "Offline maintenance boundary",
   "No automatic pruning",
   "does not",
@@ -173,5 +193,6 @@ console.log("storyteller_publication_backup_retention_check_passed");
 console.log("- all snapshots are fully verified before keep or delete selection");
 console.log("- destructive apply requires an unchanged plan fingerprint and offline confirmation");
 console.log("- protected, daily, weekly and latest retention are deterministic");
-console.log("- apply requires a private mode-0600 receipt");
+console.log("- plan and apply require atomically published private mode-0600 receipts");
+console.log("- standard output is a bounded acknowledgement without paths, revisions or snapshot evidence");
 console.log("- backup creation, readiness, startup, API and web runtimes cannot prune automatically");

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
-import { chmod, open } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, link, open, rename, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -21,6 +21,8 @@ export interface PublicationOperationsBackupRetentionTextOutput {
 export interface PublicationOperationsBackupRetentionCliDependencies {
   stdout?: PublicationOperationsBackupRetentionTextOutput;
 }
+
+type PublicationOperationsBackupRetentionReceiptKind = "plan" | "apply";
 
 function parseArguments(argv: readonly string[]): ParsedArguments {
   const [command = "help", ...rest] = argv;
@@ -104,39 +106,72 @@ function protectedSnapshotIds(args: ParsedArguments): readonly string[] {
   );
 }
 
+function errorCode(error: unknown): string | undefined {
+  return error
+    && typeof error === "object"
+    && "code" in error
+    && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+async function writePrivateReceipt(
+  value: unknown,
+  outputPath: string,
+  force: boolean,
+): Promise<void> {
+  const path = resolve(outputPath);
+  const stagingPath = `${path}.${randomUUID()}.tmp`;
+  const content = `${JSON.stringify(value, null, 2)}\n`;
+  let published = false;
+  try {
+    const handle = await open(stagingPath, "wx", 0o600);
+    try {
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await chmod(stagingPath, 0o600);
+    if (force) {
+      await rename(stagingPath, path);
+    } else {
+      try {
+        await link(stagingPath, path);
+      } catch (error) {
+        if (errorCode(error) === "EEXIST") {
+          throw new Error(
+            "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_EXISTS",
+          );
+        }
+        throw error;
+      }
+      await rm(stagingPath);
+    }
+    await chmod(path, 0o600);
+    published = true;
+  } finally {
+    if (!published) await rm(stagingPath, { force: true });
+  }
+}
+
 async function emit(
   value: unknown,
-  outputPath: string | undefined,
+  outputPath: string,
   force: boolean,
+  receipt: PublicationOperationsBackupRetentionReceiptKind,
   stdout: PublicationOperationsBackupRetentionTextOutput,
 ): Promise<void> {
-  const content = `${JSON.stringify(value, null, 2)}\n`;
-  if (!outputPath) {
-    stdout.write(content);
-    return;
-  }
-  const path = resolve(outputPath);
-  if (existsSync(path) && !force) {
-    throw new Error(
-      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_EXISTS",
-    );
-  }
-  const handle = await open(path, force ? "w" : "wx", 0o600);
-  try {
-    await handle.writeFile(content, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await chmod(path, 0o600);
-  stdout.write(`${path}\n`);
+  await writePrivateReceipt(value, outputPath, force);
+  stdout.write(`${JSON.stringify({ status: "written", receipt })}\n`);
 }
 
 function help(stdout: PublicationOperationsBackupRetentionTextOutput): void {
   stdout.write("Storyteller publication backup retention CLI\n\n");
   stdout.write("Commands:\n");
-  stdout.write("  plan   Verify all snapshots and create a non-destructive retention plan.\n");
+  stdout.write("  plan   Verify all snapshots and write a private non-destructive retention plan.\n");
   stdout.write("  apply  Recompute and apply an unchanged plan while publication writers are stopped.\n\n");
+  stdout.write("Both commands require --output. Standard output contains only a bounded receipt-written acknowledgement.\n\n");
   stdout.write("Plan example:\n");
   stdout.write("  npm run publication-operations-backup-retention-plan -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --output retention-plan.json\n\n");
   stdout.write("Apply example:\n");
@@ -173,23 +208,19 @@ export async function runPublicationOperationsBackupRetentionCli(
     help(stdout);
     return 0;
   }
-  const output = stringFlag(args, "output");
   const force = booleanFlag(args, "force");
 
   if (args.command === "plan") {
+    const output = stringFlag(args, "output", true)!;
     const result = await planPublicationOperationsBackupRetention(
       commonInput(args),
     );
-    await emit(result, output, force, stdout);
+    await emit(result, output, force, "plan", stdout);
     return 0;
   }
 
   if (args.command === "apply") {
-    if (!output) {
-      throw new Error(
-        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FLAG_REQUIRED:output",
-      );
-    }
+    const output = stringFlag(args, "output", true)!;
     const prunedAt = dateFlag(args, "pruned-at");
     const result = await prunePublicationOperationsBackups({
       ...commonInput(args),
@@ -202,7 +233,7 @@ export async function runPublicationOperationsBackupRetentionCli(
       )!,
       ...(prunedAt ? { prunedAt } : {}),
     });
-    await emit(result, output, force, stdout);
+    await emit(result, output, force, "apply", stdout);
     return 0;
   }
 
