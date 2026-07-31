@@ -1,8 +1,22 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { chmod, link, open, rename, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import {
+  chmod,
+  link,
+  lstat,
+  open,
+  readFile,
+  rename,
+  rm,
+} from "node:fs/promises";
+import {
+  dirname,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   planPublicationOperationsBackupRetention,
@@ -20,9 +34,25 @@ export interface PublicationOperationsBackupRetentionTextOutput {
 
 export interface PublicationOperationsBackupRetentionCliDependencies {
   stdout?: PublicationOperationsBackupRetentionTextOutput;
+  now?: () => Date;
+  afterApplyIntent?: () => Promise<void>;
 }
 
 type PublicationOperationsBackupRetentionReceiptKind = "plan" | "apply";
+
+interface PrivateReceiptReservation {
+  path: string;
+  content: string;
+}
+
+export const PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION =
+  "storyteller-publication-operations-backup-retention-apply-intent-v1" as const;
+export const PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION =
+  "storyteller-publication-operations-backup-retention-apply-failure-v1" as const;
+
+const HASH_PATTERN = /^[a-f0-9]{64}$/u;
+const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
+const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]*$/u;
 
 function parseArguments(argv: readonly string[]): ParsedArguments {
   const [command = "help", ...rest] = argv;
@@ -115,25 +145,106 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
+function safeFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  const [candidate = ""] = message.split(":", 1);
+  if (SAFE_ERROR_CODE.test(candidate)) return candidate;
+  const filesystemCode = errorCode(error);
+  if (filesystemCode && /^[A-Z0-9_]+$/u.test(filesystemCode)) {
+    return `PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FILESYSTEM_${filesystemCode}`;
+  }
+  return "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FAILED";
+}
+
+function safeCliErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (/^[A-Z][A-Z0-9_]*(?::[A-Za-z0-9._-]+)?$/u.test(message)) {
+    return message;
+  }
+  return safeFailureCode(error);
+}
+
+function isContained(child: string, parent: string): boolean {
+  const relation = relative(parent, child);
+  return relation === ""
+    || (!relation.startsWith(`..${sep}`) && relation !== ".." && !isAbsolute(relation));
+}
+
+function receiptPathOutsideBackupRoot(
+  outputPath: string,
+  backupDirectory: string,
+): string {
+  const path = resolve(outputPath);
+  const backupRoot = resolve(backupDirectory);
+  if (isContained(path, backupRoot)) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_INSIDE_BACKUP_ROOT",
+    );
+  }
+  return path;
+}
+
+async function syncParentDirectory(path: string): Promise<void> {
+  const handle = await open(dirname(path), "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function stagePrivateReceipt(
+  path: string,
+  content: string,
+): Promise<string> {
+  const stagingPath = `${path}.${randomUUID()}.tmp`;
+  const handle = await open(stagingPath, "wx", 0o600);
+  try {
+    await handle.writeFile(content, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await chmod(stagingPath, 0o600);
+  return stagingPath;
+}
+
+async function assertRegularReceiptTarget(path: string): Promise<void> {
+  const information = await lstat(path);
+  if (information.isSymbolicLink() || !information.isFile()) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_TARGET_INVALID",
+    );
+  }
+}
+
+async function assertPrivateReceiptReservation(
+  reservation: PrivateReceiptReservation,
+): Promise<void> {
+  await assertRegularReceiptTarget(reservation.path);
+  if (await readFile(reservation.path, "utf8") !== reservation.content) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_RESERVATION_CHANGED",
+    );
+  }
+}
+
 async function writePrivateReceipt(
   value: unknown,
   outputPath: string,
   force: boolean,
-): Promise<void> {
+): Promise<PrivateReceiptReservation> {
   const path = resolve(outputPath);
-  const stagingPath = `${path}.${randomUUID()}.tmp`;
   const content = `${JSON.stringify(value, null, 2)}\n`;
-  let published = false;
+  const stagingPath = await stagePrivateReceipt(path, content);
+  let stagingPublished = false;
   try {
-    const handle = await open(stagingPath, "wx", 0o600);
-    try {
-      await handle.writeFile(content, "utf8");
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    await chmod(stagingPath, 0o600);
     if (force) {
+      try {
+        await assertRegularReceiptTarget(path);
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") throw error;
+      }
       await rename(stagingPath, path);
     } else {
       try {
@@ -148,10 +259,36 @@ async function writePrivateReceipt(
       }
       await rm(stagingPath);
     }
+    stagingPublished = true;
     await chmod(path, 0o600);
-    published = true;
+    await syncParentDirectory(path);
+    const reservation = Object.freeze({ path, content });
+    await assertPrivateReceiptReservation(reservation);
+    return reservation;
   } finally {
-    if (!published) await rm(stagingPath, { force: true });
+    if (!stagingPublished) await rm(stagingPath, { force: true });
+  }
+}
+
+async function replacePrivateReceipt(
+  value: unknown,
+  reservation: PrivateReceiptReservation,
+): Promise<PrivateReceiptReservation> {
+  await assertPrivateReceiptReservation(reservation);
+  const content = `${JSON.stringify(value, null, 2)}\n`;
+  const stagingPath = await stagePrivateReceipt(reservation.path, content);
+  let stagingPublished = false;
+  try {
+    await assertPrivateReceiptReservation(reservation);
+    await rename(stagingPath, reservation.path);
+    stagingPublished = true;
+    await chmod(reservation.path, 0o600);
+    await syncParentDirectory(reservation.path);
+    const replaced = Object.freeze({ path: reservation.path, content });
+    await assertPrivateReceiptReservation(replaced);
+    return replaced;
+  } finally {
+    if (!stagingPublished) await rm(stagingPath, { force: true });
   }
 }
 
@@ -170,7 +307,7 @@ function help(stdout: PublicationOperationsBackupRetentionTextOutput): void {
   stdout.write("Storyteller publication backup retention CLI\n\n");
   stdout.write("Commands:\n");
   stdout.write("  plan   Verify all snapshots and write a private non-destructive retention plan.\n");
-  stdout.write("  apply  Recompute and apply an unchanged plan while publication writers are stopped.\n\n");
+  stdout.write("  apply  Reserve private intent evidence, then recompute and apply an unchanged plan while publication writers are stopped.\n\n");
   stdout.write("Both commands require --output. Standard output contains only a bounded receipt-written acknowledgement.\n\n");
   stdout.write("Plan example:\n");
   stdout.write("  npm run publication-operations-backup-retention-plan -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --output retention-plan.json\n\n");
@@ -198,6 +335,47 @@ function commonInput(args: ParsedArguments) {
   };
 }
 
+function requireApplyActorId(args: ParsedArguments): string {
+  const actorId = stringFlag(args, "actor-id", true)!;
+  if (!SAFE_IDENTIFIER.test(actorId)) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_ACTOR_ID_INVALID",
+    );
+  }
+  return actorId;
+}
+
+function requirePlanFingerprint(args: ParsedArguments): string {
+  const fingerprint = stringFlag(args, "plan-fingerprint", true)!;
+  if (!HASH_PATTERN.test(fingerprint)) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_HASH_INVALID",
+    );
+  }
+  return fingerprint;
+}
+
+function requireOfflineApply(args: ParsedArguments): true {
+  if (!booleanFlag(args, "offline-confirmed")) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_OFFLINE_CONFIRMATION_REQUIRED",
+    );
+  }
+  return true;
+}
+
+function now(
+  dependencies: PublicationOperationsBackupRetentionCliDependencies,
+): Date {
+  const value = dependencies.now?.() ?? new Date();
+  if (Number.isNaN(value.getTime())) {
+    throw new Error(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_NOW_INVALID",
+    );
+  }
+  return value;
+}
+
 export async function runPublicationOperationsBackupRetentionCli(
   argv: readonly string[],
   dependencies: PublicationOperationsBackupRetentionCliDependencies = {},
@@ -211,30 +389,89 @@ export async function runPublicationOperationsBackupRetentionCli(
   const force = booleanFlag(args, "force");
 
   if (args.command === "plan") {
-    const output = stringFlag(args, "output", true)!;
-    const result = await planPublicationOperationsBackupRetention(
-      commonInput(args),
+    const input = commonInput(args);
+    const output = receiptPathOutsideBackupRoot(
+      stringFlag(args, "output", true)!,
+      input.backupDirectory,
     );
+    const result = await planPublicationOperationsBackupRetention(input);
     await emit(result, output, force, "plan", stdout);
     return 0;
   }
 
   if (args.command === "apply") {
-    const output = stringFlag(args, "output", true)!;
+    const input = commonInput(args);
+    const output = receiptPathOutsideBackupRoot(
+      stringFlag(args, "output", true)!,
+      input.backupDirectory,
+    );
+    const actorId = requireApplyActorId(args);
+    const offlineConfirmed = requireOfflineApply(args);
+    const expectedPlanFingerprint = requirePlanFingerprint(args);
     const prunedAt = dateFlag(args, "pruned-at");
-    const result = await prunePublicationOperationsBackups({
-      ...commonInput(args),
-      actorId: stringFlag(args, "actor-id", true)!,
-      offlineConfirmed: booleanFlag(args, "offline-confirmed") as true,
-      expectedPlanFingerprint: stringFlag(
-        args,
-        "plan-fingerprint",
-        true,
-      )!,
-      ...(prunedAt ? { prunedAt } : {}),
+    const preflightPlan = await planPublicationOperationsBackupRetention(input);
+    if (preflightPlan.fingerprint !== expectedPlanFingerprint) {
+      throw new Error(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_STALE",
+      );
+    }
+    if (
+      prunedAt
+      && prunedAt.getTime() < Date.parse(preflightPlan.evaluatedAt)
+    ) {
+      throw new Error(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PRUNED_AT_INVALID",
+      );
+    }
+
+    const operationId = randomUUID();
+    const intent = Object.freeze({
+      schemaVersion:
+        PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION,
+      status: "applying" as const,
+      operationId,
+      actorId,
+      startedAt: now(dependencies).toISOString(),
+      applicationRevision: input.applicationRevision,
+      expectedPlanFingerprint,
+      backupState: "inspection-required-until-completed" as const,
     });
-    await emit(result, output, force, "apply", stdout);
-    return 0;
+    const reservation = await writePrivateReceipt(intent, output, force);
+
+    try {
+      await dependencies.afterApplyIntent?.();
+      await assertPrivateReceiptReservation(reservation);
+      const result = await prunePublicationOperationsBackups({
+        ...input,
+        actorId,
+        offlineConfirmed,
+        expectedPlanFingerprint,
+        ...(prunedAt ? { prunedAt } : {}),
+      });
+      await replacePrivateReceipt(result, reservation);
+      stdout.write(`${JSON.stringify({ status: "written", receipt: "apply" })}\n`);
+      return 0;
+    } catch (error) {
+      const failure = Object.freeze({
+        schemaVersion:
+          PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION,
+        status: "failed" as const,
+        operationId,
+        actorId,
+        failedAt: now(dependencies).toISOString(),
+        applicationRevision: input.applicationRevision,
+        expectedPlanFingerprint,
+        errorCode: safeFailureCode(error),
+        backupState: "inspection-required" as const,
+      });
+      try {
+        await replacePrivateReceipt(failure, reservation);
+      } catch {
+        // Preserve the original intent when the reserved evidence path changed
+        // or the failure receipt itself could not be published.
+      }
+      throw error;
+    }
   }
 
   throw new Error(
@@ -246,10 +483,7 @@ const entryPath = process.argv[1] ? resolve(process.argv[1]) : "";
 if (entryPath === fileURLToPath(import.meta.url)) {
   runPublicationOperationsBackupRetentionCli(process.argv.slice(2)).catch(
     (error: unknown) => {
-      const message = error instanceof Error
-        ? error.message
-        : "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_FAILED";
-      process.stderr.write(`${message}\n`);
+      process.stderr.write(`${safeCliErrorMessage(error)}\n`);
       process.exitCode = 1;
     },
   );
