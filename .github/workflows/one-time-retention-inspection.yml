@@ -9,12 +9,27 @@ on:
 
 permissions:
   contents: write
+  statuses: write
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
+      - name: Publish pending inspection-build status
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: "pending",
+              context: "storyteller/retention-inspection-build",
+              description: "Generating and verifying the read-only retention inspector",
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+
       - name: Check out the exact work branch
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
         with:
@@ -81,3 +96,23 @@ jobs:
           git diff --cached --check
           git commit -m "Remove completed retention inspection workflow"
           git push origin main
+
+      - name: Publish final inspection-build status
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          STORYTELLER_RETENTION_INSPECTION_JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const succeeded = process.env.STORYTELLER_RETENTION_INSPECTION_JOB_STATUS === "success";
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: succeeded ? "success" : "failure",
+              context: "storyteller/retention-inspection-build",
+              description: succeeded
+                ? "Read-only retention inspection slice verified and pushed"
+                : "Retention inspection build failed; inspect the guarded run",
+              target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
