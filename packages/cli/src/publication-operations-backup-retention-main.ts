@@ -389,9 +389,10 @@ export async function runPublicationOperationsBackupRetentionCli(
   const force = booleanFlag(args, "force");
 
   if (args.command === "plan") {
+    const outputFlag = stringFlag(args, "output", true)!;
     const input = commonInput(args);
     const output = receiptPathOutsideBackupRoot(
-      stringFlag(args, "output", true)!,
+      outputFlag,
       input.backupDirectory,
     );
     const result = await planPublicationOperationsBackupRetention(input);
@@ -400,9 +401,10 @@ export async function runPublicationOperationsBackupRetentionCli(
   }
 
   if (args.command === "apply") {
+    const outputFlag = stringFlag(args, "output", true)!;
     const input = commonInput(args);
     const output = receiptPathOutsideBackupRoot(
-      stringFlag(args, "output", true)!,
+      outputFlag,
       input.backupDirectory,
     );
     const actorId = requireApplyActorId(args);
