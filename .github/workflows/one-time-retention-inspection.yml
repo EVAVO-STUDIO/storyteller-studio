@@ -1,0 +1,82 @@
+name: One-time verified retention interruption inspection
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/one-time-retention-inspection.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out the exact work branch
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          ref: work/publication-retention-inspection-20260801
+          fetch-depth: 0
+
+      - name: Verify guarded branch head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "07acf16e9e6f48982295d55a36fb80359b189948"
+          test "$(git rev-parse origin/main)" = "b52a5c1d6a426ccf3b7b1508d786e12504599a4f"
+
+      - name: Set up the repository runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Apply the fail-closed inspection slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/one-time-retention-inspection-patch.py
+          test ! -e scripts/one-time-retention-inspection-patch.py
+          test ! -e scripts/one-time-retention-assertions.ts
+          git diff --check
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify the complete repository
+        run: npm run verify
+
+      - name: Build every workspace
+        run: npm run build
+
+      - name: Commit and push the validated product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin work/publication-retention-inspection-20260801
+          test "$(git rev-parse origin/work/publication-retention-inspection-20260801)" = "07acf16e9e6f48982295d55a36fb80359b189948"
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git diff --cached --quiet && { echo "RETENTION_INSPECTION_PRODUCT_DIFF_MISSING"; exit 1; }
+          git commit -m "Add verified retention interruption inspection" -m "Add fingerprint-bound v2 apply evidence and a read-only two-pass inspector that validates plan, apply and snapshot state, detects partial deletion or pruning residue, preserves legacy evidence as untrusted, and blocks restart until a safe disposition is proven."
+          git push origin HEAD:work/publication-retention-inspection-20260801
+
+      - name: Remove this one-time workflow from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+          test -f .github/workflows/one-time-retention-inspection.yml
+          rm .github/workflows/one-time-retention-inspection.yml
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Remove completed retention inspection workflow"
+          git push origin main
