@@ -21,12 +21,13 @@ jobs:
           ref: work/publication-retention-inspection-20260801
           fetch-depth: 0
 
-      - name: Verify guarded branch head
+      - name: Verify guarded branch and main scope
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "07acf16e9e6f48982295d55a36fb80359b189948"
-          test "$(git rev-parse origin/main)" = "b52a5c1d6a426ccf3b7b1508d786e12504599a4f"
+          git merge-base --is-ancestor b52a5c1d6a426ccf3b7b1508d786e12504599a4f origin/main
+          test "$(git diff --name-only b52a5c1d6a426ccf3b7b1508d786e12504599a4f..origin/main | sort)" = ".github/workflows/one-time-retention-inspection.yml"
 
       - name: Set up the repository runtime
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
