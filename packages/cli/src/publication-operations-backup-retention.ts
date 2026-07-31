@@ -7,9 +7,9 @@ import {
 } from "./publication-operations-backup.js";
 
 export const PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_SCHEMA_VERSION =
-  "storyteller-publication-operations-backup-retention-plan-v1" as const;
+  "storyteller-publication-operations-backup-retention-plan-v2" as const;
 export const PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_SCHEMA_VERSION =
-  "storyteller-publication-operations-backup-retention-result-v1" as const;
+  "storyteller-publication-operations-backup-retention-result-v2" as const;
 
 export type PublicationOperationsBackupRetentionReason =
   | "latest"
@@ -42,6 +42,7 @@ export interface PublicationOperationsBackupRetentionPlan {
     typeof PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_SCHEMA_VERSION;
   status: "planned";
   evaluatedAt: string;
+  applicationRevision: string;
   policy: PublicationOperationsBackupRetentionPolicy;
   snapshotCount: number;
   totalBytes: number;
@@ -59,6 +60,7 @@ export interface PublicationOperationsBackupRetentionResult {
   actorId: string;
   prunedAt: string;
   planFingerprint: string;
+  applicationRevision: string;
   retainedCount: number;
   deletedCount: number;
   reclaimedBytes: number;
@@ -68,6 +70,7 @@ export interface PublicationOperationsBackupRetentionResult {
 
 export interface PlanPublicationOperationsBackupRetentionInput {
   backupDirectory: string;
+  applicationRevision: string;
   keepLatest?: number;
   keepDailyDays?: number;
   keepWeeklyWeeks?: number;
@@ -96,6 +99,7 @@ export class PublicationOperationsBackupRetentionError extends Error {
 const SNAPSHOT_ID_PATTERN = /^publication_backup_[a-f0-9]{24}$/u;
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
+const APPLICATION_REVISION_PATTERN = /^[a-f0-9]{40}$/u;
 const MAXIMUM_SNAPSHOTS = 10_000;
 const MAXIMUM_PROTECTED_SNAPSHOTS = 1_000;
 const MAXIMUM_KEEP_LATEST = 1_000;
@@ -120,6 +124,15 @@ function requireIdentifier(value: string, code: string): string {
 function requireHash(value: string, code: string): string {
   if (!HASH_PATTERN.test(value)) {
     throw new PublicationOperationsBackupRetentionError(code);
+  }
+  return value;
+}
+
+function requireApplicationRevision(value: string): string {
+  if (!APPLICATION_REVISION_PATTERN.test(value)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLICATION_REVISION_INVALID",
+    );
   }
   return value;
 }
@@ -407,6 +420,9 @@ export async function planPublicationOperationsBackupRetention(
     input.evaluatedAt ?? new Date(),
     "PUBLICATION_OPERATIONS_BACKUP_RETENTION_DATE_INVALID",
   );
+  const applicationRevision = requireApplicationRevision(
+    input.applicationRevision,
+  );
   const retentionPolicy = policy(input);
   const snapshots = await inventorySnapshots(backupDirectory, evaluatedAt);
   const reasons = selectRetained({
@@ -437,6 +453,7 @@ export async function planPublicationOperationsBackupRetention(
     schemaVersion: PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_SCHEMA_VERSION,
     status: "planned",
     evaluatedAt: evaluatedAt.toISOString(),
+    applicationRevision,
     policy: retentionPolicy,
     snapshotCount: snapshots.length,
     totalBytes,
@@ -560,6 +577,7 @@ export async function prunePublicationOperationsBackups(
     actorId,
     prunedAt: prunedAt.toISOString(),
     planFingerprint: plan.fingerprint,
+    applicationRevision: plan.applicationRevision,
     retainedCount: plan.retained.length,
     deletedCount: plan.delete.length,
     reclaimedBytes: plan.reclaimableBytes,
