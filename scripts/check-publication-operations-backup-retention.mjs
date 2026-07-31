@@ -45,6 +45,7 @@ for (const path of [
   "packages/cli/src/publication-operations-backup-retention-main.ts",
   "packages/cli/src/publication-operations-backup-retention.test.ts",
   "packages/cli/src/publication-operations-backup-retention-output.test.ts",
+  "packages/cli/src/publication-operations-backup-retention-apply-intent.test.ts",
   "docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md",
   "package.json",
 ]) requireFile(path);
@@ -84,6 +85,18 @@ requireTokens("packages/cli/src/publication-operations-backup-retention-main.ts"
   'stringFlag(args, "actor-id", true)',
   'booleanFlag(args, "offline-confirmed")',
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_EXISTS",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_INSIDE_BACKUP_ROOT",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_RESERVATION_CHANGED",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION",
+  "receiptPathOutsideBackupRoot",
+  "assertPrivateReceiptReservation",
+  "replacePrivateReceipt",
+  "syncParentDirectory",
+  "afterApplyIntent",
+  'backupState: "inspection-required-until-completed"',
+  'backupState: "inspection-required"',
+  "safeCliErrorMessage",
   "randomUUID",
   'open(stagingPath, "wx", 0o600)',
   "handle.sync()",
@@ -116,6 +129,18 @@ requireTokens("packages/cli/src/publication-operations-backup-retention-output.t
   'name.endsWith(".tmp")',
 ]);
 
+requireTokens("packages/cli/src/publication-operations-backup-retention-apply-intent.test.ts", [
+  "retention receipts cannot be written inside the backup inventory",
+  "an occupied apply receipt path blocks all deletion before mutation",
+  "inventory drift after intent produces private failure evidence without deletion",
+  "a changed intent reservation stops deletion and preserves the external replacement",
+  "successful apply atomically replaces intent with the final apply receipt",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_INSIDE_BACKUP_ROOT",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_RESERVATION_CHANGED",
+  "storyteller-publication-operations-backup-retention-apply-failure-v1",
+  'backupState, "inspection-required"',
+]);
+
 requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md", [
   "Verified inventory",
   "Retention policy",
@@ -125,6 +150,9 @@ requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md", [
   "Verified deletion",
   "Required private receipts",
   "Atomic receipt publication",
+  "Apply intent evidence",
+  "outside the backup root",
+  "inspection-required-until-completed",
   "bounded acknowledgement",
   "Offline maintenance boundary",
   "No automatic pruning",
@@ -192,6 +220,9 @@ if (problems.length > 0) {
 console.log("storyteller_publication_backup_retention_check_passed");
 console.log("- all snapshots are fully verified before keep or delete selection");
 console.log("- destructive apply requires an unchanged plan fingerprint and offline confirmation");
+console.log("- apply reserves verified private intent evidence before any deletion can start");
+console.log("- occupied, nested or externally changed receipt paths fail before mutation");
+console.log("- failed apply preserves an intent or publishes inspection-required private evidence");
 console.log("- protected, daily, weekly and latest retention are deterministic");
 console.log("- plan and apply require atomically published private mode-0600 receipts");
 console.log("- standard output is a bounded acknowledgement without paths, revisions or snapshot evidence");
