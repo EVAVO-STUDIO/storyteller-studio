@@ -114,3 +114,18 @@ if source.count(move_marker) != 1:
 source = source.replace(move_marker, move_scoped, 1)
 
 exec(compile(source, "one-time-retention-inspection-patch", "exec"))
+
+inspection_test = (
+    ROOT
+    / "packages"
+    / "cli"
+    / "src"
+    / "publication-operations-backup-retention-inspection.test.ts"
+)
+if not inspection_test.is_file():
+    raise SystemExit("RETENTION_INSPECTION_TEST_OUTPUT_MISSING")
+inspection_test.write_text(
+    inspection_test.read_text(encoding="utf-8").rstrip("\n") + "\n",
+    encoding="utf-8",
+    newline="\n",
+)
