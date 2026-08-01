@@ -207,6 +207,35 @@ services:
       - --output
       - /var/lib/storyteller-maintenance/${STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE:-retention-receipt.json}
 
+
+  publication-backup-retention-inspect:
+    <<: *worker-base
+    profiles:
+      - maintenance
+    restart: "no"
+    network_mode: none
+    volumes:
+      - publication-backups:/var/backups/storyteller:ro
+      - publication-maintenance-receipts:/var/lib/storyteller-maintenance
+    command:
+      - npm
+      - run
+      - publication-operations-backup-retention-inspect
+      - --
+      - --backup-dir
+      - /var/backups/storyteller
+      - --plan-receipt
+      - /var/lib/storyteller-maintenance/${STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE:-retention-plan.json}
+      - --apply-receipt
+      - /var/lib/storyteller-maintenance/${STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE:-retention-receipt.json}
+      - --application-revision
+      - ${STORYTELLER_APPLICATION_REVISION:?set STORYTELLER_APPLICATION_REVISION to the exact 40-character source commit SHA}
+      - --offline-confirmed
+      - --inspected-at
+      - ${STORYTELLER_PUBLICATION_RETENTION_INSPECTED_AT:?set STORYTELLER_PUBLICATION_RETENTION_INSPECTED_AT}
+      - --output
+      - /var/lib/storyteller-maintenance/${STORYTELLER_PUBLICATION_RETENTION_INSPECTION_FILE:-retention-inspection.json}
+
   publication-restore:
     <<: *worker-base
     profiles:

@@ -36,9 +36,23 @@ npm run publication-operations-backup-prune -- \
   --output retention-receipt.json
 ```
 
-Both plan and apply require `--output`. The full plan or apply receipt is never written to standard output. A successful command emits only a bounded acknowledgement identifying whether a private `plan` or `apply` receipt was written.
+Plan, apply and inspection require `--output`. Complete private receipts are never written to standard output. A successful command emits only a bounded acknowledgement identifying whether a private `plan`, `apply` or `inspection` receipt was written.
 
 The receipt output path must remain outside the backup root. A receipt inside the immutable snapshot inventory would change the inventory being planned or applied and is rejected before any retention action begins.
+
+
+Inspect the immutable plan, apply evidence and backup root after every apply, and whenever apply leaves `applying` or `failed` evidence:
+
+```bash
+npm run publication-operations-backup-retention-inspect -- \
+  --backup-dir ./backups \
+  --plan-receipt retention-plan.json \
+  --apply-receipt retention-receipt.json \
+  --application-revision <40-character-git-sha> \
+  --offline-confirmed \
+  --inspected-at 2026-07-30T00:10:00Z \
+  --output retention-inspection.json
+```
 
 The plan and apply steps must use the same:
 
@@ -153,7 +167,7 @@ Destructive apply publishes private intent evidence to the final apply-receipt p
 The intent uses schema:
 
 ```text
-storyteller-publication-operations-backup-retention-apply-intent-v1
+storyteller-publication-operations-backup-retention-apply-intent-v2
 ```
 
 It records:
@@ -164,7 +178,8 @@ It records:
 - start time;
 - exact application revision;
 - expected plan fingerprint;
-- `backupState: inspection-required-until-completed`.
+- `backupState: inspection-required-until-completed`;
+- a deterministic evidence fingerprint.
 
 The intent file is mode `0600`, flushed, atomically published and read back byte-for-byte. The reservation is checked again immediately before the destructive domain operation. If another process changes or replaces the reserved receipt, apply fails before deletion with:
 
@@ -177,12 +192,42 @@ On success, the final `pruned` or `unchanged` apply receipt atomically replaces 
 On failure after intent publication, the CLI attempts to replace the intent with private failure evidence using schema:
 
 ```text
-storyteller-publication-operations-backup-retention-apply-failure-v1
+storyteller-publication-operations-backup-retention-apply-failure-v2
 ```
 
-The failure evidence records the operation identity, actor, application revision, expected plan fingerprint, a bounded error code and `backupState: inspection-required`. It does not claim that rollback completed. If the reserved evidence path itself changed or cannot be updated, the original intent or externally replaced file remains and operators must inspect both the receipt location and backup inventory.
+The failure evidence records the operation identity, actor, original start time, application revision, expected plan fingerprint, exact intent fingerprint, a bounded error code, `backupState: inspection-required` and its own deterministic fingerprint. It does not claim that rollback completed. If the reserved evidence path itself changed or cannot be updated, the original intent or externally replaced file remains and operators must inspect both the receipt location and backup inventory.
+
+The inspection command accepts legacy v1 intent and failure receipts so earlier maintenance evidence remains usable, but marks them `legacy-unfingerprinted` in the private inspection result.
 
 An `applying` or `failed` receipt is not proof of completed deletion. Normal services must remain stopped until the backup inventory is inspected and retained snapshots are verified.
+
+
+## Interrupted apply inspection
+
+Inspection is a read-only offline maintenance command. It never renames, deletes, restores or repairs a snapshot.
+
+It requires:
+
+- the private fingerprinted retention plan receipt;
+- the private apply receipt, which may be current v2 intent/failure, legacy v1 intent/failure or a final v2 result;
+- the exact application revision;
+- `--offline-confirmed`;
+- a distinct private inspection output path outside the backup root.
+
+Plan and apply evidence must be regular mode-`0600` files with one filesystem link. Symlinks, hard-linked evidence, oversized files, malformed JSON, fingerprint drift, application-revision drift and receipt substitution fail before an inspection receipt is written.
+
+The inspector performs a read-only two-pass inventory. Every canonical snapshot and every recognised `.pruning` directory is fully reopened through the existing snapshot verifier. Plan and apply receipts are reopened after the second pass. Any inventory or evidence change during inspection fails closed.
+
+The private inspection receipt binds the exact plan fingerprint, exact apply-evidence fingerprint and full verified inventory fingerprint. It has one of four statuses:
+
+- `verified-complete`: final apply evidence matches the exact verified retained state;
+- `verified-complete-recovered`: an interrupted or failed apply left no final result, but the exact verified retained state is complete and no `.pruning` residue remains;
+- `verified-no-mutation`: all snapshots from the approved plan still exist unchanged, although later valid snapshots may also exist; create and approve a new plan before retrying;
+- `inspection-required`: partial deletion, missing retained snapshots, changed snapshots, unknown entries, duplicate locations, invalid content or `.pruning` residue remains.
+
+Only the first three statuses set `normalServicesMayRestart: true`. `inspection-required` keeps normal services stopped and requires manual host inspection. The command reports private snapshot identifiers and issue codes only in the mode-`0600` inspection receipt; standard output remains a bounded path-free acknowledgement.
+
+Inspection does not repair `.pruning` state, recreate deleted snapshots or authorise a second apply under the old plan.
 
 ## Verified deletion
 
@@ -196,7 +241,7 @@ After deletion, the remaining directory set must exactly equal the retained set 
 
 ## Required private receipts
 
-Both planning and destructive apply require `--output`.
+Planning, destructive apply and read-only inspection require `--output`.
 
 The private plan receipt records the complete verified inventory decision, including retained snapshots, deletion candidates, reasons, byte totals, application revision and plan fingerprint.
 
@@ -224,6 +269,10 @@ Standard output contains only one of these bounded acknowledgements after succes
 
 ```json
 {"status":"written","receipt":"apply"}
+```
+
+```json
+{"status":"written","receipt":"inspection"}
 ```
 
 The acknowledgement omits output paths, application revisions, plan fingerprints, snapshot identifiers, actor identities and deletion details. Failed apply does not emit a success acknowledgement.
@@ -256,11 +305,12 @@ For the one-host Compose deployment:
 2. create and retain the plan receipt;
 3. review protected and deletion sets;
 4. run apply with the exact fingerprint;
-5. inspect the apply receipt and require `pruned` or `unchanged` before treating apply as complete;
-6. if the receipt is `applying` or `failed`, keep services stopped and inspect the backup inventory;
-7. retain all plan, intent, failure and success evidence privately;
-8. verify remaining snapshots;
-9. restart normal services only after maintenance completes.
+5. run read-only interrupted-retention inspection against the exact plan and apply receipts;
+6. require `verified-complete`, `verified-complete-recovered` or `verified-no-mutation` before restarting normal services;
+7. if inspection returns `inspection-required`, keep services stopped and inspect the backup root manually;
+8. retain all plan, intent, failure, success and inspection evidence privately;
+9. verify retained recovery snapshots and the required off-host copy;
+10. restart normal services only after maintenance completes.
 
 ## No automatic pruning
 
@@ -278,7 +328,7 @@ This prevents an unexpected backup, restart or health cycle from deleting histor
 
 ## Current boundary
 
-The retention layer controls verified local snapshot deletion on one offline host and leaves durable private intent evidence before destructive work begins.
+The retention layer controls verified local snapshot deletion on one offline host, leaves durable private intent evidence before destructive work begins, and provides read-only recovery-state inspection after interruption.
 
 It does not:
 

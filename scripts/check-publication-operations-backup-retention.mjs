@@ -42,10 +42,13 @@ function collectRuntimeFiles(directory, output = []) {
 
 for (const path of [
   "packages/cli/src/publication-operations-backup-retention.ts",
+  "packages/cli/src/publication-operations-backup-retention-evidence.ts",
+  "packages/cli/src/publication-operations-backup-retention-inspection.ts",
   "packages/cli/src/publication-operations-backup-retention-main.ts",
   "packages/cli/src/publication-operations-backup-retention.test.ts",
   "packages/cli/src/publication-operations-backup-retention-output.test.ts",
   "packages/cli/src/publication-operations-backup-retention-apply-intent.test.ts",
+  "packages/cli/src/publication-operations-backup-retention-inspection.test.ts",
   "docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md",
   "package.json",
 ]) requireFile(path);
@@ -55,6 +58,8 @@ requireTokens("packages/cli/src/publication-operations-backup-retention.ts", [
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_SCHEMA_VERSION",
   "planPublicationOperationsBackupRetention",
   "prunePublicationOperationsBackups",
+  "assertPublicationOperationsBackupRetentionPlan",
+  "assertPublicationOperationsBackupRetentionResult",
   "verifyPublicationOperationsBackupSnapshot",
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_STALE",
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_SYMLINK_FORBIDDEN",
@@ -73,10 +78,44 @@ requireTokens("packages/cli/src/publication-operations-backup-retention.ts", [
   "POST_DELETE_MISMATCH",
 ]);
 
+requireTokens("packages/cli/src/publication-operations-backup-retention-evidence.ts", [
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION",
+  "storyteller-publication-operations-backup-retention-apply-intent-v2",
+  "storyteller-publication-operations-backup-retention-apply-failure-v2",
+  "intentFingerprint",
+  "failureFingerprint",
+  'backupState: "inspection-required-until-completed"',
+  'backupState: "inspection-required"',
+  "APPLY_FAILURE_INTENT_MISMATCH",
+  "requireExactKeys",
+]);
+
+requireTokens("packages/cli/src/publication-operations-backup-retention-inspection.ts", [
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_INSPECTION_SCHEMA_VERSION",
+  "inspectPublicationOperationsBackupRetention",
+  "verified-complete",
+  "verified-complete-recovered",
+  "verified-no-mutation",
+  "inspection-required",
+  "legacy-unfingerprinted",
+  "afterFirstInventory",
+  "INSPECTION_STATE_CHANGED",
+  "INSPECTION_EVIDENCE_CHANGED",
+  "PRUNING_ENTRY_PATTERN",
+  "normalServicesMayRestart",
+  "applyEvidenceFingerprint",
+  "inventoryFingerprint",
+]);
+
 requireTokens("packages/cli/src/publication-operations-backup-retention-main.ts", [
   "runPublicationOperationsBackupRetentionCli",
   'args.command === "plan"',
   'args.command === "apply"',
+  'args.command === "inspect"',
+  'stringFlag(args, "plan-receipt", true)',
+  'stringFlag(args, "apply-receipt", true)',
+  'await emit(result, output, force, "inspection", stdout);',
   'stringFlag(args, "backup-dir", true)',
   'stringFlag(args, "output", true)',
   '"application-revision"',
@@ -87,15 +126,11 @@ requireTokens("packages/cli/src/publication-operations-backup-retention-main.ts"
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_EXISTS",
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_INSIDE_BACKUP_ROOT",
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_RESERVATION_CHANGED",
-  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION",
-  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION",
   "receiptPathOutsideBackupRoot",
   "assertPrivateReceiptReservation",
   "replacePrivateReceipt",
   "syncParentDirectory",
   "afterApplyIntent",
-  'backupState: "inspection-required-until-completed"',
-  'backupState: "inspection-required"',
   "safeCliErrorMessage",
   "randomUUID",
   'open(stagingPath, "wx", 0o600)',
@@ -137,8 +172,21 @@ requireTokens("packages/cli/src/publication-operations-backup-retention-apply-in
   "successful apply atomically replaces intent with the final apply receipt",
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_INSIDE_BACKUP_ROOT",
   "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_RESERVATION_CHANGED",
-  "storyteller-publication-operations-backup-retention-apply-failure-v1",
+  "storyteller-publication-operations-backup-retention-apply-failure-v2",
   'backupState, "inspection-required"',
+]);
+
+requireTokens("packages/cli/src/publication-operations-backup-retention-inspection.test.ts", [
+  "successful apply produces a verified-complete private inspection",
+  "failed apply with a later valid snapshot proves no planned deletion occurred",
+  "exact retained state with an interrupted intent becomes verified recovery evidence",
+  "partial deletion remains inspection-required and cannot authorise restart",
+  "pruning residue is verified but remains an explicit manual-inspection blocker",
+  "legacy v1 intent remains inspectable but is explicitly marked untrusted",
+  "hard-linked private evidence is rejected before inspection",
+  "failure evidence cannot be rebound to a forged apply intent",
+  "PUBLICATION_OPERATIONS_BACKUP_RETENTION_INSPECTION_STATE_CHANGED",
+  'receipt: "inspection"',
 ]);
 
 requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md", [
@@ -151,6 +199,10 @@ requireTokens("docs/PUBLICATION_OPERATIONS_BACKUP_RETENTION.md", [
   "Required private receipts",
   "Atomic receipt publication",
   "Apply intent evidence",
+  "Interrupted apply inspection",
+  "verified-complete-recovered",
+  "verified-no-mutation",
+  "read-only two-pass inventory",
   "outside the backup root",
   "inspection-required-until-completed",
   "bounded acknowledgement",
@@ -173,6 +225,12 @@ if (existsSync(fromRoot("package.json"))) {
       !== "tsx packages/cli/src/publication-operations-backup-retention-main.ts apply"
   ) {
     problems.push("root package does not expose publication backup pruning");
+  }
+  if (
+    packageJson.scripts?.["publication-operations-backup-retention-inspect"]
+      !== "tsx packages/cli/src/publication-operations-backup-retention-main.ts inspect"
+  ) {
+    problems.push("root package does not expose publication backup retention inspection");
   }
   if (
     packageJson.scripts?.["verify:publication-operations-backup-retention"]
@@ -204,6 +262,8 @@ for (const path of [
     "prunePublicationOperationsBackups",
     "planPublicationOperationsBackupRetention",
     "publication-operations-backup-prune",
+    "inspectPublicationOperationsBackupRetention",
+    "publication-operations-backup-retention-inspect",
   ]) {
     if (runtime.includes(forbidden)) {
       problems.push(`${path} invokes private backup retention automatically: ${forbidden}`);
@@ -222,7 +282,9 @@ console.log("- all snapshots are fully verified before keep or delete selection"
 console.log("- destructive apply requires an unchanged plan fingerprint and offline confirmation");
 console.log("- apply reserves verified private intent evidence before any deletion can start");
 console.log("- occupied, nested or externally changed receipt paths fail before mutation");
+console.log("- fingerprinted v2 intent and failure evidence preserve one immutable apply chain");
 console.log("- failed apply preserves an intent or publishes inspection-required private evidence");
+console.log("- read-only two-pass inspection classifies complete, recovered, no-mutation and manual-review states");
 console.log("- protected, daily, weekly and latest retention are deterministic");
 console.log("- plan and apply require atomically published private mode-0600 receipts");
 console.log("- standard output is a bounded acknowledgement without paths, revisions or snapshot evidence");
