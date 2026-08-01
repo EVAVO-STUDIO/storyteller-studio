@@ -207,7 +207,7 @@ test("inventory drift after intent produces private failure evidence without del
     };
     assert.equal(
       receipt.schemaVersion,
-      "storyteller-publication-operations-backup-retention-apply-failure-v1",
+      "storyteller-publication-operations-backup-retention-apply-failure-v2",
     );
     assert.equal(receipt.status, "failed");
     assert.equal(

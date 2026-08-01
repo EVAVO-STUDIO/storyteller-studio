@@ -97,6 +97,7 @@ requireTokens("compose.publication-operations.yml", [
   "publication-backup-verify:",
   "publication-backup-retention-plan:",
   "publication-backup-prune:",
+  "publication-backup-retention-inspect:",
   "publication-restore:",
   "network_mode: service:publication-evidence-gateway",
   "condition: service_healthy",
@@ -144,7 +145,8 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
     ["publication-backup", "publication-backup-verify"],
     ["publication-backup-verify", "publication-backup-retention-plan"],
     ["publication-backup-retention-plan", "publication-backup-prune"],
-    ["publication-backup-prune", "publication-restore"],
+    ["publication-backup-prune", "publication-backup-retention-inspect"],
+    ["publication-backup-retention-inspect", "publication-restore"],
     ["publication-restore", null],
   ];
   for (const [serviceName, nextServiceName] of maintenance) {
@@ -238,7 +240,7 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
   const prune = serviceBlock(
     compose,
     "publication-backup-prune",
-    "publication-restore",
+    "publication-backup-retention-inspect",
   );
   for (const token of [
     "publication-backups:/var/backups/storyteller",
@@ -264,6 +266,39 @@ if (existsSync(fromRoot("compose.publication-operations.yml"))) {
     || prune.includes("publication-data:/var/lib/storyteller")
   ) {
     problems.push("publication-backup-prune must have backup write access and no live data mount");
+  }
+
+
+  const retentionInspection = serviceBlock(
+    compose,
+    "publication-backup-retention-inspect",
+    "publication-restore",
+  );
+  for (const token of [
+    "publication-backups:/var/backups/storyteller:ro",
+    "publication-maintenance-receipts:/var/lib/storyteller-maintenance",
+    "publication-operations-backup-retention-inspect",
+    "STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE",
+    "STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE",
+    "STORYTELLER_PUBLICATION_RETENTION_INSPECTED_AT",
+    "STORYTELLER_PUBLICATION_RETENTION_INSPECTION_FILE",
+    "--application-revision",
+    "STORYTELLER_APPLICATION_REVISION",
+    "--offline-confirmed",
+  ]) {
+    if (!retentionInspection.includes(token)) {
+      problems.push(`publication-backup-retention-inspect is missing token: ${token}`);
+    }
+  }
+  if (
+    retentionInspection.includes("publication-data:/var/lib/storyteller")
+    || !retentionInspection.includes(
+      "publication-backups:/var/backups/storyteller:ro",
+    )
+  ) {
+    problems.push(
+      "publication-backup-retention-inspect must mount backups read-only and no live data",
+    );
   }
 
   const restore = serviceBlock(compose, "publication-restore", null);
@@ -309,6 +344,8 @@ requireTokens(".env.publication-operations.example", [
   "STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT=",
   "STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE=",
   "STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE=",
+  "STORYTELLER_PUBLICATION_RETENTION_INSPECTED_AT=",
+  "STORYTELLER_PUBLICATION_RETENTION_INSPECTION_FILE=",
   "STORYTELLER_APPLICATION_REVISION=replace-with-40-character-git-commit-sha",
   "STORYTELLER_PUBLICATION_ALERT_WORKER_ID=",
   "STORYTELLER_PUBLICATION_REFRESH_WORKER_ID=",
@@ -352,6 +389,7 @@ requireTokens("docs/PUBLICATION_OPERATIONS_MAINTENANCE_PROFILE.md", [
   "Verify the snapshot",
   "Plan backup retention",
   "Apply backup retention",
+  "Inspect interrupted retention",
   "Isolated restore rehearsal",
   "Production restore by volume cutover",
   "Rollback",
@@ -426,9 +464,10 @@ if (problems.length > 0) {
 console.log("storyteller_publication_operations_compose_check_passed");
 console.log("- one immutable worker image runs four long-lived or startup publication roles");
 console.log("- image runtime matches .nvmrc and build provenance is bound to one exact source revision");
-console.log("- five offline maintenance services are profile-gated and networkless");
+console.log("- six offline maintenance services are profile-gated and networkless");
 console.log("- retention planning mounts backups read-only and writes a separate private plan receipt");
 console.log("- retention apply alone receives backup write access and requires the reviewed plan fingerprint");
+console.log("- interrupted-retention inspection mounts backups read-only and emits private restart evidence");
 console.log("- verification mounts no live state and restore requires a selected data volume");
 console.log("- gateway and refresh share a loopback-only network namespace with no published port");
 console.log("- startup preflight blocks mutation roles when deployment contracts fail");

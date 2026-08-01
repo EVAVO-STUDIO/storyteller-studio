@@ -471,6 +471,413 @@ function retentionResultFingerprint(
   return stableHash(value);
 }
 
+function requireExactObjectKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  code: string,
+): void {
+  const actual = Object.keys(value).sort((left, right) =>
+    left.localeCompare(right, "en-AU")
+  );
+  const sortedExpected = [...expected].sort((left, right) =>
+    left.localeCompare(right, "en-AU")
+  );
+  if (stableHash(actual) !== stableHash(sortedExpected)) {
+    throw new PublicationOperationsBackupRetentionError(code);
+  }
+}
+
+function requireCanonicalDate(value: string, code: string): string {
+  if (!value || Number.isNaN(Date.parse(value))) {
+    throw new PublicationOperationsBackupRetentionError(code);
+  }
+  if (new Date(value).toISOString() !== value) {
+    throw new PublicationOperationsBackupRetentionError(code);
+  }
+  return value;
+}
+
+function assertSnapshotValue(
+  value: PublicationOperationsBackupRetentionSnapshot,
+  retained: boolean,
+): PublicationOperationsBackupRetentionSnapshot {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  requireExactObjectKeys(
+    value as unknown as Record<string, unknown>,
+    retained
+      ? ["snapshotId", "createdAt", "totalBytes", "fingerprint", "reasons"]
+      : ["snapshotId", "createdAt", "totalBytes", "fingerprint"],
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  if (!SNAPSHOT_ID_PATTERN.test(value.snapshotId)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  requireCanonicalDate(
+    value.createdAt,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    value.totalBytes,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireHash(
+    value.fingerprint,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  return value;
+}
+
+function assertSnapshotOrder(
+  values: readonly PublicationOperationsBackupRetentionSnapshot[],
+): void {
+  for (let index = 1; index < values.length; index += 1) {
+    if (compareSnapshots(values[index - 1]!, values[index]!) > 0) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+      );
+    }
+  }
+}
+
+export function assertPublicationOperationsBackupRetentionPlan(
+  value: unknown,
+): PublicationOperationsBackupRetentionPlan {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  const candidate = value as PublicationOperationsBackupRetentionPlan;
+  requireExactObjectKeys(
+    candidate as unknown as Record<string, unknown>,
+    [
+      "schemaVersion",
+      "status",
+      "evaluatedAt",
+      "applicationRevision",
+      "policy",
+      "snapshotCount",
+      "totalBytes",
+      "retained",
+      "delete",
+      "retainedBytes",
+      "reclaimableBytes",
+      "fingerprint",
+    ],
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  if (
+    candidate.schemaVersion
+      !== PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_SCHEMA_VERSION
+    || candidate.status !== "planned"
+  ) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  const evaluatedAt = new Date(requireCanonicalDate(
+    candidate.evaluatedAt,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  ));
+  requireApplicationRevision(candidate.applicationRevision);
+  if (!candidate.policy || typeof candidate.policy !== "object") {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  requireExactObjectKeys(
+    candidate.policy as unknown as Record<string, unknown>,
+    [
+      "keepLatest",
+      "keepDailyDays",
+      "keepWeeklyWeeks",
+      "protectedSnapshotIds",
+      "fingerprint",
+    ],
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    candidate.policy.keepLatest,
+    1,
+    MAXIMUM_KEEP_LATEST,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    candidate.policy.keepDailyDays,
+    0,
+    MAXIMUM_KEEP_DAILY_DAYS,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    candidate.policy.keepWeeklyWeeks,
+    0,
+    MAXIMUM_KEEP_WEEKLY_WEEKS,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  if (!Array.isArray(candidate.policy.protectedSnapshotIds)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  const protectedSnapshotIds = normaliseProtectedSnapshotIds(
+    candidate.policy.protectedSnapshotIds,
+  );
+  if (
+    stableHash(protectedSnapshotIds)
+      !== stableHash(candidate.policy.protectedSnapshotIds)
+  ) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  requireHash(
+    candidate.policy.fingerprint,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  const {
+    fingerprint: policyFingerprintValue,
+    ...policyPartial
+  } = candidate.policy;
+  if (stableHash(policyPartial) !== policyFingerprintValue) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  if (
+    !Array.isArray(candidate.retained)
+    || !Array.isArray(candidate.delete)
+    || candidate.retained.length + candidate.delete.length > MAXIMUM_SNAPSHOTS
+  ) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  const retained = candidate.retained.map((item) => {
+    const snapshot = assertSnapshotValue(item, true);
+    if (!Array.isArray(item.reasons) || item.reasons.length === 0) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+      );
+    }
+    const expectedReasons = REASON_ORDER.filter((reason) =>
+      item.reasons.includes(reason)
+    );
+    if (stableHash(expectedReasons) !== stableHash(item.reasons)) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+      );
+    }
+    return snapshot;
+  });
+  const deleting = candidate.delete.map((item) =>
+    assertSnapshotValue(item, false)
+  );
+  assertSnapshotOrder(retained);
+  assertSnapshotOrder(deleting);
+  const snapshots = [...retained, ...deleting].sort(compareSnapshots);
+  const snapshotIds = new Set<string>();
+  for (const snapshot of snapshots) {
+    if (snapshotIds.has(snapshot.snapshotId)) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+      );
+    }
+    snapshotIds.add(snapshot.snapshotId);
+    if (
+      Date.parse(snapshot.createdAt)
+        > evaluatedAt.getTime() + FUTURE_CLOCK_SKEW_MS
+    ) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+      );
+    }
+  }
+  const expectedReasons = selectRetained({
+    snapshots,
+    policy: candidate.policy,
+    evaluatedAt,
+  });
+  const retainedById = new Map(candidate.retained.map((snapshot) => [
+    snapshot.snapshotId,
+    snapshot,
+  ]));
+  for (const snapshot of snapshots) {
+    const reasons = expectedReasons.get(snapshot.snapshotId);
+    const retainedSnapshot = retainedById.get(snapshot.snapshotId);
+    if (
+      Boolean(reasons) !== Boolean(retainedSnapshot)
+      || (reasons && stableHash(reasons) !== stableHash(retainedSnapshot!.reasons))
+    ) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+      );
+    }
+  }
+  const totalBytes = snapshots.reduce(
+    (total, snapshot) => total + snapshot.totalBytes,
+    0,
+  );
+  const retainedBytes = retained.reduce(
+    (total, snapshot) => total + snapshot.totalBytes,
+    0,
+  );
+  requireInteger(
+    candidate.snapshotCount,
+    0,
+    MAXIMUM_SNAPSHOTS,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    candidate.totalBytes,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    candidate.retainedBytes,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  requireInteger(
+    candidate.reclaimableBytes,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  if (
+    candidate.snapshotCount !== snapshots.length
+    || candidate.totalBytes !== totalBytes
+    || candidate.retainedBytes !== retainedBytes
+    || candidate.reclaimableBytes !== totalBytes - retainedBytes
+  ) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  requireHash(
+    candidate.fingerprint,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+  );
+  const { fingerprint, ...partial } = candidate;
+  if (planFingerprint(partial) !== fingerprint) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_PLAN_INVALID",
+    );
+  }
+  return Object.freeze(candidate);
+}
+
+export function assertPublicationOperationsBackupRetentionResult(
+  value: unknown,
+): PublicationOperationsBackupRetentionResult {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+    );
+  }
+  const candidate = value as PublicationOperationsBackupRetentionResult;
+  requireExactObjectKeys(
+    candidate as unknown as Record<string, unknown>,
+    [
+      "schemaVersion",
+      "status",
+      "actorId",
+      "prunedAt",
+      "planFingerprint",
+      "applicationRevision",
+      "retainedCount",
+      "deletedCount",
+      "reclaimedBytes",
+      "deletedSnapshotIds",
+      "fingerprint",
+    ],
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  if (
+    candidate.schemaVersion
+      !== PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_SCHEMA_VERSION
+    || !["unchanged", "pruned"].includes(candidate.status)
+  ) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+    );
+  }
+  requireIdentifier(
+    candidate.actorId,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  requireCanonicalDate(
+    candidate.prunedAt,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  requireHash(
+    candidate.planFingerprint,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  requireApplicationRevision(candidate.applicationRevision);
+  requireInteger(
+    candidate.retainedCount,
+    0,
+    MAXIMUM_SNAPSHOTS,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  requireInteger(
+    candidate.deletedCount,
+    0,
+    MAXIMUM_SNAPSHOTS,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  requireInteger(
+    candidate.reclaimedBytes,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  if (!Array.isArray(candidate.deletedSnapshotIds)) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+    );
+  }
+  const ids = new Set<string>();
+  for (const snapshotId of candidate.deletedSnapshotIds) {
+    if (!SNAPSHOT_ID_PATTERN.test(snapshotId) || ids.has(snapshotId)) {
+      throw new PublicationOperationsBackupRetentionError(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+      );
+    }
+    ids.add(snapshotId);
+  }
+  if (
+    candidate.deletedCount !== candidate.deletedSnapshotIds.length
+    || (candidate.status === "unchanged" && candidate.deletedCount !== 0)
+    || (candidate.status === "pruned" && candidate.deletedCount === 0)
+  ) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+    );
+  }
+  requireHash(
+    candidate.fingerprint,
+    "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+  );
+  const { fingerprint, ...partial } = candidate;
+  if (retentionResultFingerprint(partial) !== fingerprint) {
+    throw new PublicationOperationsBackupRetentionError(
+      "PUBLICATION_OPERATIONS_BACKUP_RETENTION_RESULT_INVALID",
+    );
+  }
+  return Object.freeze(candidate);
+}
+
 async function deleteVerifiedSnapshot(input: Readonly<{
   backupDirectory: string;
   snapshot: PublicationOperationsBackupRetentionSnapshot;

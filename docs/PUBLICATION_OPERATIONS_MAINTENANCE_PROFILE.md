@@ -1,17 +1,18 @@
 # Docker maintenance profile for publication operations
 
-The `maintenance` Compose profile runs the verified publication backup, snapshot verification, retention planning, retention apply and restore commands inside the same reviewed worker image as the publication operations services.
+The `maintenance` Compose profile runs verified publication backup, snapshot verification, retention planning, retention apply, interrupted-retention inspection and restore commands inside the same reviewed worker image as the publication operations services.
 
 Maintenance containers have no network access. They do not start or stop mutation roles automatically.
 
 ## Services
 
-The profile defines five one-shot services:
+The profile defines six one-shot services:
 
 - `publication-backup`;
 - `publication-backup-verify`;
 - `publication-backup-retention-plan`;
 - `publication-backup-prune`;
+- `publication-backup-retention-inspect`;
 - `publication-restore`.
 
 Every service uses:
@@ -59,6 +60,11 @@ The retention-apply service mounts:
 - publication backups read-write;
 - maintenance receipts read-write.
 
+The retention-inspection service mounts:
+
+- publication backups read-only;
+- maintenance receipts read-write.
+
 The restore service mounts:
 
 - the selected publication data volume read-write;
@@ -80,6 +86,8 @@ STORYTELLER_PUBLICATION_RETENTION_KEEP_WEEKLY_WEEKS
 STORYTELLER_PUBLICATION_RETENTION_PLAN_FINGERPRINT
 STORYTELLER_PUBLICATION_RETENTION_PLAN_FILE
 STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE
+STORYTELLER_PUBLICATION_RETENTION_INSPECTED_AT
+STORYTELLER_PUBLICATION_RETENTION_INSPECTION_FILE
 ```
 
 The actor identifier is stored privately in backup manifests, restore receipts and retention apply receipts. The snapshot identifier is used only by verification and restore.
@@ -187,15 +195,35 @@ Apply mounts the backup volume read-write but has no network access. It recomput
 
 The mandatory apply receipt is written to the maintenance-receipts volume using `STORYTELLER_PUBLICATION_RETENTION_RECEIPT_FILE`.
 
-After apply:
-
-1. retain the plan and apply receipts privately;
-2. list the remaining snapshot identifiers;
-3. run `publication-backup-verify` against retained snapshots selected by the recovery policy;
-4. confirm at least one recent verified off-host copy still exists;
-5. restart publication services only after maintenance review completes.
+After apply, keep mutation roles stopped and run the read-only inspection service before treating retention as complete.
 
 Retention is never invoked automatically by backup creation, health checks, startup or restore.
+
+## Inspect interrupted retention
+
+Run inspection after every apply and whenever the apply receipt remains `applying` or `failed`:
+
+```bash
+docker compose \
+  --profile maintenance \
+  --env-file .env.publication-operations \
+  -f compose.publication-operations.yml \
+  run --rm --no-deps publication-backup-retention-inspect
+```
+
+The service mounts publication backups read-only and reads the exact plan and apply receipts from the maintenance-receipts volume. It writes the private inspection result using `STORYTELLER_PUBLICATION_RETENTION_INSPECTION_FILE`.
+
+The inspector reopens every canonical snapshot and recognised `.pruning` directory twice, then reopens both source receipts. It fails if the inventory or evidence changes during inspection.
+
+Before restart, require one of:
+
+- `verified-complete`;
+- `verified-complete-recovered`;
+- `verified-no-mutation`.
+
+`verified-no-mutation` means the approved plan was not applied; create a new plan before any retry. `inspection-required` means services must remain stopped while missing, changed, partial or `.pruning` state is inspected manually.
+
+Retain the plan, apply and inspection receipts privately, verify policy-selected recovery snapshots, and confirm at least one recent verified off-host copy before restart.
 
 ## Restart after backup or retention
 
@@ -279,7 +307,7 @@ The maintenance profile does not provide encryption or remote transfer. Local re
 
 ## No network boundary
 
-All five maintenance services use:
+All six maintenance services use:
 
 ```text
 network_mode: none
@@ -297,6 +325,6 @@ The backup and retention cores detect unsafe snapshot state and changed plans, b
 
 ## Current boundary
 
-The maintenance profile makes backup, verification, retention planning, retention apply and restore reproducible inside the reviewed worker image with explicit read-only/read-write mounts, private receipts and no networking.
+The maintenance profile makes backup, verification, retention planning, retention apply, interrupted-retention inspection and restore reproducible inside the reviewed worker image with explicit read-only/read-write mounts, private receipts and no networking.
 
 It does not schedule backups or pruning, encrypt or transfer snapshots, stop writers automatically, select legal retention policy, guarantee application-version compatibility, provide multi-host locking or guarantee rollback if the host fails during deletion.

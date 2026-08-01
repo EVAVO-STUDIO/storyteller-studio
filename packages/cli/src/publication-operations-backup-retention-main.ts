@@ -22,6 +22,13 @@ import {
   planPublicationOperationsBackupRetention,
   prunePublicationOperationsBackups,
 } from "./publication-operations-backup-retention.js";
+import {
+  createPublicationOperationsBackupRetentionApplyFailure,
+  createPublicationOperationsBackupRetentionApplyIntent,
+} from "./publication-operations-backup-retention-evidence.js";
+import {
+  inspectPublicationOperationsBackupRetention,
+} from "./publication-operations-backup-retention-inspection.js";
 
 interface ParsedArguments {
   command: string;
@@ -36,19 +43,18 @@ export interface PublicationOperationsBackupRetentionCliDependencies {
   stdout?: PublicationOperationsBackupRetentionTextOutput;
   now?: () => Date;
   afterApplyIntent?: () => Promise<void>;
+  afterFirstInspectionInventory?: () => Promise<void>;
 }
 
-type PublicationOperationsBackupRetentionReceiptKind = "plan" | "apply";
+type PublicationOperationsBackupRetentionReceiptKind =
+  | "plan"
+  | "apply"
+  | "inspection";
 
 interface PrivateReceiptReservation {
   path: string;
   content: string;
 }
-
-export const PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION =
-  "storyteller-publication-operations-backup-retention-apply-intent-v1" as const;
-export const PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION =
-  "storyteller-publication-operations-backup-retention-apply-failure-v1" as const;
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$/u;
@@ -211,7 +217,12 @@ async function stagePrivateReceipt(
 
 async function assertRegularReceiptTarget(path: string): Promise<void> {
   const information = await lstat(path);
-  if (information.isSymbolicLink() || !information.isFile()) {
+  if (
+    information.isSymbolicLink()
+    || !information.isFile()
+    || information.nlink !== 1
+    || (information.mode & 0o777) !== 0o600
+  ) {
     throw new Error(
       "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_OUTPUT_TARGET_INVALID",
     );
@@ -306,13 +317,16 @@ async function emit(
 function help(stdout: PublicationOperationsBackupRetentionTextOutput): void {
   stdout.write("Storyteller publication backup retention CLI\n\n");
   stdout.write("Commands:\n");
-  stdout.write("  plan   Verify all snapshots and write a private non-destructive retention plan.\n");
-  stdout.write("  apply  Reserve private intent evidence, then recompute and apply an unchanged plan while publication writers are stopped.\n\n");
+  stdout.write("  plan     Verify all snapshots and write a private non-destructive retention plan.\n");
+  stdout.write("  apply    Reserve private intent evidence, then recompute and apply an unchanged plan while publication writers are stopped.\n");
+  stdout.write("  inspect  Read-only verification of plan, apply evidence, canonical snapshots and interrupted pruning state.\n\n");
   stdout.write("Both commands require --output. Standard output contains only a bounded receipt-written acknowledgement.\n\n");
   stdout.write("Plan example:\n");
   stdout.write("  npm run publication-operations-backup-retention-plan -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --output retention-plan.json\n\n");
   stdout.write("Apply example:\n");
-  stdout.write("  npm run publication-operations-backup-prune -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --plan-fingerprint <sha256> --actor-id operator_greg --offline-confirmed --output retention-receipt.json\n");
+  stdout.write("  npm run publication-operations-backup-prune -- --backup-dir ./backups --evaluated-at 2026-07-30T00:00:00Z --application-revision <40-character-git-sha> --keep-latest 7 --keep-daily-days 30 --keep-weekly-weeks 12 --plan-fingerprint <sha256> --actor-id operator_greg --offline-confirmed --output retention-receipt.json\n\n");
+  stdout.write("Inspection example:\n");
+  stdout.write("  npm run publication-operations-backup-retention-inspect -- --backup-dir ./backups --plan-receipt retention-plan.json --apply-receipt retention-receipt.json --application-revision <40-character-git-sha> --offline-confirmed --output retention-inspection.json\n");
 }
 
 function commonInput(args: ParsedArguments) {
@@ -427,16 +441,12 @@ export async function runPublicationOperationsBackupRetentionCli(
     }
 
     const operationId = randomUUID();
-    const intent = Object.freeze({
-      schemaVersion:
-        PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_INTENT_SCHEMA_VERSION,
-      status: "applying" as const,
+    const intent = createPublicationOperationsBackupRetentionApplyIntent({
       operationId,
       actorId,
-      startedAt: now(dependencies).toISOString(),
+      startedAt: now(dependencies),
       applicationRevision: input.applicationRevision,
       expectedPlanFingerprint,
-      backupState: "inspection-required-until-completed" as const,
     });
     const reservation = await writePrivateReceipt(intent, output, force);
 
@@ -454,17 +464,10 @@ export async function runPublicationOperationsBackupRetentionCli(
       stdout.write(`${JSON.stringify({ status: "written", receipt: "apply" })}\n`);
       return 0;
     } catch (error) {
-      const failure = Object.freeze({
-        schemaVersion:
-          PUBLICATION_OPERATIONS_BACKUP_RETENTION_APPLY_FAILURE_SCHEMA_VERSION,
-        status: "failed" as const,
-        operationId,
-        actorId,
-        failedAt: now(dependencies).toISOString(),
-        applicationRevision: input.applicationRevision,
-        expectedPlanFingerprint,
+      const failure = createPublicationOperationsBackupRetentionApplyFailure({
+        intent,
+        failedAt: now(dependencies),
         errorCode: safeFailureCode(error),
-        backupState: "inspection-required" as const,
       });
       try {
         await replacePrivateReceipt(failure, reservation);
@@ -474,6 +477,50 @@ export async function runPublicationOperationsBackupRetentionCli(
       }
       throw error;
     }
+  }
+
+
+  if (args.command === "inspect") {
+    const outputFlag = stringFlag(args, "output", true)!;
+    const backupDirectory = stringFlag(args, "backup-dir", true)!;
+    const planReceiptPath = receiptPathOutsideBackupRoot(
+      stringFlag(args, "plan-receipt", true)!,
+      backupDirectory,
+    );
+    const applyReceiptPath = receiptPathOutsideBackupRoot(
+      stringFlag(args, "apply-receipt", true)!,
+      backupDirectory,
+    );
+    const output = receiptPathOutsideBackupRoot(
+      outputFlag,
+      backupDirectory,
+    );
+    if (new Set([planReceiptPath, applyReceiptPath, output]).size !== 3) {
+      throw new Error(
+        "PUBLICATION_OPERATIONS_BACKUP_RETENTION_CLI_RECEIPT_PATH_CONFLICT",
+      );
+    }
+    const inspectedAt = dateFlag(args, "inspected-at");
+    const result = await inspectPublicationOperationsBackupRetention({
+      backupDirectory,
+      planReceiptPath,
+      applyReceiptPath,
+      applicationRevision: stringFlag(
+        args,
+        "application-revision",
+        true,
+      )!,
+      offlineConfirmed: booleanFlag(args, "offline-confirmed") as true,
+      ...(inspectedAt ? { inspectedAt } : {}),
+      ...(dependencies.afterFirstInspectionInventory
+        ? {
+            afterFirstInventory:
+              dependencies.afterFirstInspectionInventory,
+          }
+        : {}),
+    });
+    await emit(result, output, force, "inspection", stdout);
+    return 0;
   }
 
   throw new Error(

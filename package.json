@@ -24,6 +24,7 @@
     "publication-operations-readiness": "tsx packages/cli/src/publication-operations-readiness-main.ts",
     "publication-operations-backup-retention-plan": "tsx packages/cli/src/publication-operations-backup-retention-main.ts plan",
     "publication-operations-backup-prune": "tsx packages/cli/src/publication-operations-backup-retention-main.ts apply",
+    "publication-operations-backup-retention-inspect": "tsx packages/cli/src/publication-operations-backup-retention-main.ts inspect",
     "typecheck": "tsc --noEmit",
     "test:engine": "node scripts/run-tests.mjs engine",
     "test:api": "node scripts/run-tests.mjs api",
