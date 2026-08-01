@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "2709ba44ad8a9bcd67bc6aae0ca756abcd03821b"
+          test "$(git rev-parse HEAD)" = "7a4fab333aaa36a624a89727a27f9ec7d286c672"
           git merge-base --is-ancestor b52a5c1d6a426ccf3b7b1508d786e12504599a4f HEAD
           test "$(git diff --name-only b52a5c1d6a426ccf3b7b1508d786e12504599a4f..HEAD | sort)" = "$(printf '%s\n' \
             packages/cli/src/publication-operations-backup-retention-evidence.ts \
