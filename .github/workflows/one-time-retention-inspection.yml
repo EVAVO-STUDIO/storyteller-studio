@@ -40,9 +40,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "07acf16e9e6f48982295d55a36fb80359b189948"
+          test "$(git rev-parse HEAD)" = "193a05dc3aec70507804cdc1ce3b18380670a278"
+          git merge-base --is-ancestor b52a5c1d6a426ccf3b7b1508d786e12504599a4f HEAD
+          test "$(git diff --name-only b52a5c1d6a426ccf3b7b1508d786e12504599a4f..HEAD | sort)" = "$(printf '%s\n' \
+            packages/cli/src/publication-operations-backup-retention-evidence.ts \
+            scripts/one-time-retention-inspection-patch.py \
+            scripts/one-time-retention-inspection-payload.00 \
+            scripts/one-time-retention-inspection-payload.01 \
+            scripts/one-time-retention-inspection-payload.02 \
+            scripts/one-time-retention-inspection-payload.03 \
+            scripts/one-time-retention-inspection-payload.04 \
+            scripts/one-time-retention-inspection-payload.05 \
+            scripts/one-time-retention-inspection-payload.06 \
+            scripts/one-time-retention-inspection-payload.07 | sort)"
           git merge-base --is-ancestor b52a5c1d6a426ccf3b7b1508d786e12504599a4f origin/main
           test "$(git diff --name-only b52a5c1d6a426ccf3b7b1508d786e12504599a4f..origin/main | sort)" = ".github/workflows/one-time-retention-inspection.yml"
+          echo "STORYTELLER_RETENTION_INSPECTION_BRANCH_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up the repository runtime
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -57,6 +70,7 @@ jobs:
           python3 scripts/one-time-retention-inspection-patch.py
           test ! -e scripts/one-time-retention-inspection-patch.py
           test ! -e scripts/one-time-retention-assertions.ts
+          test -z "$(find scripts -maxdepth 1 -type f -name 'one-time-retention-inspection-payload.*' -print -quit)"
           git diff --check
 
       - name: Install locked dependencies
@@ -73,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin work/publication-retention-inspection-20260801
-          test "$(git rev-parse origin/work/publication-retention-inspection-20260801)" = "07acf16e9e6f48982295d55a36fb80359b189948"
+          test "$(git rev-parse origin/work/publication-retention-inspection-20260801)" = "$STORYTELLER_RETENTION_INSPECTION_BRANCH_HEAD"
           git config user.name "EVAVO Repository Automation"
           git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
           git add --all
