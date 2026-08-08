@@ -60,6 +60,14 @@ Sustained listenability is deliberately independent. A take may sound impressive
 
 The policy may require every reviewer to explicitly approve a selected take. A revise or reject decision therefore cannot be averaged away by higher numerical scores.
 
+## Comparative take selection
+
+When a passage has more than one objectively eligible take, Storyteller does not permit an operator to review only a preferred file and ignore the alternatives. Every eligible take must have the policy-required independent review coverage, and the alternatives must share a sufficiently large matched reviewer panel. Where blind review is required, only blind reviews count towards that comparison panel.
+
+The current calibration schema ranks the matched panel's nine review dimensions using an equal-weight mean. Objective failures, unresolved findings and sub-threshold continuity exclude a take before ranking. A reject decision, or a non-approve decision under an approve-only policy, also prevents that take from becoming the selectable benchmark.
+
+The selected take must tie for or exceed the highest comparative score among the remaining eligible alternatives. A lower-rated first render cannot be promoted merely because it was selected first. Ties remain available for a human director to resolve using scene context, neighbouring approved material and documented performance judgement.
+
 ## Continuity lock
 
 All selected takes in one approved calibration session must share one provider, model and capability fingerprint. This prevents a narrator lock from being assembled from materially different execution systems.
@@ -75,6 +83,8 @@ A later provider or model migration requires a new calibration decision. It must
 - a human approver identity;
 - complete selected-take coverage;
 - independent review coverage;
+- complete matched-panel comparison whenever multiple eligible takes exist;
+- a selected take that is not lower-rated than an eligible alternative;
 - policy score thresholds;
 - continuity compliance;
 - no unresolved candidate findings.

@@ -41,6 +41,7 @@ function collectRuntimeFiles(directory, output = []) {
 for (const path of [
   "packages/storyteller/src/calibration-workflow.ts",
   "packages/storyteller/src/calibration-workflow.test.ts",
+  "packages/storyteller/src/calibration-comparative-selection.test.ts",
   "packages/storyteller/src/calibration-store.ts",
   "packages/storyteller/src/calibration-store.test.ts",
   "packages/storyteller/src/project-store.ts",
@@ -76,6 +77,10 @@ requireTokens("packages/storyteller/src/calibration-workflow.ts", [
   "CALIBRATION_HUMAN_CONFIRMATION_REQUIRED",
   "CALIBRATION_HUMAN_APPROVER_REQUIRED",
   "CALIBRATION_PROVIDER_CONFIGURATION_DRIFT",
+  "assessComparativeTakeSelection",
+  "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE",
+  "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH",
+  "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED",
   "sustainedListenability",
 ]);
 
@@ -89,6 +94,17 @@ requireTokens("packages/storyteller/src/calibration-workflow.test.ts", [
   "automation identities cannot approve and terminal sessions cannot be revised",
   "fingerprint and revision-chain tampering are detected",
   "sustainedListenability: 2.0",
+]);
+
+requireTokens("packages/storyteller/src/calibration-comparative-selection.test.ts", [
+  "eligible alternatives require complete blind review coverage",
+  "eligible alternatives require a matched blind reviewer panel",
+  "a lower-rated selected take cannot pass comparative calibration",
+  "a rejected alternative cannot outrank an approved selected take",
+  "objective-ineligible alternatives do not force comparative review",
+  "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE",
+  "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH",
+  "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED",
 ]);
 
 requireTokens("packages/storyteller/src/calibration-store.ts", [
@@ -183,6 +199,9 @@ requireTokens("docs/CALIBRATION_WORKFLOW.md", [
   "Passage diversity",
   "Candidate evidence",
   "Human review",
+  "Comparative take selection",
+  "matched reviewer panel",
+  "lower-rated first render",
   "sustained listenability",
   "Continuity lock",
   "Human approval",
@@ -343,6 +362,7 @@ if (problems.length > 0) {
 console.log("storyteller_calibration_workflow_check_passed");
 console.log("- varied passages evaluate long-form performance risks without retaining manuscript prose");
 console.log("- blind independent reviews score textual truth, restraint and sustained listenability");
+console.log("- eligible alternatives require matched-panel review and the selected take cannot rank below them");
 console.log("- explicit human approval locks one voice revision and provider capability snapshot");
 console.log("- calibration sessions preserve linked domain and store-envelope revision chains");
 console.log("- authenticated API routes expose only bounded redacted session reads");
