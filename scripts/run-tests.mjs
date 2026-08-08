@@ -18,7 +18,27 @@ const rootsByScope = Object.freeze({
   ],
 });
 
-if (!Object.prototype.hasOwnProperty.call(rootsByScope, scope)) {
+const filesByScope = Object.freeze({
+  "audio-studio": Object.freeze([
+    "packages/storyteller/src/audio-studio-adapter.test.ts",
+    "packages/storyteller/src/generation-material.test.ts",
+    "packages/storyteller/src/generation-worker-engineering.test.ts",
+    "packages/storyteller/src/generation-worker.test.ts",
+    "packages/storyteller/src/narration-production-policy.test.ts",
+    "packages/storyteller/src/provider-adapter.test.ts",
+    "apps/worker/src/audio-studio-provider.test.ts",
+    "apps/worker/src/configuration.test.ts",
+    "apps/worker/src/providers-audio-studio.test.ts",
+    "apps/worker/src/providers.test.ts",
+    "apps/api/src/server.test.ts",
+    "packages/cli/src/main.test.ts",
+  ]),
+});
+
+if (
+  !Object.prototype.hasOwnProperty.call(rootsByScope, scope)
+  && !Object.prototype.hasOwnProperty.call(filesByScope, scope)
+) {
   console.error(`TEST_SCOPE_INVALID:${scope}`);
   process.exit(64);
 }
@@ -37,9 +57,11 @@ function collectTests(directory, output = []) {
   return output;
 }
 
-const files = rootsByScope[scope]
-  .flatMap((directory) => collectTests(directory))
-  .sort((left, right) => left.localeCompare(right, "en-AU"));
+const files = (
+  filesByScope[scope]
+    ? [...filesByScope[scope]]
+    : rootsByScope[scope].flatMap((directory) => collectTests(directory))
+).sort((left, right) => left.localeCompare(right, "en-AU"));
 
 if (files.length === 0) {
   console.error(`TEST_FILES_NOT_FOUND:${scope}`);

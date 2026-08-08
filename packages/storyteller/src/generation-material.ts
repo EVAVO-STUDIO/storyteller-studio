@@ -13,6 +13,10 @@ import {
   StoreConflictError,
   type StoredEnvelope,
 } from "./project-store.js";
+import {
+  assertNaturalNarrationWorkerInput,
+  type NarrationContextBoundary,
+} from "./narration-production-policy.js";
 import type {
   CanonicalPronunciation,
   ProviderAudioFormat,
@@ -56,6 +60,10 @@ export interface GenerationMaterialPublicView {
   rightsEvidenceId: string;
   rightsFingerprint: string;
   rightsExpiresAt?: string;
+  naturalNarrationPlanFingerprint?: string;
+  narrationContextFingerprint?: string;
+  narrationContextBoundary?: NarrationContextBoundary;
+  narrationLanguage?: string;
   costPolicy?: Readonly<{
     currency: string;
     maximumTotalEstimatedCost: number;
@@ -322,6 +330,16 @@ export function validateGenerationWorkerMaterial(
   if (!EXECUTION_MODES.has(mode)) {
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_MODE_INVALID");
   }
+  try {
+    assertNaturalNarrationWorkerInput(job, {
+      ...material,
+      mode,
+    });
+  } catch (error) {
+    throw new GenerationMaterialIntegrityError(
+      error instanceof Error ? error.message : "GENERATION_MATERIAL_NATURAL_NARRATION_INVALID",
+    );
+  }
   const format = material.format ?? "wav";
   if (!STORABLE_AUDIO_FORMATS.has(format)) {
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_FORMAT_NOT_STORABLE");
@@ -378,6 +396,14 @@ function normaliseGenerationWorkerMaterial(
     intendedUse: material.intendedUse ?? "audiobook",
     commercial: material.commercial ?? true,
     parentArtifactIds: Object.freeze([...(material.parentArtifactIds ?? [])]),
+    ...(material.naturalNarration
+      ? {
+          naturalNarration: Object.freeze({
+            ...material.naturalNarration,
+            context: Object.freeze({ ...material.naturalNarration.context }),
+          }),
+        }
+      : {}),
     ...(material.costPolicy
       ? {
           costPolicy: {
@@ -483,6 +509,14 @@ export function generationMaterialPublicView(
     rightsEvidenceId: material.rights.rightsEvidenceId,
     rightsFingerprint: material.rights.rightsFingerprint,
     ...(material.rights.expiresAt ? { rightsExpiresAt: material.rights.expiresAt } : {}),
+    ...(material.naturalNarration
+      ? {
+          naturalNarrationPlanFingerprint: material.naturalNarration.fingerprint,
+          narrationContextFingerprint: material.naturalNarration.context.fingerprint,
+          narrationContextBoundary: material.naturalNarration.context.boundary,
+          narrationLanguage: material.naturalNarration.language,
+        }
+      : {}),
     ...(material.costPolicy ? { costPolicy: material.costPolicy } : {}),
     createdAt: record.createdAt,
     fingerprint: record.fingerprint,

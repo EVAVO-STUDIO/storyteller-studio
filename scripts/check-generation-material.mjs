@@ -75,6 +75,10 @@ requireTokens("packages/storyteller/src/generation-material.ts", [
   "GENERATION_MATERIAL_PRONUNCIATION_WRITTEN_DUPLICATE",
   "GENERATION_MATERIAL_RIGHTS_USES_DUPLICATE",
   "generation.material.created",
+  "assertNaturalNarrationWorkerInput",
+  "naturalNarrationPlanFingerprint",
+  "narrationContextFingerprint",
+  "narrationContextBoundary",
 ]);
 
 requireTokens("packages/storyteller/src/generation-material.test.ts", [
@@ -123,6 +127,8 @@ if (publicViewStart < 0 || storeStart <= publicViewStart) {
     "directionFingerprint: stableHash(material.direction)",
     "pronunciationCount: material.pronunciations?.length ?? 0",
     "voiceRevision: material.voiceRevision",
+    "naturalNarrationPlanFingerprint: material.naturalNarration.fingerprint",
+    "narrationContextFingerprint: material.naturalNarration.context.fingerprint",
   ]) {
     if (!publicView.includes(required)) {
       problems.push(`generation material public view is missing safe derived field: ${required}`);
@@ -140,6 +146,8 @@ if (publicViewStart < 0 || storeStart <= publicViewStart) {
     "emotionalObjective:",
     "subtext:",
     "notes:",
+    "previousContext:",
+    "nextContext:",
     "leaseToken:",
     "objectKey:",
     "providerRequestId:",
@@ -199,6 +207,6 @@ console.log("- private production text and direction are stored separately from 
 console.log("- material scope is bound to job, project, segment, cache key and candidate count");
 console.log("- equivalent optional defaults produce one canonical fingerprint");
 console.log("- rights, pronunciation, format and cost policy gates fail before persistence");
-console.log("- public views expose safe counts and fingerprints, not executable private content");
+console.log("- public views expose safe counts and fingerprints, including natural-narration plan identity, not executable private content");
 console.log("- audit records omit text, pronunciation, voice and parent artifact identity");
 console.log("- normal API and browser runtime surfaces expose no executable material store");

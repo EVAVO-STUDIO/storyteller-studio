@@ -281,7 +281,7 @@ export async function run(args: ParsedArguments): Promise<number> {
 
     case "jobs": {
       const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
-      const result = createGenerationJobs(manifest, numberFlag(args, "candidates") ?? 2);
+      const result = createGenerationJobs(manifest, numberFlag(args, "candidates") ?? 3);
       emit(result, output, force);
       return result.every((job) => job.status === "ready") ? 0 : 2;
     }
@@ -316,7 +316,7 @@ export async function run(args: ParsedArguments): Promise<number> {
 
     case "queue-enqueue": {
       const manifest = readJson<ProjectManifest>(stringFlag(args, "project", true)!);
-      const jobs = createGenerationJobs(manifest, numberFlag(args, "candidates") ?? 2);
+      const jobs = createGenerationJobs(manifest, numberFlag(args, "candidates") ?? 3);
       const queue = localGenerationQueue(args);
       const availableAt = dateFlag(args, "available-at");
       const rows: Record<string, unknown>[] = [];

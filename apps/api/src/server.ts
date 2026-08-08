@@ -732,7 +732,7 @@ export function createStorytellerApiHandler(
         const manifest = parseManifest(payload.manifest);
         const candidateCount = parseInteger(
           payload.candidateCount,
-          2,
+          3,
           1,
           8,
           "GENERATION_CANDIDATE_COUNT_INVALID",
@@ -756,7 +756,7 @@ export function createStorytellerApiHandler(
         const manifest = parseManifest(payload.manifest);
         const candidateCount = parseInteger(
           payload.candidateCount,
-          2,
+          3,
           1,
           8,
           "GENERATION_CANDIDATE_COUNT_INVALID",

@@ -19,6 +19,7 @@ A material record binds one generation job to:
 - rights evidence and allowed uses;
 - commercial-use posture;
 - parent continuity or source artifacts;
+- an optional fingerprinted natural-narration plan containing language and bounded neighbouring context;
 - optional job cost policy.
 
 ## Immutable scope
@@ -67,7 +68,9 @@ Records fail before persistence when any of these conditions is present:
 - commercial production without commercial approval;
 - expired rights;
 - invalid or negative cost ceiling;
-- a generation job that is not ready.
+- a generation job that is not ready;
+- an Audio Studio production job without a valid natural-narration plan;
+- a natural-narration plan whose text, direction, source, context or candidate-count binding changed.
 
 WAV, FLAC and MP3 are currently accepted as durable generation formats. Raw PCM needs an explicit container and media contract before it can enter private object storage.
 
@@ -120,6 +123,7 @@ The redacted material view may reveal operational metadata such as:
 - pronunciation count, but not terms or phonemes;
 - execution mode, format and sample rate;
 - rights record identifier, rights fingerprint and expiry;
+- natural-narration plan and context fingerprints, context boundary and language;
 - cost ceiling.
 
 It does not reveal:
@@ -127,6 +131,7 @@ It does not reveal:
 - manuscript text;
 - character names or pronunciation entries;
 - emotional objective, subtext or direction notes;
+- preceding or following manuscript context;
 - voice profile identifier;
 - parent artifact identifiers;
 - provider credentials;
@@ -142,7 +147,7 @@ The internal service sequence is:
 
 1. claim a ready queue item;
 2. resolve its generation-material record;
-3. revalidate rights and execution policy;
+3. revalidate rights, natural-narration context and execution policy;
 4. start lease heartbeat;
 5. invoke approved provider adapters;
 6. persist and verify artifact evidence;
