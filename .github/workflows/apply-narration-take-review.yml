@@ -46,6 +46,12 @@ jobs:
           base = "8bdb6f601a4aca98201125ddd1d01d905f708abc"
           expected = {
               ".github/temporary/narration-take-review.patch.gz.b64.part-000",
+              ".github/temporary/narration-take-review.patch.gz.b64.part-000.sub-00",
+              ".github/temporary/narration-take-review.patch.gz.b64.part-000.sub-01",
+              ".github/temporary/narration-take-review.patch.gz.b64.part-000.sub-02",
+              ".github/temporary/narration-take-review.patch.gz.b64.part-000.sub-03",
+              ".github/temporary/narration-take-review.patch.gz.b64.part-000.sub-04",
+              ".github/temporary/narration-take-review.patch.gz.b64.part-000.sub-05",
               ".github/temporary/narration-take-review.patch.gz.b64.part-001",
               ".github/temporary/narration-take-review.patch.gz.b64.part-002",
               ".github/temporary/narration-take-review.patch.gz.b64.part-003",
@@ -59,7 +65,11 @@ jobs:
               raise SystemExit(f"unexpected staging paths: {sorted(actual ^ expected)}")
           PY
 
-          cat "$parts_dir"/narration-take-review.patch.gz.b64.part-* \
+          cat \
+            "$parts_dir"/narration-take-review.patch.gz.b64.part-000.sub-* \
+            "$parts_dir"/narration-take-review.patch.gz.b64.part-001 \
+            "$parts_dir"/narration-take-review.patch.gz.b64.part-002 \
+            "$parts_dir"/narration-take-review.patch.gz.b64.part-003 \
             | base64 --decode > "$gzip_file"
           test "$(sha256sum "$gzip_file" | cut -d' ' -f1)" = "0e8890d27ac53fd1720a48ced82f3d403facc836352f531630df2b30a9e6d725"
           gzip --decompress --stdout "$gzip_file" > "$patch_file"
