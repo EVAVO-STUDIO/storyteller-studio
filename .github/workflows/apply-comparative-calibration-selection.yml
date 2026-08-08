@@ -1,0 +1,110 @@
+name: Apply Comparative Calibration Selection
+
+on:
+  push:
+    branches:
+      - work/comparative-calibration-selection-20260808
+
+permissions:
+  contents: write
+
+concurrency:
+  group: storyteller-comparative-calibration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Apply the hash-pinned comparative patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_file=".github/temporary/comparative-calibration-selection.patch"
+          test "$(sha256sum "$patch_file" | cut -d' ' -f1)" = "bff3a29c095ee337607cea909ae2d6107b9c2a1084d5d6e02a859a9a8bbd78ef"
+          test "$(git hash-object docs/CALIBRATION_WORKFLOW.md)" = "4091e96f9dfb75dc1b859d68671cf6864b733d4b"
+          test "$(git hash-object packages/storyteller/src/calibration-workflow.ts)" = "66dc119e48faa630af271cebd33c1876e1bc0da8"
+          test "$(git hash-object scripts/check-calibration-workflow.mjs)" = "c39c5144806147160e8e48c4b9901a051714e813"
+          test ! -e packages/storyteller/src/calibration-comparative-selection.test.ts
+          git apply --check "$patch_file"
+          git apply "$patch_file"
+          git diff --check
+          test "$(git hash-object docs/CALIBRATION_WORKFLOW.md)" = "898510874ad48745a1721f74f3303e72338f1b76"
+          test "$(git hash-object packages/storyteller/src/calibration-workflow.ts)" = "e172e2d1159c3251690daab4ecd46d82a028d8e9"
+          test "$(git hash-object packages/storyteller/src/calibration-comparative-selection.test.ts)" = "dcc53e7ab65591d36e4a5a609d54f1e4c8cbfd83"
+          test "$(git hash-object scripts/check-calibration-workflow.mjs)" = "ba90ef6553538a4cf21440a838c9be6c5f4872a3"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify architecture foundation
+        run: npm run verify:foundation
+
+      - name: Verify private application boundary
+        run: npm run verify:private-boundary
+
+      - name: Type-check repository
+        run: npm run typecheck
+
+      - name: Verify governed artifact lifecycle
+        run: npm run verify:artifacts
+
+      - name: Test storyteller engine
+        run: npm run test:engine
+
+      - name: Test protected API
+        run: npm run test:api
+
+      - name: Test private worker runtime
+        run: npm run test:worker
+
+      - name: Test CLI workflows
+        run: npm run test:cli
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Commit only the validated production change
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/temporary/comparative-calibration-selection.patch
+          rm .github/workflows/apply-comparative-calibration-selection.yml
+          python - <<'PY'
+          import subprocess
+
+          expected = {
+              ".github/temporary/comparative-calibration-selection.patch",
+              ".github/workflows/apply-comparative-calibration-selection.yml",
+              "docs/CALIBRATION_WORKFLOW.md",
+              "packages/storyteller/src/calibration-comparative-selection.test.ts",
+              "packages/storyteller/src/calibration-workflow.ts",
+              "scripts/check-calibration-workflow.mjs",
+          }
+          lines = subprocess.check_output(["git", "status", "--porcelain"], text=True).splitlines()
+          actual = {line[3:] for line in lines}
+          if actual != expected:
+              raise SystemExit(f"unexpected working-tree paths: {sorted(actual ^ expected)}")
+          PY
+          git add -A
+          git diff --cached --check
+          test "$(git hash-object docs/CALIBRATION_WORKFLOW.md)" = "898510874ad48745a1721f74f3303e72338f1b76"
+          test "$(git hash-object packages/storyteller/src/calibration-workflow.ts)" = "e172e2d1159c3251690daab4ecd46d82a028d8e9"
+          test "$(git hash-object packages/storyteller/src/calibration-comparative-selection.test.ts)" = "dcc53e7ab65591d36e4a5a609d54f1e4c8cbfd83"
+          test "$(git hash-object scripts/check-calibration-workflow.mjs)" = "ba90ef6553538a4cf21440a838c9be6c5f4872a3"
+          git config user.name "EVAVO Studio Automation"
+          git config user.email "evavo.studio@gmail.com"
+          git commit -m "feat: rank eligible calibration takes"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
