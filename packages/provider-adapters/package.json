@@ -1,0 +1,20 @@
+{
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "description": "Provider-independent voice and image adapters.",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "version": "0.1.0",
+  "name": "@evavo/provider-adapters",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js"
+}

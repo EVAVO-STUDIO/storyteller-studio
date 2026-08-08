@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+build
+coverage
+storage
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.aiff
+*.aac
+*.mp4
+*.mov
+*.webm
