@@ -69,6 +69,9 @@ requireTokens("packages/storyteller/src/chapter-render.test.ts", [
   "render evidence tampering is detected",
   "FixtureResolver",
   "FixtureRenderRunner",
+  "approveNarrationTakeReviewFixture",
+  "requireApprovedTakeSelection: true",
+  "takeReviewSession: approved.session",
   "atrim=start=0\\.100000:end=0\\.900000",
   "amix=inputs=2:normalize=0",
 ]);

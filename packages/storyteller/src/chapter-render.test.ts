@@ -12,10 +12,10 @@ import {
 } from "./audio-engineering.js";
 import {
   createArtifactRecord,
-  recordArtifactReview,
   verifyArtifactIntegrity,
   type ArtifactRecord,
 } from "./artifact-registry.js";
+import { approveNarrationTakeReviewFixture } from "../test-support/narration-take-review-fixture.js";
 import {
   createChapterAssemblyPlan,
 } from "./chapter-assembly.js";
@@ -34,7 +34,8 @@ import {
 const t0 = new Date("2026-07-27T00:00:00.000Z");
 const t1 = new Date("2026-07-27T00:00:01.000Z");
 const t2 = new Date("2026-07-27T00:00:02.000Z");
-const t3 = new Date("2026-07-27T00:00:03.000Z");
+const t3 = new Date("2026-07-27T00:00:30.000Z");
+const t4 = new Date("2026-07-27T00:00:31.000Z");
 const manuscriptHash = "a".repeat(64);
 const requestHash = "b".repeat(64);
 const rightsFingerprint = "c".repeat(64);
@@ -61,6 +62,8 @@ function verifiedArtifact(input: Readonly<{
   mimeType: string;
   format: string;
   reviewRequired: boolean;
+  takeId: string;
+  generationRequestHash: string;
 }>): ArtifactRecord {
   const initial = createArtifactRecord({
     id: input.id,
@@ -68,7 +71,7 @@ function verifiedArtifact(input: Readonly<{
     projectId: "project_chapter_render_001",
     jobId: "job_chapter_render_001",
     segmentId: "segment_chapter_render_001",
-    takeId: "take_chapter_render_001",
+    takeId: input.takeId,
     storage: {
       driver: "private-object-store",
       provider: "storyteller-render-test",
@@ -86,7 +89,7 @@ function verifiedArtifact(input: Readonly<{
     provenance: {
       createdByActorId: "worker_chapter_render_001",
       sourceContentHash: input.sourceContentHash,
-      generationRequestHash: requestHash,
+      generationRequestHash: input.generationRequestHash,
       ...(input.kind === "audio-candidate"
         ? { providerId: "provider_render", adapterVersion: "1.0.0" }
         : {}),
@@ -108,14 +111,7 @@ function verifiedArtifact(input: Readonly<{
     checks: ["sha256", "byte-count", "media-signature"],
     checkedAt: t1,
   });
-  return input.reviewRequired
-    ? recordArtifactReview(verified, {
-        decision: "approved",
-        reviewerId: "director_chapter_render_001",
-        notes: "Approved in chapter context.",
-        decidedAt: t2,
-      })
-    : verified;
+  return verified;
 }
 
 function commandResult(stdout = "", stderr = ""): AudioEngineeringCommandResult {
@@ -169,10 +165,15 @@ class EvidenceRunner implements AudioEngineeringRunner {
   }
 }
 
-async function planFixture() {
-  const audioBytes = wavBytes(1);
+async function candidateChain(input: Readonly<{
+  variant: "primary" | "alternative";
+  seed: number;
+  generationRequestHash: string;
+}>) {
+  const takeId = `take_chapter_render_001_${input.variant}`;
+  const audioBytes = wavBytes(input.seed);
   const audio = verifiedArtifact({
-    id: "artifact_audio_chapter_render_001",
+    id: `artifact_audio_chapter_render_001_${input.variant}`,
     kind: "audio-candidate",
     bytes: audioBytes,
     sourceContentHash: manuscriptHash,
@@ -180,10 +181,12 @@ async function planFixture() {
     mimeType: "audio/wav",
     format: "wav",
     reviewRequired: true,
+    takeId,
+    generationRequestHash: input.generationRequestHash,
   });
-  const transcriptBytes = new TextEncoder().encode("Aelwyn waited.");
+  const transcriptBytes = new TextEncoder().encode(`Aelwyn waited. ${input.variant}`);
   const transcript = verifiedArtifact({
-    id: "artifact_transcript_chapter_render_001",
+    id: `artifact_transcript_chapter_render_001_${input.variant}`,
     kind: "transcript",
     bytes: transcriptBytes,
     sourceContentHash: manuscriptHash,
@@ -191,9 +194,11 @@ async function planFixture() {
     mimeType: "text/plain",
     format: "txt",
     reviewRequired: false,
+    takeId,
+    generationRequestHash: input.generationRequestHash,
   });
   const evidence = await analyseAudioEngineering({
-    audioPath: "/private/render/source.wav",
+    audioPath: `/private/render/source-${input.variant}.wav`,
     inputContentHash: audio.integrity.contentHash,
     inputByteCount: audio.integrity.byteCount,
     profile: ACX_AUDIOBOOK_PROFILE,
@@ -205,7 +210,7 @@ async function planFixture() {
   });
   const engineeringBytes = new TextEncoder().encode(JSON.stringify(evidence));
   const engineering = verifiedArtifact({
-    id: "artifact_engineering_chapter_render_001",
+    id: `artifact_engineering_chapter_render_001_${input.variant}`,
     kind: "audio-analysis",
     bytes: engineeringBytes,
     sourceContentHash: audio.integrity.contentHash,
@@ -213,6 +218,41 @@ async function planFixture() {
     mimeType: "application/json",
     format: "json",
     reviewRequired: false,
+    takeId,
+    generationRequestHash: input.generationRequestHash,
+  });
+  return {
+    audioBytes,
+    audioCandidate: audio,
+    transcriptArtifact: transcript,
+    engineeringArtifact: engineering,
+    engineeringEvidence: evidence,
+  };
+}
+
+async function planFixture() {
+  const primary = await candidateChain({
+    variant: "primary",
+    seed: 1,
+    generationRequestHash: requestHash,
+  });
+  const alternative = await candidateChain({
+    variant: "alternative",
+    seed: 2,
+    generationRequestHash: "d".repeat(64),
+  });
+  const approved = approveNarrationTakeReviewFixture({
+    sessionId: "narration_take_review_chapter_render_001",
+    performanceContextFingerprint: "e".repeat(64),
+    candidates: [
+      { ...primary, score: 5 },
+      { ...alternative, score: 4 },
+    ],
+    selectedTakeId: primary.audioCandidate.takeId!,
+    editorialReviewerId: "editorial_reviewer_chapter_render_001",
+    engineeringReviewerId: "engineering_reviewer_chapter_render_001",
+    directorId: "director_chapter_render_001",
+    createdAt: t2,
   });
   const plan = createChapterAssemblyPlan({
     id: "assembly_chapter_render_001",
@@ -226,6 +266,7 @@ async function planFixture() {
       maximumGapMs: 5_000,
       maximumFadeMs: 500,
       requireApprovedCandidates: true,
+      requireApprovedTakeSelection: true,
     },
     output: {
       format: "wav",
@@ -238,10 +279,11 @@ async function planFixture() {
       segmentId: "segment_chapter_render_001",
       sourceStart: 0,
       sourceEnd: 100,
-      audioCandidate: audio,
-      transcriptArtifact: transcript,
-      engineeringArtifact: engineering,
-      engineeringEvidence: evidence,
+      audioCandidate: approved.audioCandidate,
+      transcriptArtifact: primary.transcriptArtifact,
+      engineeringArtifact: primary.engineeringArtifact,
+      engineeringEvidence: primary.engineeringEvidence,
+      takeReviewSession: approved.session,
       trimStartMs: 100,
       trimEndMs: 100,
       fadeInMs: 40,
@@ -252,7 +294,7 @@ async function planFixture() {
     createdByActorId: "editor_chapter_render_001",
     createdAt: t3,
   });
-  return { plan, audioBytes, audio };
+  return { plan, audioBytes: primary.audioBytes, audio: approved.audioCandidate };
 }
 
 class FixtureResolver implements ChapterSourceResolver {
@@ -316,7 +358,7 @@ test("shell-free render evidence binds the exact plan and private sources withou
     temporaryRoot: "/private/render-temp",
     timeoutMs: 5_000,
     maximumOutputBytes: 1024 * 1024,
-    renderedAt: new Date("2026-07-27T00:00:04.000Z"),
+    renderedAt: t4,
   });
 
   assertChapterRenderEvidence(result.evidence);
