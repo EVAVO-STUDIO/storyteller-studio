@@ -1,0 +1,191 @@
+name: Apply Natural Narration Orchestration
+
+on:
+  push:
+    branches:
+      - work/natural-narration-orchestration-20260809
+
+permissions:
+  contents: write
+
+concurrency:
+  group: storyteller-natural-narration-apply-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-verify-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+
+      - name: Reconstruct and apply hash-pinned production patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sha256sum .github/temporary/natural-narration.patch.b64.part00 | cut -d' ' -f1)" = "4213669f34cc42ec90e4663b0a0adf7e155ac6d462b796d9fcbecdc9a1956eb5"
+          test "$(sha256sum .github/temporary/natural-narration.patch.b64.part01 | cut -d' ' -f1)" = "6b1abf68c454a195636d088d8330baf713f7b4fee896358193f0678df09a7132"
+          test "$(sha256sum .github/temporary/natural-narration.patch.b64.part02 | cut -d' ' -f1)" = "c3a997afe1f368a485310fb6b2c94963ff1139729ecacbc752107f1daccc7c74"
+          test "$(sha256sum .github/temporary/natural-narration.patch.b64.part03 | cut -d' ' -f1)" = "4436bc28292b52f37d0d023874aa7fa433751d9705611e8c6a4f6328f43bc1dc"
+          test "$(sha256sum .github/temporary/natural-narration.patch.b64.part04 | cut -d' ' -f1)" = "a0479a358bfd2cdbc7289f891b5b88c31462e76d27edfc6aec53b87a1274a780"
+          cat .github/temporary/natural-narration.patch.b64.part{00,01,02,03,04} > /tmp/natural-narration.patch.b64
+          test "$(sha256sum /tmp/natural-narration.patch.b64 | cut -d' ' -f1)" = "75742323e18c09244c73a484d72704c06182677b91cad2043c51ef403ce067a0"
+          base64 --decode /tmp/natural-narration.patch.b64 > /tmp/natural-narration.patch
+          test "$(sha256sum /tmp/natural-narration.patch | cut -d' ' -f1)" = "70fad9e1575e1964556edb0942a82aba8e654bc89cb96a50916fd7fed5895da2"
+
+          test "$(git hash-object apps/api/src/server.ts)" = "79a040c3fc2b4b4b496c3f9c224c65da50e7e5bd"
+          test "$(git hash-object docs/GENERATION_MATERIAL.md)" = "297946402e8c51765b18592fba24f0ee744cba3f"
+          test "$(git hash-object docs/GENERATION_WORKER.md)" = "4471543c0bcaac12452061a2d7cce698275e9130"
+          test "$(git hash-object packages/cli/src/main.ts)" = "859ca771f6dbb94f6f663c0ca347a93fb3ac4df9"
+          test "$(git hash-object packages/storyteller/package.json)" = "0d343f73831f6064a265818eac39f16d252e8d2c"
+          test "$(git hash-object packages/storyteller/src/generation-material.ts)" = "7d96179911b65f723991f379cc8aabbb091dfb76"
+          test "$(git hash-object packages/storyteller/src/generation-worker.ts)" = "2ee73def5928cecbfd7f9ec1ca3a25efba51371b"
+          test "$(git hash-object packages/storyteller/src/index.ts)" = "bde2f009ee0b146e16145769dfe262a82438e774"
+          test "$(git hash-object packages/storyteller/src/provider-adapter.ts)" = "8e11b423783e9ba897aa5b3eb22b4e765d4c0e05"
+          test "$(git hash-object scripts/check-generation-material.mjs)" = "a1d50ce81318d66950111dbb7beccc4b00c68f0f"
+          test "$(git hash-object scripts/check-generation-worker.mjs)" = "47222c634a03655e09227b566ed684957bc045b6"
+          test "$(git hash-object packages/storyteller/src/narration-production-policy.ts)" = "23c5d54d50515a37c870ec287ffd9797a38b98e9"
+          test "$(git hash-object packages/storyteller/src/narration-production-policy.test.ts)" = "c99ecdc173c553aca2017f4aed5deb2a672b22e8"
+
+          git apply --check /tmp/natural-narration.patch
+          git apply /tmp/natural-narration.patch
+          git diff --check
+
+          test "$(git hash-object apps/api/src/server.ts)" = "74972cd6cfa31567c2777a69324163386714f7f7"
+          test "$(git hash-object docs/GENERATION_MATERIAL.md)" = "8b856e1cb01089d082d6f461e4d3653266cc689e"
+          test "$(git hash-object docs/GENERATION_WORKER.md)" = "6172661ff8fedef13a2548f4fd7a8503f90aa5e3"
+          test "$(git hash-object packages/cli/src/main.ts)" = "4aa8240e15f7d5edf47025abfbad261b15d1242e"
+          test "$(git hash-object packages/storyteller/package.json)" = "456a30f28ae0722300304075f4e8151a2b45cb59"
+          test "$(git hash-object packages/storyteller/src/generation-material.ts)" = "6f7f65efe0705d5db80feeb085c736f49a820721"
+          test "$(git hash-object packages/storyteller/src/generation-worker.ts)" = "5a0a06b20e049478113a29d9a53d674cbb12a3ab"
+          test "$(git hash-object packages/storyteller/src/index.ts)" = "0f1ba55186621f6904e0841571639ae91691bf77"
+          test "$(git hash-object packages/storyteller/src/provider-adapter.ts)" = "286ea757ee296dbe6c245cac620710a5b2adc553"
+          test "$(git hash-object scripts/check-generation-material.mjs)" = "db55efd01a744a4d6051e18a878e528136e78684"
+          test "$(git hash-object scripts/check-generation-worker.mjs)" = "398b357ecc88f1770419dede83da63f5983953a7"
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify architecture foundation
+        shell: bash
+        run: |
+          mkdir -p .verification
+          set -o pipefail
+          npm run verify:foundation 2>&1 | tee .verification/foundation.log
+
+      - name: Verify private application boundary
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:private-boundary 2>&1 | tee .verification/private-boundary.log
+
+      - name: Type-check repository
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee .verification/typecheck.log
+
+      - name: Verify governed artifact lifecycle
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run verify:artifacts 2>&1 | tee .verification/artifacts.log
+
+      - name: Test storyteller engine
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:engine 2>&1 | tee .verification/engine-tests.log
+
+      - name: Test protected API
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:api 2>&1 | tee .verification/api-tests.log
+
+      - name: Test private worker runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:worker 2>&1 | tee .verification/worker-tests.log
+
+      - name: Test CLI workflows
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:cli 2>&1 | tee .verification/cli-tests.log
+
+      - name: Build workspaces
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee .verification/build.log
+
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: storyteller-natural-narration-validation-${{ github.sha }}
+          path: .verification
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Commit only the validated production tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .verification
+          rm .github/workflows/apply-natural-narration-orchestration.yml
+          rm .github/workflows/export-natural-narration-source.yml
+          rm .github/temporary/natural-narration.patch.b64.part{00,01,02,03,04}
+
+          python - <<'PY'
+          import subprocess
+
+          expected = {
+              ".github/temporary/natural-narration.patch.b64.part00",
+              ".github/temporary/natural-narration.patch.b64.part01",
+              ".github/temporary/natural-narration.patch.b64.part02",
+              ".github/temporary/natural-narration.patch.b64.part03",
+              ".github/temporary/natural-narration.patch.b64.part04",
+              ".github/workflows/apply-natural-narration-orchestration.yml",
+              ".github/workflows/export-natural-narration-source.yml",
+              "apps/api/src/server.ts",
+              "docs/GENERATION_MATERIAL.md",
+              "docs/GENERATION_WORKER.md",
+              "packages/cli/src/main.ts",
+              "packages/storyteller/package.json",
+              "packages/storyteller/src/generation-material.ts",
+              "packages/storyteller/src/generation-worker.ts",
+              "packages/storyteller/src/index.ts",
+              "packages/storyteller/src/provider-adapter.ts",
+              "scripts/check-generation-material.mjs",
+              "scripts/check-generation-worker.mjs",
+          }
+          lines = subprocess.check_output(["git", "status", "--porcelain"], text=True).splitlines()
+          actual = {line[3:] for line in lines}
+          if actual != expected:
+              raise SystemExit(f"unexpected working-tree paths: {sorted(actual ^ expected)}")
+          PY
+
+          git add -A
+          git diff --cached --check
+          test "$(git hash-object packages/storyteller/src/narration-production-policy.ts)" = "23c5d54d50515a37c870ec287ffd9797a38b98e9"
+          test "$(git hash-object packages/storyteller/src/narration-production-policy.test.ts)" = "c99ecdc173c553aca2017f4aed5deb2a672b22e8"
+          test "$(git hash-object packages/storyteller/src/generation-material.ts)" = "6f7f65efe0705d5db80feeb085c736f49a820721"
+          test "$(git hash-object packages/storyteller/src/generation-worker.ts)" = "5a0a06b20e049478113a29d9a53d674cbb12a3ab"
+          test "$(git hash-object packages/storyteller/src/provider-adapter.ts)" = "286ea757ee296dbe6c245cac620710a5b2adc553"
+          git config user.name "EVAVO Studio Automation"
+          git config user.email "evavo.studio@gmail.com"
+          git commit -m "feat: orchestrate natural narration production"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
