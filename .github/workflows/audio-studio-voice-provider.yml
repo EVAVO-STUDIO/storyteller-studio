@@ -1,0 +1,76 @@
+name: Audio Studio Voice Provider
+
+on:
+  pull_request:
+    paths:
+      - "packages/storyteller/src/audio-studio-*"
+      - "packages/storyteller/package.json"
+      - "apps/worker/src/audio-studio-provider*"
+      - "apps/worker/src/providers*"
+      - "docs/AUDIO_STUDIO_VOICE_PROVIDER*"
+      - "examples/audio-studio-*"
+      - "scripts/check-audio-studio-voice-provider.mjs"
+      - ".github/workflows/audio-studio-voice-provider.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/storyteller/src/audio-studio-*"
+      - "packages/storyteller/package.json"
+      - "apps/worker/src/audio-studio-provider*"
+      - "apps/worker/src/providers*"
+      - "docs/AUDIO_STUDIO_VOICE_PROVIDER*"
+      - "examples/audio-studio-*"
+      - "scripts/check-audio-studio-voice-provider.mjs"
+      - ".github/workflows/audio-studio-voice-provider.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-studio-voice-provider-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Node 22 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18.0"
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Audit Audio Studio boundary
+        run: node scripts/check-audio-studio-voice-provider.mjs
+
+      - name: Type-check complete workspace
+        run: npm run typecheck
+
+      - name: Run engine and worker tests
+        run: node scripts/run-tests.mjs all
+
+      - name: Confirm repository remains clean
+        run: >-
+          node -e "const{execFileSync}=require('node:child_process');
+          const out=execFileSync('git',['status','--porcelain'],{encoding:'utf8'});
+          process.stdout.write(out);
+          process.exit(out?1:0)"

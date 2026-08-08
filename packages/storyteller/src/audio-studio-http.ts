@@ -1,5 +1,8 @@
 import type { AudioStudioFetch } from "./audio-studio-types.js";
 
+const MAX_CREDENTIAL_CHARACTERS = 4_096;
+const MAX_RESPONSE_BYTES_ABSOLUTE = 2 * 1024 * 1024 * 1024;
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -88,7 +91,13 @@ export function audioStudioHeaders(
   additional: HeadersInit = {},
 ): Headers {
   const trimmed = credential.trim();
-  if (!trimmed) throw new Error("AUDIO_STUDIO_CREDENTIAL_MISSING");
+  if (
+    !trimmed
+    || trimmed.length > MAX_CREDENTIAL_CHARACTERS
+    || /\s|[\u0000-\u001f\u007f]/u.test(trimmed)
+  ) {
+    throw new Error("AUDIO_STUDIO_CREDENTIAL_INVALID");
+  }
   const headers = new Headers({ authorization: `Bearer ${trimmed}` });
   new Headers(additional).forEach((value, key) => headers.set(key, value));
   return headers;
@@ -103,7 +112,9 @@ export async function withAudioStudioDeadline<T>(
     throw new Error("AUDIO_STUDIO_TIMEOUT_INVALID");
   }
   const controller = new AbortController();
-  const abort = (): void => controller.abort(signal?.reason);
+  const abort = (): void => controller.abort(
+    signal?.reason ?? new Error("AUDIO_STUDIO_REQUEST_ABORTED"),
+  );
   if (signal?.aborted) abort();
   else signal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(
@@ -118,13 +129,82 @@ export async function withAudioStudioDeadline<T>(
   }
 }
 
+function validateMaximumResponseBytes(maximumBytes: number, code: string): void {
+  if (
+    !Number.isSafeInteger(maximumBytes)
+    || maximumBytes < 1
+    || maximumBytes > MAX_RESPONSE_BYTES_ABSOLUTE
+  ) {
+    throw new Error(`${code}_LIMIT_INVALID`);
+  }
+}
+
+export async function readAudioStudioResponseBytes(
+  response: Response,
+  maximumBytes: number,
+  code: string,
+): Promise<Uint8Array> {
+  validateMaximumResponseBytes(maximumBytes, code);
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const parsed = Number(declaredLength);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw new Error(`${code}_CONTENT_LENGTH_INVALID`);
+    }
+    if (parsed > maximumBytes) throw new Error(`${code}_TOO_LARGE`);
+  }
+  if (!response.body) throw new Error(`${code}_BODY_MISSING`);
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        throw new Error(`${code}_BODY_INVALID`);
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        try {
+          await reader.cancel(`${code}_TOO_LARGE`);
+        } catch {
+          // The size policy failure remains authoritative even if cancellation fails.
+        }
+        throw new Error(`${code}_TOO_LARGE`);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 export async function parseAudioStudioEnvelope<T>(
   response: Response,
   code: string,
+  maximumBytes = 2 * 1024 * 1024,
 ): Promise<T> {
+  const contentType = response.headers.get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLocaleLowerCase("en-AU");
+  if (contentType && contentType !== "application/json") {
+    throw new Error(`${code}_CONTENT_TYPE_INVALID`);
+  }
+  const bytes = await readAudioStudioResponseBytes(response, maximumBytes, code);
   let value: unknown;
   try {
-    value = await response.json();
+    value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
   } catch {
     throw new Error(`${code}_JSON_INVALID`);
   }
@@ -174,7 +254,10 @@ export async function fetchAudioStudio(
   return withAudioStudioDeadline(timeoutMs, signal, (deadlineSignal) =>
     fetcher(url, {
       ...init,
+      cache: "no-store",
+      credentials: "omit",
       redirect: "error",
+      referrerPolicy: "no-referrer",
       signal: deadlineSignal,
     })
   );

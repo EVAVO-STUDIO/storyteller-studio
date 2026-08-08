@@ -42,6 +42,43 @@ const ALLOWED_FEATURES = new Set<ProviderFeature>([
   "style-instructions",
 ]);
 
+const ALLOWED_SOURCE_KINDS = new Set([
+  "licensed-stock",
+  "authorised-clone",
+  "original-cast",
+  "synthetic-designed",
+]);
+const ALLOWED_RIGHTS_BASES = new Set([
+  "unknown",
+  "owned",
+  "licensed",
+  "commissioned",
+  "public_domain",
+  "not_applicable",
+]);
+const ALLOWED_CONSENT_BASES = new Set([
+  "unknown",
+  "none",
+  "self",
+  "written_consent",
+  "contract",
+  "not_applicable",
+]);
+const ALLOWED_VOICE_OPERATIONS = new Set([
+  "inspect",
+  "hash",
+  "transcode_for_analysis",
+  "transcribe_for_analysis",
+  "diarize_for_analysis",
+  "segment_for_analysis",
+  "create_voice_reference",
+  "train_voice_model",
+  "fine_tune_voice_model",
+  "synthesise",
+  "commercial_use",
+  "public_distribution",
+]);
+
 export function parseAudioStudioHealth(value: unknown): AudioStudioServiceHealth {
   if (!isRecord(value) || value.schema !== "evavo_voice_service_health_v1") {
     throw new Error("AUDIO_STUDIO_HEALTH_SCHEMA_INVALID");
@@ -97,6 +134,7 @@ export function parseAudioStudioHealth(value: unknown): AudioStudioServiceHealth
 
 export function audioStudioCapabilitySnapshot(
   health: AudioStudioServiceHealth,
+  now: () => Date = () => new Date(),
 ): ProviderCapabilitySnapshot {
   const features = health.features.filter(
     (feature): feature is ProviderFeature => ALLOWED_FEATURES.has(feature as ProviderFeature),
@@ -105,10 +143,22 @@ export function audioStudioCapabilitySnapshot(
     (format): format is ProviderAudioFormat =>
       format === "wav" || format === "flac" || format === "mp3",
   );
+  if (health.trainsOnCustomerData) {
+    throw new Error("AUDIO_STUDIO_CUSTOMER_DATA_TRAINING_FORBIDDEN");
+  }
+  if (!health.customVoiceRequiresConsent) {
+    throw new Error("AUDIO_STUDIO_CONSENT_POLICY_REQUIRED");
+  }
+  if (!features.includes("local-runtime")) {
+    throw new Error("AUDIO_STUDIO_LOCAL_RUNTIME_CAPABILITY_REQUIRED");
+  }
+  if (supportedFormats.length === 0 || health.supportedSampleRatesHz.length === 0) {
+    throw new Error("AUDIO_STUDIO_MEDIA_CAPABILITY_EMPTY");
+  }
   return createCapabilitySnapshot({
     providerId: AUDIO_STUDIO_PROVIDER_ID,
     adapterVersion: AUDIO_STUDIO_ADAPTER_VERSION,
-    capturedAt: new Date().toISOString(),
+    capturedAt: now().toISOString(),
     features,
     maximumInputCharacters: health.maximumInputCharacters,
     supportedFormats,
@@ -297,8 +347,11 @@ export function audioStudioRenderPayload(
   };
 }
 
-function requireActiveRightsWindow(binding: AudioStudioVoiceBinding): void {
-  const now = Date.now();
+function requireActiveRightsWindow(
+  binding: AudioStudioVoiceBinding,
+  now: () => Date,
+): void {
+  const timestamp = now().getTime();
   for (const [field, value] of [
     ["effectiveFrom", binding.voiceRights.effectiveFrom],
     ["expiresAt", binding.voiceRights.expiresAt],
@@ -310,14 +363,14 @@ function requireActiveRightsWindow(binding: AudioStudioVoiceBinding): void {
   }
   if (
     binding.voiceRights.effectiveFrom
-    && now < Date.parse(binding.voiceRights.effectiveFrom)
+    && timestamp < Date.parse(binding.voiceRights.effectiveFrom)
   ) {
     throw new Error("AUDIO_STUDIO_VOICE_RIGHTS_NOT_EFFECTIVE");
   }
-  if (binding.voiceRights.expiresAt && now >= Date.parse(binding.voiceRights.expiresAt)) {
+  if (binding.voiceRights.expiresAt && timestamp >= Date.parse(binding.voiceRights.expiresAt)) {
     throw new Error("AUDIO_STUDIO_VOICE_RIGHTS_EXPIRED");
   }
-  if (binding.voiceRights.revokedAt && now >= Date.parse(binding.voiceRights.revokedAt)) {
+  if (binding.voiceRights.revokedAt && timestamp >= Date.parse(binding.voiceRights.revokedAt)) {
     throw new Error("AUDIO_STUDIO_VOICE_RIGHTS_REVOKED");
   }
 }
@@ -325,9 +378,45 @@ function requireActiveRightsWindow(binding: AudioStudioVoiceBinding): void {
 export function verifyAudioStudioBinding(
   request: SynthesisRequest,
   binding: AudioStudioVoiceBinding,
+  now: () => Date = () => new Date(),
 ): void {
+  if (!isRecord(binding)) throw new Error("AUDIO_STUDIO_BINDING_INVALID");
   if (!/^[a-z0-9][a-z0-9._-]{1,127}$/u.test(binding.engineKey)) {
     throw new Error("AUDIO_STUDIO_ENGINE_KEY_INVALID");
+  }
+  if (!ALLOWED_SOURCE_KINDS.has(binding.sourceKind)) {
+    throw new Error("AUDIO_STUDIO_VOICE_SOURCE_KIND_INVALID");
+  }
+  if (typeof binding.commercialUse !== "boolean") {
+    throw new Error("AUDIO_STUDIO_COMMERCIAL_USE_FLAG_INVALID");
+  }
+  if (binding.maximumVramGb !== undefined && (
+    !Number.isFinite(binding.maximumVramGb)
+    || binding.maximumVramGb <= 0
+    || binding.maximumVramGb > 256
+  )) {
+    throw new Error("AUDIO_STUDIO_MAXIMUM_VRAM_INVALID");
+  }
+  if (binding.channels !== undefined && binding.channels !== 1 && binding.channels !== 2) {
+    throw new Error("AUDIO_STUDIO_CHANNEL_COUNT_INVALID");
+  }
+  if (binding.language !== undefined && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,3}$/u.test(binding.language)) {
+    throw new Error("AUDIO_STUDIO_LANGUAGE_INVALID");
+  }
+  if (binding.referenceManifest !== undefined) {
+    requireString(
+      binding.referenceManifest,
+      "AUDIO_STUDIO_REFERENCE_MANIFEST_INVALID",
+      1,
+      2_048,
+    );
+  }
+  if (binding.sourceKind === "authorised-clone" && !binding.referenceManifest) {
+    throw new Error("AUDIO_STUDIO_REFERENCE_MANIFEST_REQUIRED");
+  }
+
+  if (!isRecord(binding.voiceRights)) {
+    throw new Error("AUDIO_STUDIO_VOICE_RIGHTS_INVALID");
   }
   if (binding.voiceRights.schema !== AUDIO_STUDIO_RIGHTS_SCHEMA) {
     throw new Error("AUDIO_STUDIO_VOICE_RIGHTS_SCHEMA_INVALID");
@@ -335,14 +424,80 @@ export function verifyAudioStudioBinding(
   if (!/^[a-f0-9]{64}$/u.test(binding.voiceRights.sourceSha256)) {
     throw new Error("AUDIO_STUDIO_VOICE_SOURCE_HASH_INVALID");
   }
-  requireString(binding.voiceRights.sourceTitle, "AUDIO_STUDIO_VOICE_SOURCE_TITLE_INVALID", 1, 512);
+  requireString(
+    binding.voiceRights.sourceTitle,
+    "AUDIO_STUDIO_VOICE_SOURCE_TITLE_INVALID",
+    1,
+    512,
+  );
+  if (!ALLOWED_RIGHTS_BASES.has(binding.voiceRights.textRightsBasis)) {
+    throw new Error("AUDIO_STUDIO_TEXT_RIGHTS_BASIS_INVALID");
+  }
+  if (!ALLOWED_RIGHTS_BASES.has(binding.voiceRights.recordingRightsBasis)) {
+    throw new Error("AUDIO_STUDIO_RECORDING_RIGHTS_BASIS_INVALID");
+  }
+  if (
+    binding.voiceRights.textRightsBasis === "unknown"
+    || binding.voiceRights.recordingRightsBasis === "unknown"
+  ) {
+    throw new Error("AUDIO_STUDIO_SOURCE_RIGHTS_UNRESOLVED");
+  }
+  if (!ALLOWED_CONSENT_BASES.has(binding.voiceRights.performerConsentBasis)) {
+    throw new Error("AUDIO_STUDIO_PERFORMER_CONSENT_BASIS_INVALID");
+  }
+  if (binding.sourceKind === "authorised-clone" && ![
+    "self",
+    "written_consent",
+    "contract",
+  ].includes(binding.voiceRights.performerConsentBasis)) {
+    throw new Error("AUDIO_STUDIO_PERFORMER_CONSENT_REQUIRED");
+  }
+  if (
+    !Array.isArray(binding.voiceRights.operations)
+    || binding.voiceRights.operations.length === 0
+    || binding.voiceRights.operations.length > ALLOWED_VOICE_OPERATIONS.size
+    || new Set(binding.voiceRights.operations).size !== binding.voiceRights.operations.length
+    || binding.voiceRights.operations.some((operation) => !ALLOWED_VOICE_OPERATIONS.has(operation))
+  ) {
+    throw new Error("AUDIO_STUDIO_VOICE_OPERATIONS_INVALID");
+  }
   if (!binding.voiceRights.operations.includes("synthesise")) {
     throw new Error("AUDIO_STUDIO_VOICE_SYNTHESIS_NOT_AUTHORISED");
   }
-  if (binding.voiceRights.evidenceRefs.length === 0) {
+  if (
+    !Array.isArray(binding.voiceRights.evidenceRefs)
+    || binding.voiceRights.evidenceRefs.length === 0
+    || binding.voiceRights.evidenceRefs.length > 64
+    || new Set(binding.voiceRights.evidenceRefs).size !== binding.voiceRights.evidenceRefs.length
+  ) {
     throw new Error("AUDIO_STUDIO_VOICE_RIGHTS_EVIDENCE_MISSING");
   }
-  requireActiveRightsWindow(binding);
+  for (const evidenceRef of binding.voiceRights.evidenceRefs) {
+    requireString(evidenceRef, "AUDIO_STUDIO_VOICE_RIGHTS_EVIDENCE_INVALID", 1, 2_048);
+  }
+  if (typeof binding.voiceRights.commercialUseAuthorized !== "boolean") {
+    throw new Error("AUDIO_STUDIO_VOICE_COMMERCIAL_FLAG_INVALID");
+  }
+  if (typeof binding.voiceRights.publicDistributionAuthorized !== "boolean") {
+    throw new Error("AUDIO_STUDIO_VOICE_PUBLIC_DISTRIBUTION_FLAG_INVALID");
+  }
+  requireActiveRightsWindow(binding, now);
+
+  if (!isRecord(binding.manuscriptRights)) {
+    throw new Error("AUDIO_STUDIO_MANUSCRIPT_RIGHTS_INVALID");
+  }
+  requireString(
+    binding.manuscriptRights.evidenceId,
+    "AUDIO_STUDIO_MANUSCRIPT_RIGHTS_EVIDENCE_INVALID",
+    1,
+    512,
+  );
+  if (
+    typeof binding.manuscriptRights.synthesisAuthorized !== "boolean"
+    || typeof binding.manuscriptRights.commercialUseAuthorized !== "boolean"
+  ) {
+    throw new Error("AUDIO_STUDIO_MANUSCRIPT_RIGHTS_FLAGS_INVALID");
+  }
   if (!binding.manuscriptRights.synthesisAuthorized) {
     throw new Error("AUDIO_STUDIO_MANUSCRIPT_SYNTHESIS_NOT_AUTHORISED");
   }
@@ -350,6 +505,7 @@ export function verifyAudioStudioBinding(
     binding.commercialUse
     && (
       !binding.voiceRights.commercialUseAuthorized
+      || !binding.voiceRights.operations.includes("commercial_use")
       || !binding.manuscriptRights.commercialUseAuthorized
     )
   ) {

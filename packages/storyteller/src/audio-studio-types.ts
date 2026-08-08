@@ -91,6 +91,10 @@ export interface AudioStudioVoiceAdapterOptions {
   pollIntervalMs?: number;
   maximumPollIntervalMs?: number;
   healthCacheMs?: number;
+  maximumArtifactBytes?: number;
+  maximumEnvelopeBytes?: number;
+  preflightTimeoutMs?: number;
+  now?: () => Date;
 }
 
 export interface AudioStudioServiceHealth {

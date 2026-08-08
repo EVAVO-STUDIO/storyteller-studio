@@ -1,0 +1,37 @@
+{
+  "schema": "storyteller_audio_studio_voice_provider_status_v1",
+  "baseCommit": "3c5cb0ac613a8757a7ee5f2d7b663736fa8dbe7f",
+  "audioStudioRepository": "EVAVO-STUDIO/evavo-audio-studio",
+  "audioStudioMinimumCommit": "aaff2ec4bef1176eeac96b3e9d9490615ef33f29",
+  "providerId": "evavo-audio-studio",
+  "adapterVersion": "1.0.0",
+  "status": "validated_for_mainline_publication",
+  "workerRegistrationImplemented": true,
+  "localLoopbackWorkerOnly": true,
+  "credentialBound": true,
+  "boundedJsonStreaming": true,
+  "boundedAudioStreaming": true,
+  "sourceRightsFailClosed": true,
+  "serviceDataTrainingForbidden": true,
+  "browserExecutionExposed": false,
+  "publicApiExecutionExposed": false,
+  "sourceRecordingsCommitted": false,
+  "trainingDatasetsCommitted": false,
+  "modelWeightsCommitted": false,
+  "generatedAudioCommitted": false,
+  "credentialsCommitted": false,
+  "humanListeningApprovalGranted": false,
+  "publicReleaseAuthorityGranted": false,
+  "localValidation": {
+    "validatedAt": "2026-08-08T10:00:00.000Z",
+    "strictTypecheckPassed": true,
+    "focusedTestsPassed": 19,
+    "crossLanguageVoiceLabSmokePassed": true,
+    "crossLanguageArtifactBytes": 9644,
+    "voiceLabRepositoryTestsPassed": 9
+  },
+  "hostedValidation": {
+    "authoritative": false,
+    "note": "GitHub-hosted runners may remain unavailable while the account billing or spending limit blocks Actions jobs."
+  }
+}

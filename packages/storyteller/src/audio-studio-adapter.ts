@@ -19,6 +19,7 @@ import {
   audioStudioSleep,
   fetchAudioStudio,
   parseAudioStudioEnvelope,
+  readAudioStudioResponseBytes,
   resolveAudioStudioUrl,
   validateAudioStudioBaseUrl,
 } from "./audio-studio-http.js";
@@ -37,6 +38,12 @@ import {
   type AudioStudioVoiceRightsRecord,
 } from "./audio-studio-types.js";
 
+export {
+  AUDIO_STUDIO_ADAPTER_VERSION,
+  AUDIO_STUDIO_PROVIDER_ID,
+} from "./audio-studio-types.js";
+export { verifyAudioStudioBinding } from "./audio-studio-contracts.js";
+
 export type {
   AudioStudioBindingResolver,
   AudioStudioConsentBasis,
@@ -50,6 +57,23 @@ export type {
 };
 
 const TERMINAL_JOB_STATES = new Set(["completed", "failed"]);
+const MAX_ARTIFACT_BYTES_ABSOLUTE = 2 * 1024 * 1024 * 1024;
+const MAX_ENVELOPE_BYTES_ABSOLUTE = 16 * 1024 * 1024;
+
+function boundedInteger(
+  value: number | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+  code: string,
+): number {
+  const candidate = value ?? fallback;
+  if (!Number.isSafeInteger(candidate) || candidate < minimum || candidate > maximum) {
+    throw new Error(code);
+  }
+  return candidate;
+}
+
 
 export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
   readonly providerId = AUDIO_STUDIO_PROVIDER_ID;
@@ -60,6 +84,10 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
   readonly #pollIntervalMs: number;
   readonly #maximumPollIntervalMs: number;
   readonly #healthCacheMs: number;
+  readonly #maximumArtifactBytes: number;
+  readonly #maximumEnvelopeBytes: number;
+  readonly #preflightTimeoutMs: number;
+  readonly #now: () => Date;
   #capability: AudioStudioCachedCapability | null = null;
 
   constructor(options: AudioStudioVoiceAdapterOptions) {
@@ -69,6 +97,32 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     this.#pollIntervalMs = options.pollIntervalMs ?? 125;
     this.#maximumPollIntervalMs = options.maximumPollIntervalMs ?? 1_000;
     this.#healthCacheMs = options.healthCacheMs ?? 30_000;
+    this.#maximumArtifactBytes = boundedInteger(
+      options.maximumArtifactBytes,
+      256 * 1024 * 1024,
+      1_024,
+      MAX_ARTIFACT_BYTES_ABSOLUTE,
+      "AUDIO_STUDIO_ARTIFACT_LIMIT_INVALID",
+    );
+    this.#maximumEnvelopeBytes = boundedInteger(
+      options.maximumEnvelopeBytes,
+      2 * 1024 * 1024,
+      1_024,
+      MAX_ENVELOPE_BYTES_ABSOLUTE,
+      "AUDIO_STUDIO_ENVELOPE_LIMIT_INVALID",
+    );
+    this.#preflightTimeoutMs = boundedInteger(
+      options.preflightTimeoutMs,
+      15_000,
+      1_000,
+      120_000,
+      "AUDIO_STUDIO_PREFLIGHT_TIMEOUT_INVALID",
+    );
+    this.#now = options.now ?? (() => new Date());
+    const current = this.#now();
+    if (!(current instanceof Date) || !Number.isFinite(current.getTime())) {
+      throw new Error("AUDIO_STUDIO_CLOCK_INVALID");
+    }
     if (
       !Number.isSafeInteger(this.#pollIntervalMs)
       || this.#pollIntervalMs < 10
@@ -76,6 +130,7 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
       || this.#maximumPollIntervalMs < this.#pollIntervalMs
       || !Number.isSafeInteger(this.#healthCacheMs)
       || this.#healthCacheMs < 0
+      || this.#healthCacheMs > 24 * 60 * 60_000
     ) {
       throw new Error("AUDIO_STUDIO_ADAPTER_TIMING_INVALID");
     }
@@ -85,7 +140,11 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     context: Omit<ProviderExecutionContext, "timeoutMs">,
   ): Promise<ProviderCapabilitySnapshot> {
     const cached = this.#capability;
-    if (cached && cached.expiresAt >= Date.now()) return cached.snapshot;
+    const now = this.#now();
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+      throw new Error("AUDIO_STUDIO_CLOCK_INVALID");
+    }
+    if (cached && cached.expiresAt >= now.getTime()) return cached.snapshot;
     const response = await fetchAudioStudio(
       this.#fetch,
       new URL("health", this.#baseUrl),
@@ -95,15 +154,19 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
           accept: "application/json",
         }),
       },
-      15_000,
+      this.#preflightTimeoutMs,
       context.signal,
     );
     const health = parseAudioStudioHealth(
-      await parseAudioStudioEnvelope<unknown>(response, "AUDIO_STUDIO_HEALTH"),
+      await parseAudioStudioEnvelope<unknown>(
+        response,
+        "AUDIO_STUDIO_HEALTH",
+        this.#maximumEnvelopeBytes,
+      ),
     );
-    const snapshot = audioStudioCapabilitySnapshot(health);
+    const snapshot = audioStudioCapabilitySnapshot(health, this.#now);
     this.#capability = {
-      expiresAt: Date.now() + this.#healthCacheMs,
+      expiresAt: now.getTime() + this.#healthCacheMs,
       healthFingerprint: health.capabilityFingerprint,
       snapshot,
     };
@@ -115,7 +178,7 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     context: ProviderExecutionContext,
   ): Promise<SynthesisResult> {
     const binding = await this.#resolveBinding(request);
-    verifyAudioStudioBinding(request, binding);
+    verifyAudioStudioBinding(request, binding, this.#now);
     const capability = await this.inspectCapabilities(context);
     if (!capability.supportedFormats.includes(request.format)) {
       throw new Error("AUDIO_STUDIO_OUTPUT_FORMAT_UNAVAILABLE");
@@ -158,6 +221,7 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
       await parseAudioStudioEnvelope<unknown>(
         submissionResponse,
         "AUDIO_STUDIO_SUBMIT",
+        this.#maximumEnvelopeBytes,
       ),
     );
     const statusUrl = resolveAudioStudioUrl(
@@ -179,6 +243,7 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
         await parseAudioStudioEnvelope<unknown>(
           statusResponse,
           "AUDIO_STUDIO_STATUS",
+          this.#maximumEnvelopeBytes,
         ),
       );
       if (
@@ -198,6 +263,12 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     if (status.state !== "completed") {
       throw new Error("AUDIO_STUDIO_RENDER_FAILED");
     }
+    if (status.engineKey !== binding.engineKey) {
+      throw new Error("AUDIO_STUDIO_ENGINE_CORRELATION_MISMATCH");
+    }
+    if (!status.engineLockFingerprint) {
+      throw new Error("AUDIO_STUDIO_ENGINE_LOCK_EVIDENCE_MISSING");
+    }
     if (
       !status.artifactUrls
       || status.artifactUrls.length === 0
@@ -205,10 +276,19 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     ) {
       throw new Error("AUDIO_STUDIO_ARTIFACT_URLS_MISSING");
     }
-    const artifact = status.artifacts[0];
-    const artifactUrlValue = status.artifactUrls[0];
-    if (!artifact || !artifactUrlValue) {
-      throw new Error("AUDIO_STUDIO_ARTIFACT_MISSING");
+    const audioArtifacts = status.artifacts
+      .map((artifact, index) => ({ artifact, index }))
+      .filter(({ artifact }) => artifact.contentType.startsWith("audio/"));
+    if (audioArtifacts.length !== 1) {
+      throw new Error("AUDIO_STUDIO_AUDIO_ARTIFACT_AMBIGUOUS");
+    }
+    const selected = audioArtifacts[0];
+    if (!selected) throw new Error("AUDIO_STUDIO_ARTIFACT_MISSING");
+    const artifact = selected.artifact;
+    const artifactUrlValue = status.artifactUrls[selected.index];
+    if (!artifactUrlValue) throw new Error("AUDIO_STUDIO_ARTIFACT_MISSING");
+    if (artifact.sizeBytes > this.#maximumArtifactBytes) {
+      throw new Error("AUDIO_STUDIO_ARTIFACT_TOO_LARGE");
     }
     const artifactUrl = resolveAudioStudioUrl(
       this.#baseUrl,
@@ -222,18 +302,33 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     if (!artifactResponse.ok) {
       throw new Error("AUDIO_STUDIO_ARTIFACT_FETCH_FAILED");
     }
-    const audio = new Uint8Array(await artifactResponse.arrayBuffer());
+    const responseContentType = artifactResponse.headers.get("content-type")
+      ?.split(";", 1)[0]
+      ?.trim()
+      .toLocaleLowerCase("en-AU");
+    const receiptContentType = artifact.contentType
+      .split(";", 1)[0]
+      ?.trim()
+      .toLocaleLowerCase("en-AU");
+    if (
+      !receiptContentType
+      || !receiptContentType.startsWith("audio/")
+      || (responseContentType && responseContentType !== receiptContentType)
+    ) {
+      throw new Error("AUDIO_STUDIO_ARTIFACT_CONTENT_TYPE_INVALID");
+    }
+    const audio = await readAudioStudioResponseBytes(
+      artifactResponse,
+      this.#maximumArtifactBytes,
+      "AUDIO_STUDIO_ARTIFACT",
+    );
     if (audio.byteLength !== artifact.sizeBytes || audio.byteLength === 0) {
       throw new Error("AUDIO_STUDIO_ARTIFACT_SIZE_MISMATCH");
     }
     if (createHash("sha256").update(audio).digest("hex") !== artifact.sha256) {
       throw new Error("AUDIO_STUDIO_ARTIFACT_SHA_MISMATCH");
     }
-    const contentType = artifactResponse.headers.get("content-type")
-      ?? artifact.contentType;
-    if (!contentType.startsWith("audio/")) {
-      throw new Error("AUDIO_STUDIO_ARTIFACT_CONTENT_TYPE_INVALID");
-    }
+    const contentType = receiptContentType;
 
     return {
       providerId: this.providerId,
@@ -245,11 +340,11 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
       contentType,
       usage: { inputCharacters: request.text.length },
       capabilityFingerprint: capability.fingerprint,
-      generatedAt: status.completedAt ?? new Date().toISOString(),
+      generatedAt: status.completedAt ?? this.#now().toISOString(),
       provenance: {
         jobId: status.jobId,
         engineKey: status.engineKey,
-        engineLockFingerprint: status.engineLockFingerprint ?? "not-reported",
+        engineLockFingerprint: status.engineLockFingerprint,
         artifactSha256: artifact.sha256,
         artifactPath: artifact.path,
         zeroApiFee: true,

@@ -1,0 +1,40 @@
+[
+  {
+    "voiceProfileId": "voice_narrator_01",
+    "voiceRevision": 1,
+    "projectId": "project_book_01",
+    "binding": {
+      "engineKey": "chatterbox-local",
+      "sourceKind": "authorised-clone",
+      "referenceManifest": "evavo-storage://voice-source/version_01",
+      "commercialUse": true,
+      "maximumVramGb": 16,
+      "language": "en-AU",
+      "channels": 1,
+      "voiceRights": {
+        "schema": "evavo_voice_rights_record_v1",
+        "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceTitle": "Commissioned narrator reference",
+        "textRightsBasis": "licensed",
+        "recordingRightsBasis": "commissioned",
+        "performerIdentity": "Narrator 01",
+        "performerConsentBasis": "contract",
+        "operations": [
+          "create_voice_reference",
+          "synthesise",
+          "commercial_use"
+        ],
+        "evidenceRefs": [
+          "evavo-storage://rights/narrator-01-contract-v1"
+        ],
+        "commercialUseAuthorized": true,
+        "publicDistributionAuthorized": false
+      },
+      "manuscriptRights": {
+        "evidenceId": "rights_manuscript_project_book_01",
+        "synthesisAuthorized": true,
+        "commercialUseAuthorized": true
+      }
+    }
+  }
+]
