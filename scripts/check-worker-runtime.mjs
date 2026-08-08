@@ -44,6 +44,9 @@ for (const path of [
   "apps/worker/src/configuration.test.ts",
   "apps/worker/src/elevenlabs-provider.ts",
   "apps/worker/src/elevenlabs-provider.test.ts",
+  "apps/worker/src/audio-studio-provider.ts",
+  "apps/worker/src/audio-studio-provider.test.ts",
+  "apps/worker/src/providers-audio-studio.test.ts",
   "apps/worker/src/lifecycle.ts",
   "apps/worker/src/lifecycle.test.ts",
   "apps/worker/src/runtime.ts",
@@ -159,10 +162,15 @@ requireTokens("apps/worker/src/runtime.test.ts", [
 requireTokens("apps/worker/src/providers.ts", [
   "CreateWorkerProviderRegistryInput",
   "createWorkerProviderRegistry",
+  "resolveAudioStudioWorkerProvider",
   "resolveElevenLabsWorkerProvider",
+  "const audioStudio = resolveAudioStudioWorkerProvider({",
+  "const elevenLabs = resolveElevenLabsWorkerProvider({",
   "workerEnabled: input.workerEnabled",
   "credentialBindings: input.credentialBindings",
-  "new ProviderAdapterRegistry(elevenLabs ? [elevenLabs.adapter] : [])",
+  "return new ProviderAdapterRegistry([",
+  "...(audioStudio ? [audioStudio.adapter] : []),",
+  "...(elevenLabs ? [elevenLabs.adapter] : []),",
 ]);
 
 requireTokens("apps/worker/src/providers.test.ts", [
@@ -170,6 +178,11 @@ requireTokens("apps/worker/src/providers.test.ts", [
   "worker provider registry remains empty when ElevenLabs is disabled",
   "worker provider registry conditionally registers one governed ElevenLabs adapter",
   "worker provider registry rejects incomplete ElevenLabs governance configuration",
+]);
+
+requireTokens("apps/worker/src/providers-audio-studio.test.ts", [
+  "worker registry includes the governed Audio Studio provider",
+  "disabled workers do not register or parse Audio Studio",
 ]);
 
 requireTokens("apps/worker/src/main.ts", [
@@ -359,7 +372,11 @@ for (const path of [
     "createCalibrationBoundProviderRegistry",
     "FileGenerationBudgetController",
     "FileBudgetLedger",
+    "resolveAudioStudioWorkerProvider",
     "resolveElevenLabsWorkerProvider",
+    "AudioStudioVoiceAdapter",
+    "EVAVO_VOICE_SERVICE_TOKEN",
+    "STORYTELLER_AUDIO_STUDIO_VOICE_BINDINGS",
     "createWorkerProviderRegistry",
   ]) {
     if (source.includes(forbidden)) {
@@ -369,7 +386,7 @@ for (const path of [
 }
 
 const envSource = existsSync(fromRoot(".env.example")) ? read(".env.example") : "";
-if (/NEXT_PUBLIC_[A-Z0-9_]*(?:WORKER|BUDGET|ELEVENLABS|CREDENTIAL|SECRET|TOKEN|KEY)/u.test(envSource)) {
+if (/NEXT_PUBLIC_[A-Z0-9_]*(?:WORKER|BUDGET|ELEVENLABS|AUDIO_STUDIO|CREDENTIAL|SECRET|TOKEN|KEY)/u.test(envSource)) {
   problems.push("worker, provider, budget or credential configuration must never use a NEXT_PUBLIC_ variable");
 }
 
@@ -383,7 +400,7 @@ console.log("storyteller_worker_runtime_check_passed");
 console.log("- the dedicated worker is disabled by default and opens no HTTP listener");
 console.log("- file execution requires explicit queue, artifact and worker one-host posture");
 console.log("- calibrated material and provider wrappers block unapproved production before synthesis");
-console.log("- provider adapters, credentials and capability snapshots pass preflight before claims");
+console.log("- governed Audio Studio and ElevenLabs adapters, credentials and capability snapshots pass preflight before claims");
 console.log("- the private runtime requires calibration, independent engineering and transactional budget control before provider work");
 console.log("- SIGINT and SIGTERM drain gracefully before a bounded forced abort");
 console.log("- runtime summaries omit identities, paths, provider records, credentials, budgets and generated media");
