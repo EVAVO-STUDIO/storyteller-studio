@@ -1,0 +1,40 @@
+name: Export Natural Narration Source Snapshot
+
+on:
+  push:
+    branches:
+      - work/natural-narration-orchestration-20260809
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storyteller-natural-narration-export-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Package exact source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .source-export
+          archive=".source-export/storyteller-source-${GITHUB_SHA}.zip"
+          git archive --format=zip --output="$archive" HEAD
+          sha256sum "$archive" > "${archive}.sha256"
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: storyteller-natural-narration-source-${{ github.sha }}
+          path: .source-export
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
