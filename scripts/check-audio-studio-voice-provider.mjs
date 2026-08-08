@@ -38,6 +38,8 @@ for (const path of [
   "packages/storyteller/src/audio-studio-contracts.ts",
   "packages/storyteller/src/audio-studio-http.ts",
   "packages/storyteller/src/audio-studio-types.ts",
+  "packages/storyteller/src/narration-production-policy.ts",
+  "packages/storyteller/src/narration-production-policy.test.ts",
   "packages/storyteller/package.json",
   "apps/worker/src/audio-studio-provider.ts",
   "apps/worker/src/audio-studio-provider.test.ts",
@@ -78,6 +80,28 @@ requireTokens("packages/storyteller/src/audio-studio-contracts.ts", [
   "AUDIO_STUDIO_PERFORMER_CONSENT_REQUIRED",
   "AUDIO_STUDIO_COMMERCIAL_RIGHTS_NOT_AUTHORISED",
 ]);
+requireTokens("packages/storyteller/src/narration-production-policy.ts", [
+  "NATURAL_NARRATION_MINIMUM_CANDIDATES = 3",
+  "createNarrationContextWindow",
+  "createNaturalNarrationProductionPlan",
+  "assertNaturalNarrationWorkerInput",
+  "naturalNarrationRequestMetadata",
+  "NARRATION_PRODUCTION_OBJECTIVE_GENERIC",
+  "NARRATION_PRODUCTION_CONTEXT_INSUFFICIENT",
+]);
+requireTokens(".github/workflows/audio-studio-voice-provider.yml", [
+  "ubuntu-latest",
+  "windows-latest",
+  "node scripts/run-tests.mjs audio-studio",
+  "packages/storyteller/src/narration-production-policy*",
+  "scripts/run-tests.mjs",
+]);
+requireTokens("scripts/run-tests.mjs", [
+  '"audio-studio"',
+  "narration-production-policy.test.ts",
+  "audio-studio-provider.test.ts",
+  "generation-worker.test.ts",
+]);
 requireTokens("apps/worker/src/audio-studio-provider.ts", [
   "AUDIO_STUDIO_CREDENTIAL_BINDING_ID",
   "STORYTELLER_AUDIO_STUDIO_ENABLED",
@@ -104,6 +128,13 @@ requireTokens("docs/AUDIO_STUDIO_VOICE_PROVIDER.md", [
   "Release boundary",
   "files above 100 MB",
 ]);
+
+const workflowSource = existsSync(fromRoot(".github/workflows/audio-studio-voice-provider.yml"))
+  ? read(".github/workflows/audio-studio-voice-provider.yml")
+  : "";
+if (workflowSource.includes("node scripts/run-tests.mjs all")) {
+  problems.push("Audio Studio workflow must not run unrelated platform-specific repository tests");
+}
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
