@@ -4,24 +4,40 @@ on:
   pull_request:
     paths:
       - "packages/storyteller/src/audio-studio-*"
+      - "packages/storyteller/src/generation-material*"
+      - "packages/storyteller/src/generation-worker*"
+      - "packages/storyteller/src/narration-production-policy*"
+      - "packages/storyteller/src/provider-adapter*"
       - "packages/storyteller/package.json"
+      - "apps/api/src/server*"
       - "apps/worker/src/audio-studio-provider*"
+      - "apps/worker/src/configuration*"
       - "apps/worker/src/providers*"
+      - "packages/cli/src/main*"
       - "docs/AUDIO_STUDIO_VOICE_PROVIDER*"
       - "examples/audio-studio-*"
       - "scripts/check-audio-studio-voice-provider.mjs"
+      - "scripts/run-tests.mjs"
       - ".github/workflows/audio-studio-voice-provider.yml"
   push:
     branches:
       - main
     paths:
       - "packages/storyteller/src/audio-studio-*"
+      - "packages/storyteller/src/generation-material*"
+      - "packages/storyteller/src/generation-worker*"
+      - "packages/storyteller/src/narration-production-policy*"
+      - "packages/storyteller/src/provider-adapter*"
       - "packages/storyteller/package.json"
+      - "apps/api/src/server*"
       - "apps/worker/src/audio-studio-provider*"
+      - "apps/worker/src/configuration*"
       - "apps/worker/src/providers*"
+      - "packages/cli/src/main*"
       - "docs/AUDIO_STUDIO_VOICE_PROVIDER*"
       - "examples/audio-studio-*"
       - "scripts/check-audio-studio-voice-provider.mjs"
+      - "scripts/run-tests.mjs"
       - ".github/workflows/audio-studio-voice-provider.yml"
   workflow_dispatch:
 
@@ -65,8 +81,8 @@ jobs:
       - name: Type-check complete workspace
         run: npm run typecheck
 
-      - name: Run engine and worker tests
-        run: node scripts/run-tests.mjs all
+      - name: Run Audio Studio boundary tests
+        run: node scripts/run-tests.mjs audio-studio
 
       - name: Confirm repository remains clean
         run: >-
