@@ -12,6 +12,7 @@
     "./artifact-store": "./src/artifact-store.ts",
     "./audio-engineering": "./src/audio-engineering.ts",
     "./audio-engineering-artifact": "./src/audio-engineering-artifact.ts",
+    "./audio-studio-adapter": "./src/audio-studio-adapter.ts",
     "./audiobook-reference-master": "./src/audiobook-reference-master.ts",
     "./audiobook-reference-master-review": "./src/audiobook-reference-master-review.ts",
     "./audiobook-render": "./src/audiobook-render.ts",
