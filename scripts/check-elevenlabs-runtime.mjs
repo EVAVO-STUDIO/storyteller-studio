@@ -94,7 +94,8 @@ requireTokens("apps/worker/src/providers.ts", [
   "workerEnabled: input.workerEnabled",
   "environment: input.environment",
   "credentialBindings: input.credentialBindings",
-  "new ProviderAdapterRegistry(elevenLabs ? [elevenLabs.adapter] : [])",
+  "new ProviderAdapterRegistry([",
+  "...(elevenLabs ? [elevenLabs.adapter] : []),",
 ]);
 
 requireTokens("apps/worker/src/providers.test.ts", [
