@@ -986,6 +986,122 @@ function emptyDimensionAverages(): Record<CalibrationDimension, number> {
   return Object.fromEntries(SCORE_DIMENSIONS.map((dimension) => [dimension, 0])) as Record<CalibrationDimension, number>;
 }
 
+function objectiveComparisonCandidate(
+  candidate: CalibrationCandidate,
+  policy: CalibrationPolicy,
+): boolean {
+  return candidate.eligible
+    && candidate.findingCodes.length === 0
+    && candidate.continuityScore >= policy.minimumContinuityScore;
+}
+
+function comparativeReviewPanel(
+  reviews: readonly CalibrationReview[],
+  requireBlindReview: boolean,
+): ReadonlyMap<string, CalibrationReview> {
+  const panel = new Map<string, CalibrationReview>();
+  for (const review of reviews) {
+    if (!requireBlindReview || review.blind) panel.set(review.reviewerId, review);
+  }
+  return panel;
+}
+
+function comparativeCandidateScore(reviews: readonly CalibrationReview[]): number {
+  if (reviews.length === 0) return 0;
+  const total = reviews.reduce((reviewTotal, review) =>
+    reviewTotal + SCORE_DIMENSIONS.reduce(
+      (dimensionTotal, dimension) => dimensionTotal + review.scores[dimension],
+      0,
+    ), 0);
+  return roundScore(total / (reviews.length * SCORE_DIMENSIONS.length));
+}
+
+function comparativeDecisionEligible(
+  reviews: readonly CalibrationReview[],
+  policy: CalibrationPolicy,
+): boolean {
+  if (reviews.some((review) => review.decision === "reject")) return false;
+  return !policy.requireApprovedDecision
+    || reviews.every((review) => review.decision === "approve");
+}
+
+function assessComparativeTakeSelection(
+  session: CalibrationSession,
+  passage: CalibrationPassage,
+  selectedCandidate: CalibrationCandidate,
+  findings: CalibrationFinding[],
+): void {
+  const contenders = session.candidates.filter((candidate) =>
+    candidate.passageId === passage.id
+    && objectiveComparisonCandidate(candidate, session.policy)
+  );
+  if (contenders.length <= 1) return;
+
+  const panels = new Map<string, ReadonlyMap<string, CalibrationReview>>();
+  let coverageComplete = true;
+  for (const candidate of contenders) {
+    const panel = comparativeReviewPanel(
+      session.reviews.filter((review) => review.candidateId === candidate.id),
+      session.policy.requireBlindReview,
+    );
+    panels.set(candidate.id, panel);
+    if (panel.size < session.policy.minimumDistinctReviewers) {
+      coverageComplete = false;
+      findings.push({
+        code: "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE",
+        severity: "error",
+        message: "An eligible take lacks the independent review coverage required for comparison.",
+        passageId: passage.id,
+        candidateId: candidate.id,
+      });
+    }
+  }
+  if (!coverageComplete) return;
+
+  const firstPanel = panels.get(contenders[0]!.id)!;
+  const commonReviewerIds = [...firstPanel.keys()]
+    .filter((reviewerId) => contenders.every((candidate) =>
+      panels.get(candidate.id)!.has(reviewerId)
+    ))
+    .sort((left, right) => left.localeCompare(right, "en-AU"));
+  if (commonReviewerIds.length < session.policy.minimumDistinctReviewers) {
+    findings.push({
+      code: "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH",
+      severity: "error",
+      message: "Eligible takes were not reviewed by a sufficiently large common reviewer panel.",
+      passageId: passage.id,
+    });
+    return;
+  }
+
+  const ranked = contenders
+    .map((candidate) => {
+      const reviews = commonReviewerIds.map((reviewerId) =>
+        panels.get(candidate.id)!.get(reviewerId)!
+      );
+      return {
+        candidate,
+        score: comparativeCandidateScore(reviews),
+      };
+    })
+    .filter(({ candidate }) => comparativeDecisionEligible(
+      [...panels.get(candidate.id)!.values()],
+      session.policy,
+    ));
+  const selected = ranked.find(({ candidate }) => candidate.id === selectedCandidate.id);
+  if (!selected || ranked.length === 0) return;
+  const topScore = Math.max(...ranked.map(({ score }) => score));
+  if (selected.score < topScore) {
+    findings.push({
+      code: "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED",
+      severity: "error",
+      message: "The selected take is not the highest-rated eligible performance under the matched reviewer panel.",
+      passageId: passage.id,
+      candidateId: selectedCandidate.id,
+    });
+  }
+}
+
 export function assessCalibrationSession(session: CalibrationSession): CalibrationAssessment {
   assertCalibrationSession(session);
   const findings: CalibrationFinding[] = [];
@@ -1042,6 +1158,7 @@ export function assessCalibrationSession(session: CalibrationSession): Calibrati
         candidateId: candidate.id,
       });
     }
+    assessComparativeTakeSelection(session, passage, candidate, findings);
   }
 
   const providerSignatures = new Set(selectedCandidates.map((candidate) =>
