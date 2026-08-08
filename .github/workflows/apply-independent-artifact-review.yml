@@ -35,7 +35,7 @@ jobs:
           patch_file=".github/temporary/independent-artifact-review.patch"
           test "$(sha256sum "$patch_file" | cut -d' ' -f1)" = "c56a59506a3e7f33e59d971e3517e0d373ab58f9be20b34002fe6507fc0fcb23"
           test "$(git hash-object packages/storyteller/src/artifact-registry.ts)" = "4679a91fc0717771c7dd38acccb9affc533f5907"
-          test "$(git hash-object docs/ARTIFACT_REGISTRY.md)" = "b3bbc791d9283760482ec546105164a8289767e6"
+          test "$(git hash-object docs/ARTIFACT_REGISTRY.md)" = "b3bbc79676d34e7c26bb34562af9cf1735b2c446"
           test "$(git hash-object scripts/check-artifact-registry.mjs)" = "e0b0c24683cf7fb92d6a4d09f49d37b8296744b5"
           test "$(git hash-object packages/storyteller/src/artifact-review-separation.test.ts)" = "397d1123cd8c435a9916437b005576c65c63ba43"
           git apply --check "$patch_file"
