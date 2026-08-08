@@ -1,0 +1,108 @@
+name: Apply Independent Artifact Review
+
+on:
+  push:
+    branches:
+      - temp/source-export-20260808-1139
+
+permissions:
+  contents: write
+
+concurrency:
+  group: storyteller-independent-artifact-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out validation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Apply the hash-pinned patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          patch_file=".github/temporary/independent-artifact-review.patch"
+          test "$(sha256sum "$patch_file" | cut -d' ' -f1)" = "c56a59506a3e7f33e59d971e3517e0d373ab58f9be20b34002fe6507fc0fcb23"
+          test "$(git hash-object packages/storyteller/src/artifact-registry.ts)" = "4679a91fc0717771c7dd38acccb9affc533f5907"
+          test "$(git hash-object docs/ARTIFACT_REGISTRY.md)" = "b3bbc791d9283760482ec546105164a8289767e6"
+          test "$(git hash-object scripts/check-artifact-registry.mjs)" = "e0b0c24683cf7fb92d6a4d09f49d37b8296744b5"
+          test "$(git hash-object packages/storyteller/src/artifact-review-separation.test.ts)" = "397d1123cd8c435a9916437b005576c65c63ba43"
+          git apply --check "$patch_file"
+          git apply "$patch_file"
+          git diff --check
+          test "$(git hash-object packages/storyteller/src/artifact-registry.ts)" = "40737e60519dfc67877161e810503dd94a188869"
+          test "$(git hash-object docs/ARTIFACT_REGISTRY.md)" = "2a965c4d33349199514d65c06cf80dc293dd2be8"
+          test "$(git hash-object scripts/check-artifact-registry.mjs)" = "88873ec12a0d3ca3f1d6aad779a214fca269034b"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify architecture foundation
+        run: npm run verify:foundation
+
+      - name: Verify private application boundary
+        run: npm run verify:private-boundary
+
+      - name: Type-check repository
+        run: npm run typecheck
+
+      - name: Verify governed artifact lifecycle
+        run: npm run verify:artifacts
+
+      - name: Test storyteller engine
+        run: npm run test:engine
+
+      - name: Test protected API
+        run: npm run test:api
+
+      - name: Test private worker runtime
+        run: npm run test:worker
+
+      - name: Test CLI workflows
+        run: npm run test:cli
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Commit only the validated production change
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/temporary/independent-artifact-review.patch
+          rm .github/workflows/apply-independent-artifact-review.yml
+          python - <<'PY'
+          import subprocess
+
+          expected = {
+              ".github/temporary/independent-artifact-review.patch",
+              ".github/workflows/apply-independent-artifact-review.yml",
+              "docs/ARTIFACT_REGISTRY.md",
+              "packages/storyteller/src/artifact-registry.ts",
+              "scripts/check-artifact-registry.mjs",
+          }
+          lines = subprocess.check_output(["git", "status", "--porcelain"], text=True).splitlines()
+          actual = {line[3:] for line in lines}
+          if actual != expected:
+              raise SystemExit(f"unexpected working-tree paths: {sorted(actual ^ expected)}")
+          PY
+          git add -A
+          git diff --cached --check
+          test "$(git hash-object packages/storyteller/src/artifact-registry.ts)" = "40737e60519dfc67877161e810503dd94a188869"
+          test "$(git hash-object docs/ARTIFACT_REGISTRY.md)" = "2a965c4d33349199514d65c06cf80dc293dd2be8"
+          test "$(git hash-object scripts/check-artifact-registry.mjs)" = "88873ec12a0d3ca3f1d6aad779a214fca269034b"
+          test "$(git hash-object packages/storyteller/src/artifact-review-separation.test.ts)" = "397d1123cd8c435a9916437b005576c65c63ba43"
+          git config user.name "EVAVO Studio Automation"
+          git config user.email "evavo.studio@gmail.com"
+          git commit -m "feat: require independent artifact review"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
