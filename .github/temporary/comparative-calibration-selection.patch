@@ -1,0 +1,473 @@
+diff --git a/docs/CALIBRATION_WORKFLOW.md b/docs/CALIBRATION_WORKFLOW.md
+index 4091e96..8985108 100644
+--- a/docs/CALIBRATION_WORKFLOW.md
++++ b/docs/CALIBRATION_WORKFLOW.md
+@@ -60,6 +60,14 @@ Sustained listenability is deliberately independent. A take may sound impressive
+ 
+ The policy may require every reviewer to explicitly approve a selected take. A revise or reject decision therefore cannot be averaged away by higher numerical scores.
+ 
++## Comparative take selection
++
++When a passage has more than one objectively eligible take, Storyteller does not permit an operator to review only a preferred file and ignore the alternatives. Every eligible take must have the policy-required independent review coverage, and the alternatives must share a sufficiently large matched reviewer panel. Where blind review is required, only blind reviews count towards that comparison panel.
++
++The current calibration schema ranks the matched panel's nine review dimensions using an equal-weight mean. Objective failures, unresolved findings and sub-threshold continuity exclude a take before ranking. A reject decision, or a non-approve decision under an approve-only policy, also prevents that take from becoming the selectable benchmark.
++
++The selected take must tie for or exceed the highest comparative score among the remaining eligible alternatives. A lower-rated first render cannot be promoted merely because it was selected first. Ties remain available for a human director to resolve using scene context, neighbouring approved material and documented performance judgement.
++
+ ## Continuity lock
+ 
+ All selected takes in one approved calibration session must share one provider, model and capability fingerprint. This prevents a narrator lock from being assembled from materially different execution systems.
+@@ -75,6 +83,8 @@ A later provider or model migration requires a new calibration decision. It must
+ - a human approver identity;
+ - complete selected-take coverage;
+ - independent review coverage;
++- complete matched-panel comparison whenever multiple eligible takes exist;
++- a selected take that is not lower-rated than an eligible alternative;
+ - policy score thresholds;
+ - continuity compliance;
+ - no unresolved candidate findings.
+diff --git a/packages/storyteller/src/calibration-comparative-selection.test.ts b/packages/storyteller/src/calibration-comparative-selection.test.ts
+new file mode 100644
+index 0000000..dcc53e7
+--- /dev/null
++++ b/packages/storyteller/src/calibration-comparative-selection.test.ts
+@@ -0,0 +1,245 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import {
++  addCalibrationCandidate,
++  assessCalibrationSession,
++  createCalibrationPolicy,
++  createCalibrationSession,
++  recordCalibrationReview,
++  selectCalibrationCandidate,
++  type CalibrationCandidate,
++  type CalibrationPassage,
++  type CalibrationReview,
++  type CalibrationScores,
++  type CalibrationSession,
++} from "./calibration-workflow.js";
++import { stableHash } from "./index.js";
++
++const t0 = new Date("2026-08-08T00:00:00.000Z");
++const sourceHash = "a".repeat(64);
++const capabilityFingerprint = "b".repeat(64);
++
++function at(seconds: number): string {
++  return new Date(t0.getTime() + seconds * 1_000).toISOString();
++}
++
++function scores(value: number): CalibrationScores {
++  return {
++    listenerRelationship: value,
++    textualTruth: value,
++    clarity: value,
++    rhythm: value,
++    emotionalTruth: value,
++    restraint: value,
++    sustainedListenability: value,
++    differentiation: value,
++    pronunciation: value,
++  };
++}
++
++function passage(): CalibrationPassage {
++  const base = {
++    id: "passage_comparative_001",
++    segmentId: "segment_comparative_001",
++    sourceHash,
++    textHash: "c".repeat(64),
++    chapterId: "chapter_comparative_001",
++    category: "manual-critical" as const,
++    required: true,
++    wordCount: 48,
++    estimatedSeconds: 19.2,
++    rationaleCodes: Object.freeze(["CALIBRATION_MANUAL_CRITICAL"]),
++  };
++  return Object.freeze({ ...base, fingerprint: stableHash(base) });
++}
++
++function candidate(
++  value: CalibrationPassage,
++  suffix: string,
++  createdAt: string,
++  overrides: Partial<Omit<CalibrationCandidate, "fingerprint">> = {},
++): Omit<CalibrationCandidate, "fingerprint"> {
++  return {
++    id: `candidate_comparative_${suffix}`,
++    passageId: value.id,
++    takeArtifactId: `artifact_take_comparative_${suffix}`,
++    transcriptAssessmentArtifactId: `artifact_transcript_comparative_${suffix}`,
++    technicalAssessmentArtifactId: `artifact_technical_comparative_${suffix}`,
++    voiceProfileId: "voice_comparative_narrator_001",
++    voiceRevision: 1,
++    providerId: "audio-studio",
++    modelId: "governed-local-voice-v1",
++    capabilityFingerprint,
++    generationRequestHash: stableHash({ suffix }),
++    continuityScore: 0.94,
++    eligible: true,
++    findingCodes: [],
++    createdAt,
++    ...overrides,
++  };
++}
++
++function review(
++  candidateId: string,
++  reviewerId: string,
++  value: number,
++  createdAt: string,
++  overrides: Partial<Omit<CalibrationReview, "fingerprint">> = {},
++): Omit<CalibrationReview, "fingerprint"> {
++  return {
++    id: `review_${candidateId}_${reviewerId}`,
++    candidateId,
++    reviewerId,
++    blind: true,
++    decision: "approve",
++    scores: scores(value),
++    notes: "Reviewed blind against the full passage and neighbouring approved context.",
++    createdAt,
++    ...overrides,
++  };
++}
++
++function comparativeSession(input: Readonly<{
++  secondCandidate?: Partial<Omit<CalibrationCandidate, "fingerprint">>;
++}> = {}): CalibrationSession {
++  const calibrationPassage = passage();
++  const policy = createCalibrationPolicy({
++    requiredCategories: ["manual-critical"],
++    minimumPassageCount: 1,
++    minimumDistinctReviewers: 2,
++    minimumMeanScore: 4,
++    minimumDimensionScore: 3.5,
++    minimumContinuityScore: 0.8,
++    requireBlindReview: true,
++    requireApprovedDecision: true,
++  });
++  let session = createCalibrationSession({
++    id: "calibration_comparative_001",
++    projectId: "project_comparative_001",
++    voiceProfileId: "voice_comparative_narrator_001",
++    voiceRevision: 1,
++    policy,
++    passages: [calibrationPassage],
++    now: t0,
++  });
++  session = addCalibrationCandidate(
++    session,
++    candidate(calibrationPassage, "a", at(1)),
++  );
++  return addCalibrationCandidate(
++    session,
++    candidate(calibrationPassage, "b", at(2), input.secondCandidate),
++  );
++}
++
++function choose(
++  session: CalibrationSession,
++  candidateId: string,
++  seconds = 30,
++): CalibrationSession {
++  return selectCalibrationCandidate(session, {
++    passageId: session.passages[0]!.id,
++    candidateId,
++    selectedBy: "director_comparative_001",
++    selectedAt: at(seconds),
++  });
++}
++
++test("eligible alternatives require complete blind review coverage", () => {
++  let session = comparativeSession();
++  const [first, second] = session.candidates;
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_alpha", 4.6, at(10)));
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_beta", 4.6, at(11)));
++  session = recordCalibrationReview(session, review(second!.id, "reviewer_alpha", 4.8, at(12)));
++  session = choose(session, first!.id);
++
++  const assessment = assessCalibrationSession(session);
++  assert.equal(assessment.eligible, false);
++  assert.equal(
++    assessment.findings.some((finding) =>
++      finding.code === "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE"
++      && finding.candidateId === second!.id
++    ),
++    true,
++  );
++});
++
++test("eligible alternatives require a matched blind reviewer panel", () => {
++  let session = comparativeSession();
++  const [first, second] = session.candidates;
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_alpha", 4.6, at(10)));
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_beta", 4.6, at(11)));
++  session = recordCalibrationReview(session, review(second!.id, "reviewer_gamma", 4.8, at(12)));
++  session = recordCalibrationReview(session, review(second!.id, "reviewer_delta", 4.8, at(13)));
++  session = choose(session, first!.id);
++
++  const assessment = assessCalibrationSession(session);
++  assert.equal(assessment.eligible, false);
++  assert.equal(
++    assessment.findings.some((finding) =>
++      finding.code === "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH"
++    ),
++    true,
++  );
++});
++
++test("a lower-rated selected take cannot pass comparative calibration", () => {
++  let session = comparativeSession();
++  const [first, second] = session.candidates;
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_alpha", 4.2, at(10)));
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_beta", 4.2, at(11)));
++  session = recordCalibrationReview(session, review(second!.id, "reviewer_alpha", 4.8, at(12)));
++  session = recordCalibrationReview(session, review(second!.id, "reviewer_beta", 4.8, at(13)));
++  session = choose(session, first!.id);
++
++  const lowerRated = assessCalibrationSession(session);
++  assert.equal(lowerRated.eligible, false);
++  assert.equal(
++    lowerRated.findings.some((finding) =>
++      finding.code === "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED"
++      && finding.candidateId === first!.id
++    ),
++    true,
++  );
++
++  const highestRated = assessCalibrationSession(choose(session, second!.id, 31));
++  assert.equal(highestRated.eligible, true);
++  assert.deepEqual(highestRated.findings, []);
++});
++
++test("a rejected alternative cannot outrank an approved selected take", () => {
++  let session = comparativeSession();
++  const [first, second] = session.candidates;
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_alpha", 4.5, at(10)));
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_beta", 4.5, at(11)));
++  session = recordCalibrationReview(session, review(second!.id, "reviewer_alpha", 4.9, at(12)));
++  session = recordCalibrationReview(session, review(
++    second!.id,
++    "reviewer_beta",
++    4.9,
++    at(13),
++    { decision: "reject" },
++  ));
++  session = choose(session, first!.id);
++
++  const assessment = assessCalibrationSession(session);
++  assert.equal(assessment.eligible, true);
++  assert.deepEqual(assessment.findings, []);
++});
++
++test("objective-ineligible alternatives do not force comparative review", () => {
++  let session = comparativeSession({
++    secondCandidate: {
++      eligible: false,
++      findingCodes: ["TRANSCRIPT_FINAL_WORD_MISSING"],
++    },
++  });
++  const [first] = session.candidates;
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_alpha", 4.7, at(10)));
++  session = recordCalibrationReview(session, review(first!.id, "reviewer_beta", 4.7, at(11)));
++  session = choose(session, first!.id);
++
++  const assessment = assessCalibrationSession(session);
++  assert.equal(assessment.eligible, true);
++  assert.deepEqual(assessment.findings, []);
++});
+diff --git a/packages/storyteller/src/calibration-workflow.ts b/packages/storyteller/src/calibration-workflow.ts
+index 66dc119..e172e2d 100644
+--- a/packages/storyteller/src/calibration-workflow.ts
++++ b/packages/storyteller/src/calibration-workflow.ts
+@@ -986,6 +986,122 @@ function emptyDimensionAverages(): Record<CalibrationDimension, number> {
+   return Object.fromEntries(SCORE_DIMENSIONS.map((dimension) => [dimension, 0])) as Record<CalibrationDimension, number>;
+ }
+ 
++function objectiveComparisonCandidate(
++  candidate: CalibrationCandidate,
++  policy: CalibrationPolicy,
++): boolean {
++  return candidate.eligible
++    && candidate.findingCodes.length === 0
++    && candidate.continuityScore >= policy.minimumContinuityScore;
++}
++
++function comparativeReviewPanel(
++  reviews: readonly CalibrationReview[],
++  requireBlindReview: boolean,
++): ReadonlyMap<string, CalibrationReview> {
++  const panel = new Map<string, CalibrationReview>();
++  for (const review of reviews) {
++    if (!requireBlindReview || review.blind) panel.set(review.reviewerId, review);
++  }
++  return panel;
++}
++
++function comparativeCandidateScore(reviews: readonly CalibrationReview[]): number {
++  if (reviews.length === 0) return 0;
++  const total = reviews.reduce((reviewTotal, review) =>
++    reviewTotal + SCORE_DIMENSIONS.reduce(
++      (dimensionTotal, dimension) => dimensionTotal + review.scores[dimension],
++      0,
++    ), 0);
++  return roundScore(total / (reviews.length * SCORE_DIMENSIONS.length));
++}
++
++function comparativeDecisionEligible(
++  reviews: readonly CalibrationReview[],
++  policy: CalibrationPolicy,
++): boolean {
++  if (reviews.some((review) => review.decision === "reject")) return false;
++  return !policy.requireApprovedDecision
++    || reviews.every((review) => review.decision === "approve");
++}
++
++function assessComparativeTakeSelection(
++  session: CalibrationSession,
++  passage: CalibrationPassage,
++  selectedCandidate: CalibrationCandidate,
++  findings: CalibrationFinding[],
++): void {
++  const contenders = session.candidates.filter((candidate) =>
++    candidate.passageId === passage.id
++    && objectiveComparisonCandidate(candidate, session.policy)
++  );
++  if (contenders.length <= 1) return;
++
++  const panels = new Map<string, ReadonlyMap<string, CalibrationReview>>();
++  let coverageComplete = true;
++  for (const candidate of contenders) {
++    const panel = comparativeReviewPanel(
++      session.reviews.filter((review) => review.candidateId === candidate.id),
++      session.policy.requireBlindReview,
++    );
++    panels.set(candidate.id, panel);
++    if (panel.size < session.policy.minimumDistinctReviewers) {
++      coverageComplete = false;
++      findings.push({
++        code: "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE",
++        severity: "error",
++        message: "An eligible take lacks the independent review coverage required for comparison.",
++        passageId: passage.id,
++        candidateId: candidate.id,
++      });
++    }
++  }
++  if (!coverageComplete) return;
++
++  const firstPanel = panels.get(contenders[0]!.id)!;
++  const commonReviewerIds = [...firstPanel.keys()]
++    .filter((reviewerId) => contenders.every((candidate) =>
++      panels.get(candidate.id)!.has(reviewerId)
++    ))
++    .sort((left, right) => left.localeCompare(right, "en-AU"));
++  if (commonReviewerIds.length < session.policy.minimumDistinctReviewers) {
++    findings.push({
++      code: "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH",
++      severity: "error",
++      message: "Eligible takes were not reviewed by a sufficiently large common reviewer panel.",
++      passageId: passage.id,
++    });
++    return;
++  }
++
++  const ranked = contenders
++    .map((candidate) => {
++      const reviews = commonReviewerIds.map((reviewerId) =>
++        panels.get(candidate.id)!.get(reviewerId)!
++      );
++      return {
++        candidate,
++        score: comparativeCandidateScore(reviews),
++      };
++    })
++    .filter(({ candidate }) => comparativeDecisionEligible(
++      [...panels.get(candidate.id)!.values()],
++      session.policy,
++    ));
++  const selected = ranked.find(({ candidate }) => candidate.id === selectedCandidate.id);
++  if (!selected || ranked.length === 0) return;
++  const topScore = Math.max(...ranked.map(({ score }) => score));
++  if (selected.score < topScore) {
++    findings.push({
++      code: "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED",
++      severity: "error",
++      message: "The selected take is not the highest-rated eligible performance under the matched reviewer panel.",
++      passageId: passage.id,
++      candidateId: selectedCandidate.id,
++    });
++  }
++}
++
+ export function assessCalibrationSession(session: CalibrationSession): CalibrationAssessment {
+   assertCalibrationSession(session);
+   const findings: CalibrationFinding[] = [];
+@@ -1042,6 +1158,7 @@ export function assessCalibrationSession(session: CalibrationSession): Calibrati
+         candidateId: candidate.id,
+       });
+     }
++    assessComparativeTakeSelection(session, passage, candidate, findings);
+   }
+ 
+   const providerSignatures = new Set(selectedCandidates.map((candidate) =>
+diff --git a/scripts/check-calibration-workflow.mjs b/scripts/check-calibration-workflow.mjs
+index c39c514..ba90ef6 100644
+--- a/scripts/check-calibration-workflow.mjs
++++ b/scripts/check-calibration-workflow.mjs
+@@ -41,6 +41,7 @@ function collectRuntimeFiles(directory, output = []) {
+ for (const path of [
+   "packages/storyteller/src/calibration-workflow.ts",
+   "packages/storyteller/src/calibration-workflow.test.ts",
++  "packages/storyteller/src/calibration-comparative-selection.test.ts",
+   "packages/storyteller/src/calibration-store.ts",
+   "packages/storyteller/src/calibration-store.test.ts",
+   "packages/storyteller/src/project-store.ts",
+@@ -76,6 +77,10 @@ requireTokens("packages/storyteller/src/calibration-workflow.ts", [
+   "CALIBRATION_HUMAN_CONFIRMATION_REQUIRED",
+   "CALIBRATION_HUMAN_APPROVER_REQUIRED",
+   "CALIBRATION_PROVIDER_CONFIGURATION_DRIFT",
++  "assessComparativeTakeSelection",
++  "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE",
++  "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH",
++  "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED",
+   "sustainedListenability",
+ ]);
+ 
+@@ -91,6 +96,17 @@ requireTokens("packages/storyteller/src/calibration-workflow.test.ts", [
+   "sustainedListenability: 2.0",
+ ]);
+ 
++requireTokens("packages/storyteller/src/calibration-comparative-selection.test.ts", [
++  "eligible alternatives require complete blind review coverage",
++  "eligible alternatives require a matched blind reviewer panel",
++  "a lower-rated selected take cannot pass comparative calibration",
++  "a rejected alternative cannot outrank an approved selected take",
++  "objective-ineligible alternatives do not force comparative review",
++  "CALIBRATION_COMPARATIVE_REVIEW_COVERAGE_INCOMPLETE",
++  "CALIBRATION_COMPARATIVE_REVIEW_PANEL_MISMATCH",
++  "CALIBRATION_SELECTED_CANDIDATE_NOT_TOP_RATED",
++]);
++
+ requireTokens("packages/storyteller/src/calibration-store.ts", [
+   'CALIBRATION_SESSION_ENTITY_TYPE = "calibration-session"',
+   "StoredCalibrationSessionPublicView",
+@@ -183,6 +199,9 @@ requireTokens("docs/CALIBRATION_WORKFLOW.md", [
+   "Passage diversity",
+   "Candidate evidence",
+   "Human review",
++  "Comparative take selection",
++  "matched reviewer panel",
++  "lower-rated first render",
+   "sustained listenability",
+   "Continuity lock",
+   "Human approval",
+@@ -343,6 +362,7 @@ if (problems.length > 0) {
+ console.log("storyteller_calibration_workflow_check_passed");
+ console.log("- varied passages evaluate long-form performance risks without retaining manuscript prose");
+ console.log("- blind independent reviews score textual truth, restraint and sustained listenability");
++console.log("- eligible alternatives require matched-panel review and the selected take cannot rank below them");
+ console.log("- explicit human approval locks one voice revision and provider capability snapshot");
+ console.log("- calibration sessions preserve linked domain and store-envelope revision chains");
+ console.log("- authenticated API routes expose only bounded redacted session reads");
