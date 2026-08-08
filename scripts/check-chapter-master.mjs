@@ -77,6 +77,9 @@ requireTokens("packages/storyteller/src/chapter-master.test.ts", [
   "FileArtifactRegistry",
   "createGenerationAudioEngineeringPolicy",
   "chapterMasterPublicView",
+  "approveNarrationTakeReviewFixture",
+  "requireApprovedTakeSelection: true",
+  "takeReviewSession: approved.session",
   "registry.list()).length, 4",
 ]);
 

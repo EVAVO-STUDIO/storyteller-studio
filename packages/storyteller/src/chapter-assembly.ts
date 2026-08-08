@@ -6,6 +6,11 @@ import {
   assertArtifactRecord,
   type ArtifactRecord,
 } from "./artifact-registry.js";
+import {
+  assertApprovedNarrationTakeSelection,
+  type NarrationTakeReviewCandidate,
+  type NarrationTakeReviewSession,
+} from "./narration-take-review.js";
 import { stableHash } from "./index.js";
 
 export const CHAPTER_ASSEMBLY_SCHEMA_VERSION = "storyteller-chapter-assembly-v1" as const;
@@ -17,6 +22,7 @@ export interface ChapterAssemblyPolicy {
   maximumGapMs: number;
   maximumFadeMs: number;
   requireApprovedCandidates: true;
+  requireApprovedTakeSelection: true;
   fingerprint: string;
 }
 
@@ -34,6 +40,14 @@ export interface ChapterAssemblyArtifactSnapshot {
   byteCount: number;
 }
 
+export interface ChapterAssemblyTakeSelectionSnapshot {
+  sessionId: string;
+  sessionFingerprint: string;
+  selectionFingerprint: string;
+  approvalFingerprint: string;
+  performanceContextFingerprint: string;
+}
+
 export interface ChapterAssemblySegment {
   ordinal: number;
   segmentId: string;
@@ -47,6 +61,7 @@ export interface ChapterAssemblySegment {
     evidenceFingerprint: string;
     profileFingerprint: string;
   }>;
+  takeSelection: ChapterAssemblyTakeSelectionSnapshot;
   generationRequestHash: string;
   rightsFingerprint: string;
   sourceDurationMs: number;
@@ -87,6 +102,7 @@ export interface ChapterAssemblySegmentInput {
   transcriptArtifact: ArtifactRecord;
   engineeringArtifact: ArtifactRecord;
   engineeringEvidence: AudioEngineeringEvidence;
+  takeReviewSession: NarrationTakeReviewSession;
   trimStartMs?: number;
   trimEndMs?: number;
   fadeInMs?: number;
@@ -175,6 +191,7 @@ function policyBase(policy: Omit<ChapterAssemblyPolicy, "fingerprint">): Readonl
     maximumGapMs: policy.maximumGapMs,
     maximumFadeMs: policy.maximumFadeMs,
     requireApprovedCandidates: policy.requireApprovedCandidates,
+    requireApprovedTakeSelection: policy.requireApprovedTakeSelection,
   };
 }
 
@@ -190,6 +207,9 @@ export function createChapterAssemblyPolicy(
   requireInteger(input.maximumFadeMs, 0, 10_000, "CHAPTER_ASSEMBLY_POLICY_FADE_INVALID");
   if (input.requireApprovedCandidates !== true) {
     throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_APPROVED_CANDIDATES_REQUIRED");
+  }
+  if (input.requireApprovedTakeSelection !== true) {
+    throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_APPROVED_TAKE_SELECTION_REQUIRED");
   }
   return Object.freeze({
     ...input,
@@ -279,7 +299,13 @@ function prepareSegment(
     cursorMs: number;
   }>,
 ): ChapterAssemblySegment {
-  const { audioCandidate, transcriptArtifact, engineeringArtifact, engineeringEvidence } = input;
+  const {
+    audioCandidate,
+    transcriptArtifact,
+    engineeringArtifact,
+    engineeringEvidence,
+    takeReviewSession,
+  } = input;
   requireInteger(input.ordinal, 1, MAX_SEGMENTS, "CHAPTER_ASSEMBLY_SEGMENT_ORDINAL_INVALID");
   requireIdentifier(input.segmentId, "CHAPTER_ASSEMBLY_SEGMENT_ID_INVALID");
   requireInteger(input.sourceStart, 0, Number.MAX_SAFE_INTEGER, "CHAPTER_ASSEMBLY_SOURCE_START_INVALID");
@@ -301,6 +327,15 @@ function prepareSegment(
   }
   if (audioCandidate.review.status !== "approved") {
     throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_AUDIO_REVIEW_APPROVAL_REQUIRED");
+  }
+  let reviewedCandidate: NarrationTakeReviewCandidate;
+  try {
+    reviewedCandidate = assertApprovedNarrationTakeSelection(
+      takeReviewSession,
+      audioCandidate,
+    );
+  } catch {
+    throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_TAKE_SELECTION_INVALID");
   }
   if (
     audioCandidate.projectId !== context.projectId
@@ -352,6 +387,13 @@ function prepareSegment(
       throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_RIGHTS_SCOPE_MISMATCH");
     }
   }
+  if (
+    reviewedCandidate.transcriptArtifact.fingerprint !== transcriptArtifact.fingerprint
+    || reviewedCandidate.engineeringArtifact.fingerprint !== engineeringArtifact.fingerprint
+    || reviewedCandidate.engineeringEvidence.fingerprint !== engineeringEvidence.fingerprint
+  ) {
+    throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_TAKE_SELECTION_INVALID");
+  }
 
   const sourceDurationMs = Math.round(engineeringEvidence.probe.durationSeconds * 1_000);
   requireInteger(sourceDurationMs, 1, MAX_CHAPTER_DURATION_MS, "CHAPTER_ASSEMBLY_DURATION_INVALID");
@@ -395,6 +437,13 @@ function prepareSegment(
       artifact: artifactSnapshot(engineeringArtifact),
       evidenceFingerprint: engineeringEvidence.fingerprint,
       profileFingerprint: engineeringEvidence.profile.fingerprint,
+    }),
+    takeSelection: Object.freeze({
+      sessionId: takeReviewSession.id,
+      sessionFingerprint: takeReviewSession.fingerprint,
+      selectionFingerprint: takeReviewSession.selection!.fingerprint,
+      approvalFingerprint: takeReviewSession.approval!.fingerprint,
+      performanceContextFingerprint: takeReviewSession.performanceContextFingerprint,
     }),
     generationRequestHash: requestHash,
     rightsFingerprint,
@@ -503,6 +552,7 @@ export function assertChapterAssemblyPlan(plan: ChapterAssemblyPlan): void {
     maximumGapMs: plan.policy.maximumGapMs,
     maximumFadeMs: plan.policy.maximumFadeMs,
     requireApprovedCandidates: plan.policy.requireApprovedCandidates,
+    requireApprovedTakeSelection: plan.policy.requireApprovedTakeSelection,
   });
   if (policy.fingerprint !== plan.policy.fingerprint) {
     throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_POLICY_FINGERPRINT_MISMATCH");
@@ -533,6 +583,11 @@ export function assertChapterAssemblyPlan(plan: ChapterAssemblyPlan): void {
     }
     requireHash(segment.engineering.evidenceFingerprint, "CHAPTER_ASSEMBLY_EVIDENCE_FINGERPRINT_INVALID");
     requireHash(segment.engineering.profileFingerprint, "CHAPTER_ASSEMBLY_PROFILE_FINGERPRINT_INVALID");
+    requireIdentifier(segment.takeSelection.sessionId, "CHAPTER_ASSEMBLY_TAKE_SELECTION_ID_INVALID");
+    requireHash(segment.takeSelection.sessionFingerprint, "CHAPTER_ASSEMBLY_TAKE_SELECTION_SESSION_INVALID");
+    requireHash(segment.takeSelection.selectionFingerprint, "CHAPTER_ASSEMBLY_TAKE_SELECTION_FINGERPRINT_INVALID");
+    requireHash(segment.takeSelection.approvalFingerprint, "CHAPTER_ASSEMBLY_TAKE_APPROVAL_FINGERPRINT_INVALID");
+    requireHash(segment.takeSelection.performanceContextFingerprint, "CHAPTER_ASSEMBLY_PERFORMANCE_CONTEXT_INVALID");
     requireHash(segment.generationRequestHash, "CHAPTER_ASSEMBLY_REQUEST_HASH_INVALID");
     requireHash(segment.rightsFingerprint, "CHAPTER_ASSEMBLY_RIGHTS_HASH_INVALID");
     if (segmentIds.has(segment.segmentId)) throw new ChapterAssemblyError("CHAPTER_ASSEMBLY_SEGMENT_DUPLICATE");

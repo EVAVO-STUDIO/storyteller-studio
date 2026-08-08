@@ -15,11 +15,11 @@ import {
 import {
   assertArtifactRecord,
   createArtifactRecord,
-  recordArtifactReview,
   verifyArtifactIntegrity,
   type ArtifactRecord,
   type ArtifactRightsSnapshot,
 } from "./artifact-registry.js";
+import { approveNarrationTakeReviewFixture } from "../test-support/narration-take-review-fixture.js";
 import {
   assertChapterAssemblyPlan,
   chapterAssemblyPublicView,
@@ -30,7 +30,7 @@ import {
 const t0 = new Date("2026-07-27T00:00:00.000Z");
 const t1 = new Date("2026-07-27T00:00:01.000Z");
 const t2 = new Date("2026-07-27T00:00:02.000Z");
-const t3 = new Date("2026-07-27T00:00:03.000Z");
+const t3 = new Date("2026-07-27T00:00:30.000Z");
 const manuscriptSourceHash = "a".repeat(64);
 const rightsFingerprint = "b".repeat(64);
 
@@ -110,19 +110,12 @@ function verifiedArtifact(input: Readonly<{
     rights: input.rights ?? rights(),
     reviewRequired: input.reviewRequired,
   }, t0);
-  const verified = verifyArtifactIntegrity(initial, {
+  return verifyArtifactIntegrity(initial, {
     observedContentHash: initial.integrity.contentHash,
     observedByteCount: initial.integrity.byteCount,
     checkedByActorId: "verifier_chapter_assembly_001",
     checks: ["sha256", "byte-count", "media-signature"],
     checkedAt: t1,
-  });
-  if (!input.reviewRequired) return verified;
-  return recordArtifactReview(verified, {
-    decision: "approved",
-    reviewerId: "director_chapter_assembly_001",
-    notes: "Approved in context against the manuscript, neighbouring takes and chapter rhythm.",
-    decidedAt: t2,
   });
 }
 
@@ -203,23 +196,23 @@ async function engineeringEvidence(
   });
 }
 
-async function segmentChain(input: Readonly<{
+async function candidateChain(input: Readonly<{
   ordinal: number;
+  variant: "primary" | "alternative";
   segmentId: string;
-  sourceStart: number;
-  sourceEnd: number;
   seed: number;
   durationSeconds?: number;
   rmsDb?: number;
   rights?: ArtifactRightsSnapshot;
   projectId?: string;
-}>): Promise<ChapterAssemblySegmentInput> {
+}>) {
+  const ordinal = input.ordinal.toString().padStart(3, "0");
   const bytes = audioBytes(input.seed);
   const requestHash = input.seed.toString(16).padStart(64, "0");
-  const jobId = `job_chapter_assembly_${input.ordinal.toString().padStart(3, "0")}`;
-  const takeId = `take_chapter_assembly_${input.ordinal.toString().padStart(3, "0")}`;
+  const jobId = `job_chapter_assembly_${ordinal}`;
+  const takeId = `take_chapter_assembly_${ordinal}_${input.variant}`;
   const audio = verifiedArtifact({
-    id: `artifact_audio_chapter_assembly_${input.ordinal.toString().padStart(3, "0")}`,
+    id: `artifact_audio_chapter_assembly_${ordinal}_${input.variant}`,
     kind: "audio-candidate",
     segmentId: input.segmentId,
     takeId,
@@ -234,9 +227,11 @@ async function segmentChain(input: Readonly<{
     rights: input.rights,
     projectId: input.projectId,
   });
-  const transcriptBytes = new TextEncoder().encode(`transcript-${input.ordinal}`);
+  const transcriptBytes = new TextEncoder().encode(
+    `transcript-${input.ordinal}-${input.variant}`,
+  );
   const transcript = verifiedArtifact({
-    id: `artifact_transcript_chapter_assembly_${input.ordinal.toString().padStart(3, "0")}`,
+    id: `artifact_transcript_chapter_assembly_${ordinal}_${input.variant}`,
     kind: "transcript",
     segmentId: input.segmentId,
     takeId,
@@ -259,7 +254,7 @@ async function segmentChain(input: Readonly<{
   );
   const evidenceBytes = new TextEncoder().encode(JSON.stringify(evidence));
   const engineering = verifiedArtifact({
-    id: `artifact_engineering_chapter_assembly_${input.ordinal.toString().padStart(3, "0")}`,
+    id: `artifact_engineering_chapter_assembly_${ordinal}_${input.variant}`,
     kind: "audio-analysis",
     segmentId: input.segmentId,
     takeId,
@@ -276,14 +271,68 @@ async function segmentChain(input: Readonly<{
   });
   for (const record of [audio, transcript, engineering]) assertArtifactRecord(record);
   return {
-    ordinal: input.ordinal,
-    segmentId: input.segmentId,
-    sourceStart: input.sourceStart,
-    sourceEnd: input.sourceEnd,
     audioCandidate: audio,
     transcriptArtifact: transcript,
     engineeringArtifact: engineering,
     engineeringEvidence: evidence,
+  };
+}
+
+async function segmentChain(input: Readonly<{
+  ordinal: number;
+  segmentId: string;
+  sourceStart: number;
+  sourceEnd: number;
+  seed: number;
+  durationSeconds?: number;
+  rmsDb?: number;
+  rights?: ArtifactRightsSnapshot;
+  projectId?: string;
+}>): Promise<ChapterAssemblySegmentInput> {
+  const primary = await candidateChain({
+    ordinal: input.ordinal,
+    variant: "primary",
+    segmentId: input.segmentId,
+    seed: input.seed,
+    durationSeconds: input.durationSeconds,
+    rmsDb: input.rmsDb,
+    rights: input.rights,
+    projectId: input.projectId,
+  });
+  const alternative = await candidateChain({
+    ordinal: input.ordinal,
+    variant: "alternative",
+    segmentId: input.segmentId,
+    seed: input.seed + 100,
+    durationSeconds: input.durationSeconds,
+    rights: input.rights,
+    projectId: input.projectId,
+  });
+  const approved = approveNarrationTakeReviewFixture({
+    sessionId: `narration_take_review_chapter_${input.ordinal.toString().padStart(3, "0")}`,
+    performanceContextFingerprint: (1_000 + input.ordinal)
+      .toString(16)
+      .padStart(64, "0"),
+    candidates: [
+      { ...primary, score: 5 },
+      { ...alternative, score: 4 },
+    ],
+    selectedTakeId: primary.audioCandidate.takeId!,
+    editorialReviewerId: "editorial_reviewer_chapter_assembly_001",
+    engineeringReviewerId: "engineering_reviewer_chapter_assembly_001",
+    directorId: "director_chapter_assembly_001",
+    createdAt: t2,
+  });
+  return {
+    ordinal: input.ordinal,
+    segmentId: input.segmentId,
+    sourceStart: input.sourceStart,
+    sourceEnd: input.sourceEnd,
+    audioCandidate: approved.audioCandidate,
+    transcriptArtifact: primary.transcriptArtifact,
+    engineeringArtifact: primary.engineeringArtifact,
+    engineeringEvidence: primary.engineeringEvidence,
+    takeReviewSession: approved.session,
   };
 }
 
@@ -300,6 +349,7 @@ function assemblyInput(segments: readonly ChapterAssemblySegmentInput[]) {
       maximumGapMs: 5_000,
       maximumFadeMs: 500,
       requireApprovedCandidates: true as const,
+      requireApprovedTakeSelection: true as const,
     },
     output: {
       format: "wav" as const,
@@ -397,11 +447,19 @@ test("unapproved audio and ineligible engineering cannot enter assembly", async 
     sourceStart: 0,
     sourceEnd: 100,
     seed: 4,
-    rmsDb: -30,
   });
-  assert.equal(failed.engineeringEvidence.eligible, false);
+  const failedEvidence = await engineeringEvidence(
+    audioBytes(4),
+    1,
+    ACX_AUDIOBOOK_PROFILE,
+    -30,
+  );
+  assert.equal(failedEvidence.eligible, false);
   assert.throws(
-    () => createChapterAssemblyPlan(assemblyInput([failed])),
+    () => createChapterAssemblyPlan(assemblyInput([{
+      ...failed,
+      engineeringEvidence: failedEvidence,
+    }])),
     /CHAPTER_ASSEMBLY_ENGINEERING_INELIGIBLE/u,
   );
 });
@@ -468,6 +526,63 @@ test("scope, parent, content and rights drift fail closed", async () => {
   );
 });
 
+test("chapter assembly accepts only the exact transcript and engineering chain selected in review", async () => {
+  const chain = await segmentChain({
+    ordinal: 1,
+    segmentId: "segment_chapter_selected_chain_001",
+    sourceStart: 0,
+    sourceEnd: 100,
+    seed: 61,
+  });
+  const requestHash = chain.audioCandidate.provenance.generationRequestHash!;
+  const replacementTranscript = verifiedArtifact({
+    id: "artifact_transcript_chapter_selected_chain_replacement",
+    kind: "transcript",
+    segmentId: chain.segmentId,
+    takeId: chain.audioCandidate.takeId!,
+    jobId: chain.audioCandidate.jobId!,
+    bytes: new TextEncoder().encode("replacement transcript with the same scope"),
+    mimeType: "text/plain",
+    format: "txt",
+    sourceContentHash: manuscriptSourceHash,
+    generationRequestHash: requestHash,
+    parentArtifactIds: [chain.audioCandidate.id],
+    reviewRequired: false,
+  });
+  assert.throws(
+    () => createChapterAssemblyPlan(assemblyInput([{
+      ...chain,
+      transcriptArtifact: replacementTranscript,
+    }])),
+    /CHAPTER_ASSEMBLY_TAKE_SELECTION_INVALID/u,
+  );
+
+  const replacementEngineeringBytes = new TextEncoder().encode(
+    `${JSON.stringify(chain.engineeringEvidence)}\n`,
+  );
+  const replacementEngineering = verifiedArtifact({
+    id: "artifact_engineering_chapter_selected_chain_replacement",
+    kind: "audio-analysis",
+    segmentId: chain.segmentId,
+    takeId: chain.audioCandidate.takeId!,
+    jobId: chain.audioCandidate.jobId!,
+    bytes: replacementEngineeringBytes,
+    mimeType: "application/json",
+    format: "json",
+    sourceContentHash: chain.audioCandidate.integrity.contentHash,
+    generationRequestHash: requestHash,
+    parentArtifactIds: [chain.audioCandidate.id],
+    reviewRequired: false,
+  });
+  assert.throws(
+    () => createChapterAssemblyPlan(assemblyInput([{
+      ...chain,
+      engineeringArtifact: replacementEngineering,
+    }])),
+    /CHAPTER_ASSEMBLY_TAKE_SELECTION_INVALID/u,
+  );
+});
+
 test("source overlap, duplicate takes and invalid edit bounds are rejected", async () => {
   const first = await segmentChain({
     ordinal: 1,
@@ -500,7 +615,7 @@ test("source overlap, duplicate takes and invalid edit bounds are rejected", asy
         engineeringEvidence: first.engineeringEvidence,
       },
     ])),
-    /CHAPTER_ASSEMBLY_AUDIO_SCOPE_MISMATCH|CHAPTER_ASSEMBLY_TAKE_DUPLICATE/u,
+    /CHAPTER_ASSEMBLY_TAKE_SELECTION_INVALID|CHAPTER_ASSEMBLY_AUDIO_SCOPE_MISMATCH|CHAPTER_ASSEMBLY_TAKE_DUPLICATE/u,
   );
 
   assert.throws(
@@ -534,7 +649,7 @@ test("expired rights and output-profile drift block assembly", async () => {
     sourceStart: 0,
     sourceEnd: 100,
     seed: 9,
-    rights: rights({ expiresAt: "2026-07-26T00:00:00.000Z" }),
+    rights: rights({ expiresAt: "2026-07-27T00:00:20.000Z" }),
   });
   assert.throws(
     () => createChapterAssemblyPlan(assemblyInput([expired])),

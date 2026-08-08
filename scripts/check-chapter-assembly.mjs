@@ -56,6 +56,14 @@ requireTokens("packages/storyteller/src/chapter-assembly.ts", [
   "chapterAssemblyPublicView",
   "assertAudioEngineeringEvidence",
   "assertArtifactRecord",
+  "assertApprovedNarrationTakeSelection",
+  "requireApprovedTakeSelection",
+  "takeReviewSession",
+  "takeSelection",
+  "CHAPTER_ASSEMBLY_TAKE_SELECTION_INVALID",
+  "reviewedCandidate.transcriptArtifact.fingerprint",
+  "reviewedCandidate.engineeringArtifact.fingerprint",
+  "reviewedCandidate.engineeringEvidence.fingerprint",
   "CHAPTER_ASSEMBLY_AUDIO_REVIEW_APPROVAL_REQUIRED",
   "CHAPTER_ASSEMBLY_ENGINEERING_INELIGIBLE",
   "CHAPTER_ASSEMBLY_RIGHTS_EXPIRED",
@@ -72,10 +80,13 @@ requireTokens("packages/storyteller/src/chapter-assembly.test.ts", [
   "approved evidence chains create a deterministic ordered chapter timeline",
   "unapproved audio and ineligible engineering cannot enter assembly",
   "scope, parent, content and rights drift fail closed",
+  "chapter assembly accepts only the exact transcript and engineering chain selected in review",
   "source overlap, duplicate takes and invalid edit bounds are rejected",
   "expired rights and output-profile drift block assembly",
   "persisted plan tampering is detected",
-  "recordArtifactReview",
+  "approveNarrationTakeReviewFixture",
+  "requireApprovedTakeSelection: true",
+  "takeReviewSession: approved.session",
   "analyseAudioEngineering",
   "assertChapterAssemblyPlan",
   "renderedDurationMs, 2_100",
@@ -87,7 +98,8 @@ requireTokens("docs/CHAPTER_ASSEMBLY.md", [
   "Timeline policy",
   "Continuity and duplication controls",
   "Current boundary",
-  "explicit in-context human approval",
+  "matched-panel blind editorial and engineering review",
+  "narration take-review session, selection, approval and performance-context fingerprints",
   "non-overlapping segments and explicit gaps",
   "does not yet render a chapter master",
 ]);
@@ -117,6 +129,7 @@ if (publicStart < 0) {
     "audio:",
     "transcript:",
     "engineering:",
+    "takeSelection:",
   ]) {
     if (publicSource.includes(forbidden)) {
       problems.push(`chapter assembly public view exposes private decision evidence: ${forbidden}`);
@@ -135,6 +148,8 @@ for (const path of [
     "ChapterAssemblySegmentInput",
     "audioCandidate",
     "engineeringEvidence",
+    "takeReviewSession",
+    "NarrationTakeReviewSession",
   ]) {
     if (runtime.includes(forbidden)) {
       problems.push(`${path} exposes private chapter-assembly mutation: ${forbidden}`);
@@ -163,8 +178,8 @@ if (problems.length > 0) {
 }
 
 console.log("storyteller_chapter_assembly_check_passed");
-console.log("- chapter plans admit only reviewed audio with matching transcript and independent engineering evidence");
-console.log("- artifact revisions, hashes, rights, generation intent and source order are locked immutably");
+console.log("- chapter plans admit only top-rated narration selections with matching transcript and independent engineering evidence");
+console.log("- artifact revisions, review-session decisions, hashes, rights, generation intent and source order are locked immutably");
 console.log("- trims, fades and directed gaps produce a deterministic non-overlapping chapter timeline");
 console.log("- source, scope, rights, output-profile and fingerprint drift fail closed");
 console.log("- public projections omit manuscript, take, artifact, rights and private edit evidence");
