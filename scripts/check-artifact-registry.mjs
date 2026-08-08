@@ -51,6 +51,7 @@ for (const path of [
   "packages/storyteller/src/artifact-queue.test.ts",
   "packages/storyteller/src/artifact-registry.ts",
   "packages/storyteller/src/artifact-registry.test.ts",
+  "packages/storyteller/src/artifact-review-separation.test.ts",
   "packages/storyteller/src/artifact-store.ts",
   "packages/storyteller/src/artifact-store.test.ts",
   "packages/storyteller/package.json",
@@ -77,6 +78,9 @@ requireTokens("packages/storyteller/src/artifact-registry.ts", [
   "quarantineArtifact",
   "rejectArtifact",
   "recordArtifactReview",
+  "requireIndependentArtifactReviewer",
+  "ARTIFACT_REVIEWER_CREATOR_CONFLICT",
+  "ARTIFACT_REVIEWER_VERIFIER_CONFLICT",
   "assessQueueCompletionArtifacts",
   "ARTIFACT_CANDIDATE_COUNT_MISMATCH",
   "assessArtifactRelease",
@@ -86,6 +90,14 @@ requireTokens("packages/storyteller/src/artifact-registry.ts", [
   "artifactPublicView",
   "finalConfirmationId",
   "previousFingerprint",
+]);
+
+requireTokens("packages/storyteller/src/artifact-review-separation.test.ts", [
+  "artifact creators cannot approve or request changes on their own artifacts",
+  "integrity verifiers cannot approve or request changes on artifacts they verified",
+  "an independent reviewer can approve a verified artifact through a linked revision",
+  "ARTIFACT_REVIEWER_CREATOR_CONFLICT",
+  "ARTIFACT_REVIEWER_VERIFIER_CONFLICT",
 ]);
 
 requireTokens("packages/storyteller/src/artifact-registry.test.ts", [
@@ -256,6 +268,7 @@ console.log("storyteller_artifact_registry_check_passed");
 console.log("- generated media remains separate from generation intent and release state");
 console.log("- immutable hash, byte-count, provenance and rights evidence are required");
 console.log("- verification precedes review and failed bytes are quarantined");
+console.log("- creators and integrity verifiers cannot self-authorize artifact review decisions");
 console.log("- queue completion requires an exact verified candidate bundle");
 console.log("- queue persistence receives only governed artifact and candidate identifiers");
 console.log("- artifact revisions remain aligned with integrity-checked store envelopes");

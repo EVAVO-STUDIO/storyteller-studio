@@ -150,6 +150,8 @@ Technical analysis records can be configured as review-not-required when their s
 
 Review decisions are revisioned and non-destructive. A decision records the reviewer, time and notes. A later quarantine resets an earlier approval because the approved object can no longer be assumed safe or intact.
 
+The reviewer must be independent from both the actor that created the artifact and the actor that verified its bytes. The shared registry rejects creator self-review and verifier self-review for both approval and changes-requested decisions. Specialised calibration, mastering and retail workflows may impose additional blind-review, multi-reviewer or release-manager separation on top of this minimum rule.
+
 `changes-requested` requires an explanation. It is not an implicit rejection and does not destroy the earlier artifact.
 
 ## Queue-completion gate

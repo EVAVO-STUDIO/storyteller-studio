@@ -472,6 +472,18 @@ function validateVerification(record: ArtifactRecord): void {
   }
 }
 
+function requireIndependentArtifactReviewer(
+  record: ArtifactRecord,
+  reviewerId: string,
+): void {
+  if (reviewerId === record.provenance.createdByActorId) {
+    throw new Error("ARTIFACT_REVIEWER_CREATOR_CONFLICT");
+  }
+  if (reviewerId === record.verification.checkedByActorId) {
+    throw new Error("ARTIFACT_REVIEWER_VERIFIER_CONFLICT");
+  }
+}
+
 function validateReview(record: ArtifactRecord): void {
   const review = record.review;
   if (!REVIEW_STATUSES.has(review.status)) throw new Error("ARTIFACT_REVIEW_STATUS_INVALID");
@@ -484,6 +496,7 @@ function validateReview(record: ArtifactRecord): void {
   if (review.status === "approved" || review.status === "changes-requested") {
     if (!review.reviewerId || !review.decidedAt) throw new Error("ARTIFACT_REVIEW_DECISION_EVIDENCE_REQUIRED");
     requireIdentifier(review.reviewerId, "ARTIFACT_REVIEWER_ID_INVALID");
+    requireIndependentArtifactReviewer(record, review.reviewerId);
     requireDate(review.decidedAt, "ARTIFACT_REVIEW_DATE_INVALID");
     if (record.verification.status !== "verified") throw new Error("ARTIFACT_REVIEW_BEFORE_VERIFICATION");
     if (review.status === "changes-requested" && !review.notes) {
@@ -760,6 +773,7 @@ export function recordArtifactReview(
   if (record.verification.status !== "verified") throw new Error("ARTIFACT_REVIEW_REQUIRES_VERIFIED_ARTIFACT");
   if (record.release.status === "released") throw new Error("ARTIFACT_RELEASED_IMMUTABLE");
   requireIdentifier(input.reviewerId, "ARTIFACT_REVIEWER_ID_INVALID");
+  requireIndependentArtifactReviewer(record, input.reviewerId);
   if (input.decision === "changes-requested" && !input.notes) {
     throw new Error("ARTIFACT_REVIEW_NOTES_REQUIRED");
   }
