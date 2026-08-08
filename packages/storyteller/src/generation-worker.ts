@@ -31,6 +31,10 @@ import {
   type PerformanceDirection,
   type ProjectUse,
 } from "./index.js";
+import {
+  assertNaturalNarrationWorkerInput,
+  type NaturalNarrationProductionPlan,
+} from "./narration-production-policy.js";
 import type { FilePrivateObjectStore } from "./private-object-store.js";
 import {
   buildSynthesisRequest,
@@ -60,6 +64,7 @@ export interface GenerationWorkerMaterial {
   intendedUse?: ProjectUse;
   commercial?: boolean;
   parentArtifactIds?: readonly string[];
+  naturalNarration?: NaturalNarrationProductionPlan;
   costPolicy?: Readonly<{
     currency: string;
     maximumTotalEstimatedCost: number;
@@ -160,6 +165,7 @@ function requireWorkerInput(input: ClaimedGenerationWorkerInput): void {
   if (input.material.format === "pcm") {
     throw new Error("GENERATION_WORKER_UNSUPPORTED_STORAGE_FORMAT");
   }
+  assertNaturalNarrationWorkerInput(input.claim.item.job, input.material);
   if (input.material.costPolicy) {
     if (!CURRENCY_PATTERN.test(input.material.costPolicy.currency)) {
       throw new Error("GENERATION_WORKER_COST_POLICY_CURRENCY_INVALID");
@@ -197,6 +203,9 @@ function buildRequests(
       format: material.format ?? "wav",
       sampleRateHz: material.sampleRateHz ?? 48_000,
       candidateIndex,
+      ...(material.naturalNarration
+        ? { naturalNarration: material.naturalNarration }
+        : {}),
     }),
   ));
 }

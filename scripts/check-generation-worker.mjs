@@ -38,6 +38,8 @@ function collectTextFiles(directory, output = []) {
 for (const path of [
   "packages/storyteller/src/generation-worker.ts",
   "packages/storyteller/src/generation-worker.test.ts",
+  "packages/storyteller/src/narration-production-policy.ts",
+  "packages/storyteller/src/narration-production-policy.test.ts",
   "packages/storyteller/src/heartbeat-worker.ts",
   "packages/storyteller/src/heartbeat-worker.test.ts",
   "packages/storyteller/package.json",
@@ -67,6 +69,26 @@ requireTokens("packages/storyteller/src/generation-worker.ts", [
   "storyteller-generation-execution-evidence-v1",
   "providerRequestIdHash",
   "provenanceFingerprint",
+  "assertNaturalNarrationWorkerInput",
+  "naturalNarration",
+]);
+
+requireTokens("packages/storyteller/src/narration-production-policy.ts", [
+  "NARRATION_PRODUCTION_PLAN_SCHEMA_VERSION",
+  "NATURAL_NARRATION_MINIMUM_CANDIDATES",
+  "createNarrationContextWindow",
+  "createNaturalNarrationProductionPlan",
+  "assertNaturalNarrationWorkerInput",
+  "NARRATION_PRODUCTION_PLAN_REQUIRED",
+  "NARRATION_PRODUCTION_CANDIDATE_COUNT_INSUFFICIENT",
+  "naturalNarrationRequestMetadata",
+]);
+
+requireTokens("packages/storyteller/src/narration-production-policy.test.ts", [
+  "Audio Studio production requires a governed natural narration plan",
+  "Audio Studio production requires at least three candidate performances",
+  "generic objectives cannot create a production narration plan",
+  "deterministic synthesis requests carry the same governed context across variants",
 ]);
 
 requireTokens("packages/storyteller/src/generation-worker.test.ts", [
@@ -111,6 +133,9 @@ requireTokens("docs/GENERATION_WORKER.md", [
   "Queue completion",
   "No public execution route",
   "Lease heartbeat",
+  "Natural narration production",
+  "three candidate performances",
+  "neighbouring context",
 ]);
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
@@ -118,6 +143,7 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   for (const [exportPath, sourcePath] of [
     ["./generation-worker", "./src/generation-worker.ts"],
     ["./heartbeat-worker", "./src/heartbeat-worker.ts"],
+    ["./narration-production-policy", "./src/narration-production-policy.ts"],
   ]) {
     if (packageJson.exports?.[exportPath] !== sourcePath) {
       problems.push(`storyteller package does not export ${exportPath} from ${sourcePath}`);
@@ -183,6 +209,7 @@ if (problems.length > 0) {
 console.log("storyteller_generation_worker_check_passed");
 console.log("- claimed jobs are bound to the exclusive worker identity");
 console.log("- provider results are correlated to deterministic synthesis requests");
+console.log("- Audio Studio production requires a fingerprinted context plan and at least three candidate performances");
 console.log("- candidate bytes, transcripts, alignments and execution evidence are governed artifacts");
 console.log("- aborted workers stop before post-provider artifact or terminal writes");
 console.log("- heartbeat ownership loss aborts provider work and prevents stale completion");

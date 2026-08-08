@@ -867,7 +867,7 @@ export interface GenerationJob {
   status: "blocked" | "ready";
 }
 
-export function createGenerationJobs(manifest: ProjectManifest, candidateCount = 2): GenerationJob[] {
+export function createGenerationJobs(manifest: ProjectManifest, candidateCount = 3): GenerationJob[] {
   if (!Number.isSafeInteger(candidateCount) || candidateCount < 1 || candidateCount > 8) throw new Error("GENERATION_CANDIDATE_COUNT_INVALID");
   const providerFallbackIds = manifest.providers.filter((provider) => provider.eligible).map((provider) => provider.providerId);
   return manifest.manuscript.segments

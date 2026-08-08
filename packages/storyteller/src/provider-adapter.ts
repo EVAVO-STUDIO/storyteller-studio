@@ -5,6 +5,10 @@ import {
   type PerformanceDirection,
   type ProviderFeature,
 } from "./index.js";
+import {
+  naturalNarrationRequestMetadata,
+  type NaturalNarrationProductionPlan,
+} from "./narration-production-policy.js";
 
 export type ProviderExecutionMode = "preview" | "calibration" | "production";
 export type ProviderAudioFormat = "wav" | "flac" | "mp3" | "pcm";
@@ -181,6 +185,7 @@ export function buildSynthesisRequest(input: Readonly<{
   format?: ProviderAudioFormat;
   sampleRateHz?: number;
   candidateIndex: number;
+  naturalNarration?: NaturalNarrationProductionPlan;
 }>): SynthesisRequest {
   if (input.job.status !== "ready") throw new Error("GENERATION_JOB_NOT_READY");
   if (input.text.length === 0) throw new Error("SYNTHESIS_TEXT_EMPTY");
@@ -191,6 +196,9 @@ export function buildSynthesisRequest(input: Readonly<{
   ) {
     throw new Error("SYNTHESIS_CANDIDATE_INDEX_INVALID");
   }
+  const narrationMetadata = input.naturalNarration
+    ? naturalNarrationRequestMetadata(input.naturalNarration)
+    : {};
   const requestFingerprint = stableHash({
     jobId: input.job.id,
     cacheKey: input.job.cacheKey,
@@ -204,6 +212,7 @@ export function buildSynthesisRequest(input: Readonly<{
     format: input.format ?? "wav",
     sampleRateHz: input.sampleRateHz ?? 48_000,
     candidateIndex: input.candidateIndex,
+    naturalNarrationPlanFingerprint: input.naturalNarration?.fingerprint ?? null,
   });
   return {
     requestId: `request_${requestFingerprint.slice(0, 24)}`,
@@ -225,6 +234,7 @@ export function buildSynthesisRequest(input: Readonly<{
       jobCacheKey: input.job.cacheKey,
       projectId: input.job.projectId,
       segmentId: input.job.segmentId,
+      ...narrationMetadata,
     },
   };
 }

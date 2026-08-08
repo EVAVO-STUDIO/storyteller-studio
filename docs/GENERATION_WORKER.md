@@ -34,6 +34,24 @@ One deterministic synthesis request is built for each candidate index in the gen
 
 Provider fallback may change which approved adapter fulfils the request, but it does not change the underlying production intent.
 
+## Natural narration production
+
+Production routed through EVAVO Audio Studio requires a fingerprinted natural-narration plan before provider work begins. The plan binds the current manuscript segment to:
+
+- its immutable source and exact text hash;
+- the approved performance-direction fingerprint;
+- language;
+- bounded preceding and following manuscript context;
+- an opening, middle, closing or standalone boundary;
+- a production floor of three candidate performances;
+- blind comparative review after objective artifact admission.
+
+The context builder uses neighbouring segments from the same chapter to create bounded neighbouring context and stops at headings or scene breaks. It never inserts the current segment into its own context window. Context and plan fingerprints are carried in request metadata while raw neighbouring prose remains private provider input rather than a public operational field.
+
+Audio Studio production is rejected before synthesis when the plan is absent, the candidate count is below three, the segment exceeds the long-form limit, the context or source binding was altered, or direction falls back to a generic objective or empty subtext. The automatically generated performance plan is a useful planning scaffold, but its shared default objective and subtext are explicitly treated as draft material and must be revised for the actual scene before production. Preview work may still use one candidate because it cannot be promoted as approved production.
+
+Three candidate performances are a minimum comparison set, not permission to release any render automatically. Generated files still require transcript and engineering admission, independent listening review, comparative take selection, chapter continuity review and the existing artifact-release gates.
+
 ## Provider execution
 
 The provider adapter registry and server-side credential resolver remain injected dependencies. The worker does not read browser configuration or receive credentials through queue records.
