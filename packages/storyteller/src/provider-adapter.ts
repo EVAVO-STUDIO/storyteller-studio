@@ -239,106 +239,219 @@ export function buildSynthesisRequest(input: Readonly<{
     metadata: {
       jobId: input.job.id,
       jobCacheKey: input.job.cacheKey,
-      voiceProfileId: input.voiceProfileId,
-      voiceRevision: String(input.voiceRevision),
+      projectId: input.job.projectId,
+      segmentId: input.job.segmentId,
       ...(input.voiceProfileHash !== undefined ? { voiceProfileHash: input.voiceProfileHash } : {}),
       ...narrationMetadata,
     },
   };
 }
 
-export function validateSynthesisResult(
+function validateResult(
   result: SynthesisResult,
+  adapter: NarrationProviderAdapter,
   request: SynthesisRequest,
-): void {
-  if (result.requestId !== request.requestId) throw new Error("SYNTHESIS_RESULT_REQUEST_MISMATCH");
-  if (result.idempotencyKey !== request.idempotencyKey) throw new Error("SYNTHESIS_RESULT_IDEMPOTENCY_MISMATCH");
-  if (!(result.audio instanceof Uint8Array) || result.audio.byteLength === 0) {
-    throw new Error("SYNTHESIS_RESULT_AUDIO_EMPTY");
+): Finding[] {
+  const findings: Finding[] = [];
+  if (result.providerId !== adapter.providerId) {
+    findings.push({
+      code: "PROVIDER_RESULT_ID_MISMATCH",
+      severity: "error",
+      message: "Provider result identifier does not match the executing adapter.",
+    });
   }
-  if (!result.contentType.startsWith("audio/")) throw new Error("SYNTHESIS_RESULT_CONTENT_TYPE_INVALID");
-  if (result.usage.inputCharacters !== request.text.length) {
-    throw new Error("SYNTHESIS_RESULT_USAGE_INPUT_MISMATCH");
+  if (result.adapterVersion !== adapter.adapterVersion) {
+    findings.push({
+      code: "PROVIDER_RESULT_VERSION_MISMATCH",
+      severity: "error",
+      message: "Provider result adapter version does not match the executing adapter.",
+    });
+  }
+  if (
+    result.requestId !== request.requestId
+    || result.idempotencyKey !== request.idempotencyKey
+  ) {
+    findings.push({
+      code: "PROVIDER_RESULT_CORRELATION_MISMATCH",
+      severity: "error",
+      message: "Provider result cannot be correlated to the deterministic request.",
+    });
+  }
+  if (!(result.audio instanceof Uint8Array) || result.audio.byteLength === 0) {
+    findings.push({
+      code: "PROVIDER_RESULT_AUDIO_EMPTY",
+      severity: "error",
+      message: "Provider returned no audio bytes.",
+    });
+  }
+  if (!result.contentType.startsWith("audio/")) {
+    findings.push({
+      code: "PROVIDER_RESULT_CONTENT_TYPE_INVALID",
+      severity: "error",
+      message: "Provider result does not declare an audio content type.",
+    });
   }
   if (!/^[a-f0-9]{64}$/u.test(result.capabilityFingerprint)) {
-    throw new Error("SYNTHESIS_RESULT_CAPABILITY_FINGERPRINT_INVALID");
+    findings.push({
+      code: "PROVIDER_CAPABILITY_FINGERPRINT_INVALID",
+      severity: "error",
+      message: "Provider result is missing a valid capability snapshot fingerprint.",
+    });
   }
-  if (Number.isNaN(Date.parse(result.generatedAt))) throw new Error("SYNTHESIS_RESULT_DATE_INVALID");
+  return findings;
+}
+
+const SAFE_PROVIDER_GOVERNANCE_CODE =
+  /^GENERATION_CALIBRATION_[A-Z0-9_]{3,80}$/u;
+
+function providerFailureFinding(
+  error: unknown,
+  providerId: string,
+): Finding {
+  const candidate = error instanceof Error ? error.message : "";
+  const code = SAFE_PROVIDER_GOVERNANCE_CODE.test(candidate)
+    ? candidate
+    : "PROVIDER_SYNTHESIS_FAILED";
+  return {
+    code,
+    severity: "warning",
+    message: code === "PROVIDER_SYNTHESIS_FAILED"
+      ? "Provider attempt failed without producing approved output."
+      : "Provider output did not satisfy the approved production calibration lock.",
+    providerId,
+  };
 }
 
 export async function executeGenerationJob(input: Readonly<{
   job: GenerationJob;
-  text: string;
-  immutableSourceHash: string;
-  voiceProfileId: string;
-  voiceRevision: number;
-  voiceProfileHash?: string;
-  direction: PerformanceDirection;
-  pronunciations?: readonly CanonicalPronunciation[];
-  mode?: ProviderExecutionMode;
-  format?: ProviderAudioFormat;
-  sampleRateHz?: number;
-  naturalNarration?: NaturalNarrationProductionPlan;
   registry: ProviderAdapterRegistry;
   credentials: CredentialResolver;
+  requests: readonly SynthesisRequest[];
   timeoutMs?: number;
   signal?: AbortSignal;
 }>): Promise<GenerationExecutionReport> {
-  if (input.job.status !== "ready") throw new Error("GENERATION_JOB_NOT_READY");
-  const attempts: ExecutionAttempt[] = [];
   const findings: Finding[] = [];
+  const attempts: ExecutionAttempt[] = [];
   const results: SynthesisResult[] = [];
-  for (const providerId of input.job.providerOrder) {
-    const adapter = input.registry.get(providerId);
-    if (!adapter) {
-      findings.push({ code: "PROVIDER_ADAPTER_MISSING", severity: "error", message: `No adapter is registered for ${providerId}.`, providerId });
-      continue;
-    }
-    const credential = await input.credentials.resolve(providerId);
-    if (!credential) {
-      findings.push({ code: "PROVIDER_CREDENTIAL_MISSING", severity: "error", message: `No credential is configured for ${providerId}.`, providerId });
-      continue;
-    }
-    for (let candidateIndex = 0; candidateIndex < input.job.candidateCount; candidateIndex += 1) {
-      const request = buildSynthesisRequest({
-        job: input.job,
-        text: input.text,
-        immutableSourceHash: input.immutableSourceHash,
-        voiceProfileId: input.voiceProfileId,
-        voiceRevision: input.voiceRevision,
-        ...(input.voiceProfileHash !== undefined ? { voiceProfileHash: input.voiceProfileHash } : {}),
-        direction: input.direction,
-        pronunciations: input.pronunciations,
-        mode: input.mode ?? "production",
-        format: input.format,
-        sampleRateHz: input.sampleRateHz,
-        candidateIndex,
-        naturalNarration: input.naturalNarration,
-      });
+  const timeoutMs = input.timeoutMs ?? 120_000;
+
+  if (input.job.status !== "ready") {
+    findings.push({
+      code: "GENERATION_JOB_BLOCKED",
+      severity: "error",
+      message: "Generation job is not ready because an upstream governance gate is unresolved.",
+    });
+    return {
+      jobId: input.job.id,
+      status: "blocked",
+      attempts,
+      results,
+      findings,
+    };
+  }
+  if (input.requests.length !== input.job.candidateCount) {
+    findings.push({
+      code: "GENERATION_REQUEST_COUNT_MISMATCH",
+      severity: "error",
+      message: "Deterministic synthesis requests do not match the job candidate count.",
+    });
+    return {
+      jobId: input.job.id,
+      status: "blocked",
+      attempts,
+      results,
+      findings,
+    };
+  }
+
+  for (const request of input.requests) {
+    let completed = false;
+    for (const providerId of input.job.providerFallbackIds) {
+      const adapter = input.registry.get(providerId);
+      if (!adapter) {
+        const attemptFinding: Finding = {
+          code: "PROVIDER_ADAPTER_UNAVAILABLE",
+          severity: "warning",
+          message: `No adapter is registered for provider route ${providerId}.`,
+          providerId,
+        };
+        attempts.push({
+          providerId,
+          candidateIndex: request.candidateIndex,
+          status: "skipped",
+          findings: [attemptFinding],
+        });
+        continue;
+      }
+      const credential = await input.credentials.resolve(providerId);
+      if (!credential) {
+        const attemptFinding: Finding = {
+          code: "PROVIDER_CREDENTIAL_UNAVAILABLE",
+          severity: "warning",
+          message: `No server-side credential is available for provider route ${providerId}.`,
+          providerId,
+        };
+        attempts.push({
+          providerId,
+          candidateIndex: request.candidateIndex,
+          status: "skipped",
+          findings: [attemptFinding],
+        });
+        continue;
+      }
+
       try {
         const result = await adapter.synthesise(request, {
           credential,
-          timeoutMs: input.timeoutMs ?? 120_000,
-          signal: input.signal,
+          timeoutMs,
+          ...(input.signal ? { signal: input.signal } : {}),
         });
-        validateSynthesisResult(result, request);
-        results.push(result);
-        attempts.push({ providerId, candidateIndex, status: "succeeded", result, findings: [] });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown synthesis failure.";
+        const resultFindings = validateResult(result, adapter, request);
+        if (resultFindings.some((finding) => finding.severity === "error")) {
+          attempts.push({
+            providerId,
+            candidateIndex: request.candidateIndex,
+            status: "failed",
+            result,
+            findings: resultFindings,
+          });
+          continue;
+        }
         attempts.push({
           providerId,
-          candidateIndex,
+          candidateIndex: request.candidateIndex,
+          status: "succeeded",
+          result,
+          findings: resultFindings,
+        });
+        results.push(result);
+        completed = true;
+        break;
+      } catch (error) {
+        attempts.push({
+          providerId,
+          candidateIndex: request.candidateIndex,
           status: "failed",
-          findings: [{ code: "SYNTHESIS_PROVIDER_FAILURE", severity: "error", message, providerId }],
+          findings: [providerFailureFinding(error, providerId)],
         });
       }
     }
+    if (!completed) {
+      findings.push({
+        code: "GENERATION_CANDIDATE_UNRESOLVED",
+        severity: "error",
+        message: `No provider route produced a valid result for candidate ${request.candidateIndex}.`,
+      });
+    }
   }
-  const status = results.length === 0 ? "blocked" : results.length < input.job.candidateCount ? "partial" : "completed";
+
   return {
     jobId: input.job.id,
-    status,
+    status: findings.some((finding) => finding.severity === "error")
+      ? results.length > 0
+        ? "partial"
+        : "blocked"
+      : "completed",
     attempts,
     results,
     findings,
