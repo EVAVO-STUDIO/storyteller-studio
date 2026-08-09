@@ -78,6 +78,7 @@
     "./provider-adapter": "./src/provider-adapter.ts",
     "./series-continuity": "./src/series-continuity.ts",
     "./worker-service": "./src/worker-service.ts",
-    "./narration-production-policy": "./src/narration-production-policy.ts"
+    "./narration-production-policy": "./src/narration-production-policy.ts",
+    "./narrator-voice-profile": "./src/narrator-voice-profile.ts"
   }
 }
