@@ -524,208 +524,339 @@ async function ingestExecutionReport(input: Readonly<{
   const reportHash = hashBytes(bytes);
   const id = `artifact_${stableHash({
     jobId: input.worker.claim.item.jobId,
-    kind: "generation-report",
+    kind: "generation-execution-report",
     reportHash,
   }).slice(0, 24)}`;
-  return {
-    ingest: await ingestPrivateArtifact(
-      input.worker.objectStore,
-      input.worker.artifactRegistry,
-      {
-        id,
-        kind: "generation-report",
-        projectId: input.worker.claim.item.projectId,
-        jobId: input.worker.claim.item.jobId,
-        segmentId: input.worker.claim.item.segmentId,
-        bytes,
-        claimedMimeType: "application/json",
-        claimedFormat: "json",
-        provenance: {
-          createdByActorId: input.worker.workerActorId,
-          sourceContentHash: input.worker.material.immutableSourceHash,
-          generationRequestHash: stableHash(input.requests.map((request) => request.idempotencyKey)),
-          ...(input.worker.material.voiceProfileHash ? { voiceProfileHash: input.worker.material.voiceProfileHash } : {}),
-          parentArtifactIds: [...input.candidateArtifactIds],
-        },
-        rights: input.worker.material.rights,
-        reviewRequired: false,
-        actorId: input.worker.workerActorId,
-        verifierActorId: input.worker.verifierActorId ?? input.worker.workerActorId,
-        verificationChecks: ["json-parse"],
-        now: input.now,
+  const ingest = await ingestPrivateArtifact(
+    input.worker.objectStore,
+    input.worker.artifactRegistry,
+    {
+      id,
+      kind: "audio-analysis",
+      projectId: input.worker.claim.item.projectId,
+      jobId: input.worker.claim.item.jobId,
+      segmentId: input.worker.claim.item.segmentId,
+      bytes,
+      claimedMimeType: "application/json",
+      claimedFormat: "json",
+      provenance: {
+        createdByActorId: input.worker.workerActorId,
+        sourceContentHash: input.worker.material.immutableSourceHash,
+        generationRequestHash: stableHash(input.requests.map((request) => request.idempotencyKey)),
+        ...(input.worker.material.voiceProfileHash ? { voiceProfileHash: input.worker.material.voiceProfileHash } : {}),
+        parentArtifactIds: input.candidateArtifactIds,
       },
-    ),
-    reportHash,
+      rights: input.worker.material.rights,
+      reviewRequired: false,
+      actorId: input.worker.workerActorId,
+      verifierActorId: input.worker.verifierActorId ?? input.worker.workerActorId,
+      verificationChecks: ["json-parse", "execution-evidence-schema"],
+      now: input.now,
+    },
+  );
+  return { ingest, reportHash };
+}
+
+async function blockClaim(input: Readonly<{
+  worker: ClaimedGenerationWorkerInput;
+  executionStatus: GenerationExecutionReport["status"];
+  codes: readonly string[];
+  message: string;
+  artifacts: readonly ArtifactRecord[];
+  candidateArtifactIds: readonly string[];
+  reportArtifactId?: string;
+  reportHash?: string;
+  accounting: GenerationWorkerCostAccounting;
+  now: Date;
+}>): Promise<GenerationWorkerResult> {
+  await input.worker.beforeTerminalTransition?.({
+    kind: "block",
+    codes: input.codes,
+    accounting: input.accounting,
+    at: input.now.toISOString(),
+  });
+  const queueEnvelope = await input.worker.queue.block(
+    input.worker.claim.item.id,
+    input.worker.claim.leaseToken,
+    {
+      codes: input.codes,
+      message: input.message,
+      now: input.now,
+    },
+  );
+  return {
+    queueEnvelope,
+    executionStatus: input.executionStatus,
+    artifactIds: Object.freeze(input.artifacts.map((artifact) => artifact.id).sort()),
+    candidateArtifactIds: Object.freeze([...input.candidateArtifactIds].sort()),
+    ...(input.reportArtifactId ? { reportArtifactId: input.reportArtifactId } : {}),
+    ...(input.reportHash ? { executionReportHash: input.reportHash } : {}),
   };
 }
 
-async function terminalTransition(
-  input: ClaimedGenerationWorkerInput,
-  transition: GenerationWorkerQueueTransition,
-): Promise<void> {
-  throwIfWorkerAborted(input.signal);
-  await input.beforeTerminalTransition?.(transition);
+function providerExecutionIsRetryable(report: GenerationExecutionReport): boolean {
+  return report.attempts.some((attempt) =>
+    attempt.status === "failed"
+    && attempt.findings.some((finding) =>
+      finding.code === "PROVIDER_SYNTHESIS_FAILED"
+      || finding.code.startsWith("PROVIDER_RESULT_")
+    )
+  );
 }
 
-export async function processClaimedGeneration(
+function generationWorkerNow(input: ClaimedGenerationWorkerInput): Date {
+  return input.clock?.() ?? input.now ?? new Date();
+}
+
+export async function runClaimedGenerationWorker(
   input: ClaimedGenerationWorkerInput,
 ): Promise<GenerationWorkerResult> {
   requireWorkerInput(input);
   throwIfWorkerAborted(input.signal);
-  const now = input.now ?? input.clock?.() ?? new Date();
+  const currentTime = () => generationWorkerNow(input);
   const requests = buildRequests(input.claim, input.material);
   const report = await executeGenerationJob({
     job: input.claim.item.job,
-    text: input.material.text,
-    immutableSourceHash: input.material.immutableSourceHash,
-    voiceProfileId: input.material.voiceProfileId,
-    voiceRevision: input.material.voiceRevision,
-    ...(input.material.voiceProfileHash !== undefined ? { voiceProfileHash: input.material.voiceProfileHash } : {}),
-    direction: input.material.direction,
-    pronunciations: input.material.pronunciations ?? [],
-    mode: input.material.mode ?? "production",
-    format: input.material.format ?? "wav",
-    sampleRateHz: input.material.sampleRateHz ?? 48_000,
-    naturalNarration: input.material.naturalNarration,
     registry: input.providers,
     credentials: input.credentials,
-    timeoutMs: input.timeoutMs,
-    signal: input.signal,
+    requests,
+    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+    ...(input.signal ? { signal: input.signal } : {}),
   });
+  throwIfWorkerAborted(input.signal);
   const accounting = executionAccounting(report, input.material.costPolicy);
-  if (accounting.blockedCode) {
-    const transition: GenerationWorkerQueueTransition = {
-      kind: "block",
-      codes: [accounting.blockedCode],
-      accounting,
-      at: now.toISOString(),
-    };
-    await terminalTransition(input, transition);
-    const blocked = await input.queue.block(
-      input.claim.item.id,
-      input.workerActorId,
-      input.claim.item.lease?.token ?? "",
-      [accounting.blockedCode],
-      now,
-    );
-    return {
-      queueEnvelope: blocked,
-      executionStatus: report.status,
-      artifactIds: [],
-      candidateArtifactIds: [],
-    };
-  }
 
-  if (report.results.length === 0) {
-    const codes = report.findings.length > 0
-      ? report.findings.map((finding) => finding.code)
-      : ["GENERATION_NO_PROVIDER_RESULT"];
-    const transition: GenerationWorkerQueueTransition = {
-      kind: "retry",
-      codes,
-      accounting,
-      at: now.toISOString(),
-    };
-    await terminalTransition(input, transition);
-    const retry = await input.queue.retry(
-      input.claim.item.id,
-      input.workerActorId,
-      input.claim.item.lease?.token ?? "",
-      codes,
-      now,
-    );
-    return {
-      queueEnvelope: retry,
-      executionStatus: report.status,
-      artifactIds: [],
-      candidateArtifactIds: [],
-    };
-  }
-
-  const artifactIds: string[] = [];
-  const candidateArtifactIds: string[] = [];
-  for (const result of report.results) {
-    const request = requests.find((candidate) => candidate.requestId === result.requestId);
-    if (!request) throw new Error("GENERATION_WORKER_REQUEST_RESULT_MISMATCH");
-    const ingested = await ingestResultArtifacts({ worker: input, request, result, now });
-    for (const admission of ingested.ingested) {
-      if (admission.accepted) artifactIds.push(admission.artifact.id);
+  const requestsById = new Map(requests.map((request) => [request.requestId, request]));
+  const ingested: ArtifactIngestResult[] = [];
+  const engineeringBlockedCodes: string[] = [];
+  try {
+    for (const result of report.results) {
+      throwIfWorkerAborted(input.signal);
+      const request = requestsById.get(result.requestId);
+      if (!request) throw new Error("GENERATION_WORKER_RESULT_REQUEST_MISSING");
+      const resultArtifacts = await ingestResultArtifacts({
+        worker: input,
+        request,
+        result,
+        now: currentTime(),
+      });
+      ingested.push(...resultArtifacts.ingested);
+      if (resultArtifacts.engineering && !resultArtifacts.engineering.candidateEligible) {
+        const codes = resultArtifacts.engineering.evidence.findings
+          .filter((finding) => finding.severity === "error")
+          .map((finding) => finding.code);
+        engineeringBlockedCodes.push(
+          ...(codes.length > 0 ? codes : ["GENERATION_AUDIO_ENGINEERING_INELIGIBLE"]),
+        );
+      }
     }
-    const primary = ingested.ingested[0];
-    if (!primary?.accepted) {
-      const codes = primary?.artifact.findings.map((finding) => finding.code)
-        ?? ["GENERATION_ARTIFACT_ADMISSION_FAILED"];
-      const transition: GenerationWorkerQueueTransition = {
-        kind: "block",
-        codes,
-        accounting,
-        at: now.toISOString(),
-      };
-      await terminalTransition(input, transition);
-      const blocked = await input.queue.block(
-        input.claim.item.id,
-        input.workerActorId,
-        input.claim.item.lease?.token ?? "",
-        codes,
-        now,
-      );
-      return {
-        queueEnvelope: blocked,
-        executionStatus: report.status,
-        artifactIds: Object.freeze([...artifactIds]),
-        candidateArtifactIds: Object.freeze([...candidateArtifactIds]),
-      };
-    }
-    candidateArtifactIds.push(primary.artifact.id);
+  } catch {
+    throwIfWorkerAborted(input.signal);
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: ["GENERATION_ARTIFACT_INGEST_FAILED"],
+      message: "One or more provider results could not be admitted to private artifact storage.",
+      artifacts: ingested.map((item) => item.envelope.payload),
+      candidateArtifactIds: ingested
+        .filter((item) => item.envelope.payload.kind === "audio-candidate")
+        .map((item) => item.envelope.payload.id),
+      now: currentTime(),
+    });
   }
 
+  throwIfWorkerAborted(input.signal);
+  const artifacts = ingested.map((item) => item.envelope.payload);
+  const candidateArtifactIds = artifacts
+    .filter((artifact) => artifact.kind === "audio-candidate")
+    .map((artifact) => artifact.id);
+  if (ingested.some((item) => !item.accepted)) {
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: ["GENERATION_ARTIFACT_QUARANTINED"],
+      message: "One or more provider results failed artifact integrity verification and were quarantined.",
+      artifacts,
+      candidateArtifactIds,
+      now: currentTime(),
+    });
+  }
+
+  throwIfWorkerAborted(input.signal);
   const reportArtifact = await ingestExecutionReport({
     worker: input,
     report,
-    artifactIds,
+    artifactIds: artifacts.map((artifact) => artifact.id),
     candidateArtifactIds,
     requests,
-    now,
+    now: currentTime(),
   });
+  artifacts.push(reportArtifact.ingest.envelope.payload);
+  throwIfWorkerAborted(input.signal);
   if (!reportArtifact.ingest.accepted) {
-    throw new ArtifactAdmissionError("GENERATION_EXECUTION_REPORT_ADMISSION_FAILED");
-  }
-  artifactIds.push(reportArtifact.ingest.artifact.id);
-
-  const completion = await completeGenerationWithArtifacts(
-    input.queue,
-    input.artifactRegistry,
-    input.claim.item.id,
-    input.workerActorId,
-    input.claim.item.lease?.token ?? "",
-    {
-      artifactIds,
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: ["GENERATION_REPORT_ARTIFACT_INVALID"],
+      message: "Generation execution evidence failed artifact verification.",
+      artifacts,
       candidateArtifactIds,
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      reportHash: reportArtifact.reportHash,
+      now: currentTime(),
+    });
+  }
+
+  if (accounting.blockedCode) {
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: [accounting.blockedCode],
+      message: "Generation cost evidence does not satisfy the configured production policy.",
+      artifacts,
+      candidateArtifactIds,
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      reportHash: reportArtifact.reportHash,
+      now: currentTime(),
+    });
+  }
+
+  if (engineeringBlockedCodes.length > 0) {
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: Object.freeze([...new Set(engineeringBlockedCodes)].sort()),
+      message: "Independent engineering evidence did not satisfy the configured delivery profile.",
+      artifacts,
+      candidateArtifactIds,
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      reportHash: reportArtifact.reportHash,
+      now: currentTime(),
+    });
+  }
+
+  if (report.status !== "completed") {
+    if (providerExecutionIsRetryable(report)) {
+      const transitionTime = currentTime();
+      await input.beforeTerminalTransition?.({
+        kind: "retry",
+        codes: ["GENERATION_PROVIDER_EXECUTION_INCOMPLETE"],
+        accounting,
+        at: transitionTime.toISOString(),
+      });
+      const queueEnvelope = await input.queue.fail(
+        input.claim.item.id,
+        input.claim.leaseToken,
+        {
+          code: "GENERATION_PROVIDER_EXECUTION_INCOMPLETE",
+          message: "Provider execution did not produce the complete governed candidate set.",
+          retryable: true,
+          now: transitionTime,
+        },
+      );
+      return {
+        queueEnvelope,
+        executionStatus: report.status,
+        artifactIds: Object.freeze(artifacts.map((artifact) => artifact.id).sort()),
+        candidateArtifactIds: Object.freeze([...candidateArtifactIds].sort()),
+        reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+        executionReportHash: reportArtifact.reportHash,
+      };
+    }
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: ["GENERATION_PROVIDER_CONFIGURATION_BLOCKED"],
+      message: "No approved and configured provider route produced the required candidate set.",
+      artifacts,
+      candidateArtifactIds,
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      reportHash: reportArtifact.reportHash,
+      now: currentTime(),
+    });
+  }
+
+  try {
+    const completionTime = currentTime();
+    const completion = await completeGenerationWithArtifacts({
+      queue: input.queue,
+      claim: input.claim,
+      artifacts,
       executionReportHash: reportArtifact.reportHash,
-      now,
-    },
-  );
-  return {
-    queueEnvelope: completion.queueEnvelope,
-    executionStatus: report.status,
-    artifactIds: Object.freeze([...artifactIds]),
-    candidateArtifactIds: Object.freeze([...candidateArtifactIds]),
-    reportArtifactId: reportArtifact.ingest.artifact.id,
-    executionReportHash: reportArtifact.reportHash,
-    completion,
-  };
+      intendedUse: input.material.intendedUse ?? "audiobook",
+      commercial: input.material.commercial ?? true,
+      ...(accounting.totalEstimatedCost !== undefined
+        ? {
+            totalEstimatedCost: accounting.totalEstimatedCost,
+            currency: accounting.currency,
+          }
+        : {}),
+      beforeQueueComplete: async ({
+        artifactIds,
+        candidateTakeIds,
+        admissionFingerprint,
+      }) => {
+        await input.beforeTerminalTransition?.({
+          kind: "complete",
+          codes: [],
+          accounting,
+          artifactIds,
+          candidateTakeIds,
+          admissionFingerprint,
+          at: completionTime.toISOString(),
+        });
+      },
+      now: completionTime,
+    });
+    return {
+      queueEnvelope: completion.envelope,
+      executionStatus: report.status,
+      artifactIds: completion.artifactIds,
+      candidateArtifactIds: Object.freeze([...candidateArtifactIds].sort()),
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      executionReportHash: reportArtifact.reportHash,
+      completion,
+    };
+  } catch (error) {
+    if (!(error instanceof ArtifactAdmissionError)) throw error;
+    const codes = error.assessment.findings
+      .filter((finding) => finding.severity === "error")
+      .map((finding) => finding.code);
+    return blockClaim({
+      worker: input,
+      executionStatus: report.status,
+      accounting,
+      codes: codes.length > 0 ? codes : ["GENERATION_ARTIFACT_ADMISSION_BLOCKED"],
+      message: "Verified artifacts did not satisfy the exact queue-completion governance gate.",
+      artifacts,
+      candidateArtifactIds,
+      reportArtifactId: reportArtifact.ingest.envelope.payload.id,
+      reportHash: reportArtifact.reportHash,
+      now: currentTime(),
+    });
+  }
 }
 
-export function generationWorkerPublicView(result: GenerationWorkerResult): GenerationWorkerPublicView {
+export function generationWorkerPublicView(
+  result: GenerationWorkerResult,
+): GenerationWorkerPublicView {
   return Object.freeze({
-    queueItemId: result.queueEnvelope.entityId,
+    queueItemId: result.queueEnvelope.payload.id,
     jobId: result.queueEnvelope.payload.jobId,
     status: result.queueEnvelope.payload.status,
     executionStatus: result.executionStatus,
     artifactCount: result.artifactIds.length,
     candidateCount: result.candidateArtifactIds.length,
     ...(result.reportArtifactId ? { reportArtifactId: result.reportArtifactId } : {}),
-    ...(result.executionReportHash ? { executionReportHash: result.executionReportHash } : {}),
+    ...(result.executionReportHash
+      ? { executionReportHash: result.executionReportHash }
+      : {}),
     revision: result.queueEnvelope.revision,
   });
 }
