@@ -49,7 +49,9 @@ export interface GenerationMaterialPublicView {
   candidateCount: number;
   textHash: string;
   characterCount: number;
+  voiceProfileId: string;
   voiceRevision: number;
+  voiceProfileHash?: string;
   directionFingerprint: string;
   pronunciationCount: number;
   mode: ProviderExecutionMode;
@@ -324,6 +326,9 @@ export function validateGenerationWorkerMaterial(
   requireHash(material.immutableSourceHash, "GENERATION_MATERIAL_SOURCE_HASH_INVALID");
   requireIdentifier(material.voiceProfileId, "GENERATION_MATERIAL_VOICE_PROFILE_INVALID");
   requireInteger(material.voiceRevision, 1, 1_000_000, "GENERATION_MATERIAL_VOICE_REVISION_INVALID");
+  if (material.voiceProfileHash !== undefined) {
+    requireHash(material.voiceProfileHash, "GENERATION_MATERIAL_VOICE_PROFILE_HASH_INVALID");
+  }
   validateDirection(material.direction, job.segmentId);
   validatePronunciations(material.pronunciations ?? []);
   const mode = material.mode ?? "production";
@@ -362,6 +367,7 @@ function normaliseGenerationWorkerMaterial(
     immutableSourceHash: material.immutableSourceHash,
     voiceProfileId: material.voiceProfileId,
     voiceRevision: material.voiceRevision,
+    ...(material.voiceProfileHash !== undefined ? { voiceProfileHash: material.voiceProfileHash } : {}),
     direction: {
       ...material.direction,
       notes: Object.freeze([...material.direction.notes]),
@@ -498,7 +504,9 @@ export function generationMaterialPublicView(
     candidateCount: record.candidateCount,
     textHash: record.textHash,
     characterCount: material.text.length,
+    voiceProfileId: material.voiceProfileId,
     voiceRevision: material.voiceRevision,
+    ...(material.voiceProfileHash !== undefined ? { voiceProfileHash: material.voiceProfileHash } : {}),
     directionFingerprint: stableHash(material.direction),
     pronunciationCount: material.pronunciations?.length ?? 0,
     mode: material.mode ?? "production",
@@ -560,6 +568,9 @@ export class FileGenerationMaterialStore {
           candidateCount: record.candidateCount,
           textHash: record.textHash,
           materialFingerprint: record.fingerprint,
+          ...(record.material.voiceProfileHash
+            ? { voiceProfileHash: record.material.voiceProfileHash }
+            : {}),
         },
         occurredAt: now,
       });
