@@ -6,10 +6,10 @@ import {
 import {
   assertNarratorProductionClaim,
 } from "./narrator-production-queue.js";
-import type { NarratorCastingApproval } from "./narrator-voice-profile.js";
+import type { AdmittedNarratorCasting } from "./narrator-casting-admission.js";
 
 export interface NarratorProductionWorkerInput extends ClaimedGenerationWorkerInput {
-  casting: NarratorCastingApproval;
+  admittedCasting: AdmittedNarratorCasting;
 }
 
 export async function runNarratorProductionWorker(
@@ -17,7 +17,7 @@ export async function runNarratorProductionWorker(
 ): Promise<GenerationWorkerResult> {
   assertNarratorProductionClaim(
     input.claim,
-    input.casting,
+    input.admittedCasting,
     input.material,
   );
   return runClaimedGenerationWorker(input);

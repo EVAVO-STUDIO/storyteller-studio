@@ -5,16 +5,13 @@ import type {
 } from "./generation-queue.js";
 import type { StoredEnvelope } from "./project-store.js";
 import type { GenerationQueueItem } from "./generation-queue-contracts.js";
+import type { AdmittedNarratorCasting } from "./narrator-casting-admission.js";
 import {
+  assertNarratorProductionJob,
   assertPinnedProductionMaterial,
   createNarratorProductionJobs,
-  narratorProductionBinding,
   type NarratorProductionJob,
 } from "./narrator-production-job.js";
-import {
-  assertNarratorCasting,
-  type NarratorCastingApproval,
-} from "./narrator-voice-profile.js";
 
 export interface NarratorProductionQueueAdmissionOptions {
   priority?: number;
@@ -32,20 +29,15 @@ export interface NarratorProductionMaterialPin {
 
 export function assertNarratorProductionClaim(
   claim: GenerationQueueClaim,
-  casting: NarratorCastingApproval,
+  admittedCasting: AdmittedNarratorCasting,
   material: NarratorProductionMaterialPin,
 ): asserts claim is GenerationQueueClaim & {
   item: GenerationQueueItem & { job: NarratorProductionJob };
 } {
-  assertNarratorCasting(casting);
-  if (claim.item.projectId !== casting.projectId) {
+  if (claim.item.projectId !== admittedCasting.projectId) {
     throw new Error("NARRATOR_PRODUCTION_CLAIM_PROJECT_MISMATCH");
   }
-  const binding = narratorProductionBinding(claim.item.job);
-  if (!binding) throw new Error("NARRATOR_PRODUCTION_CASTING_REQUIRED");
-  if (binding.castingFingerprint !== casting.fingerprint) {
-    throw new Error("NARRATOR_PRODUCTION_CASTING_MISMATCH");
-  }
+  assertNarratorProductionJob(claim.item.job, admittedCasting);
   assertPinnedProductionMaterial(claim.item.job, material);
 }
 
@@ -53,15 +45,14 @@ export async function enqueueNarratorProduction(
   input: Readonly<{
     queue: FileGenerationQueue;
     manifest: ProjectManifest;
-    casting: NarratorCastingApproval;
+    admittedCasting: AdmittedNarratorCasting;
     candidateCount?: number;
     options?: NarratorProductionQueueAdmissionOptions;
   }>,
 ): Promise<readonly StoredEnvelope<GenerationQueueItem>[]> {
-  assertNarratorCasting(input.casting);
   const jobs = createNarratorProductionJobs(
     input.manifest,
-    input.casting,
+    input.admittedCasting,
     input.candidateCount ?? 3,
   );
   const envelopes: StoredEnvelope<GenerationQueueItem>[] = [];

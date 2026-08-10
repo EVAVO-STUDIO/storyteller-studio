@@ -3,14 +3,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { stableHash, type ProjectManifest } from "./index.js";
+import type { ProjectManifest } from "./index.js";
 import { FileGenerationQueue } from "./generation-queue.js";
 import {
   assertNarratorProductionClaim,
   enqueueNarratorProduction,
 } from "./narrator-production-queue.js";
-import type { NarratorCastingApproval } from "./narrator-voice-profile.js";
 import { FileProjectStore } from "./project-store.js";
+import {
+  createTestAdmittedNarratorCasting,
+} from "../test-support/narrator-casting.js";
 
 const sourceHash = "a".repeat(64);
 const manifest: ProjectManifest = {
@@ -50,38 +52,15 @@ const manifest: ProjectManifest = {
   findings: [],
 };
 
-function casting(): NarratorCastingApproval {
-  const base = {
-    schemaVersion: "storyteller-narrator-casting-v1" as const,
-    projectId: manifest.id,
-    voice: { profileId: "magician_narrator", revision: 7, profileHash: "c".repeat(64) },
-    voiceIdentityId: "magician_narrator_identity",
-    engineKey: "qwen3_tts_local",
-    mode: "adapted" as const,
-    modelArtifactTreeSha256: "d".repeat(64),
-    sourceRightsFingerprint: "e".repeat(64),
-    evidenceHash: "f".repeat(64),
-    approvedBy: "storyteller_casting_editor",
-    approvedAt: "2026-08-10T03:05:00.000Z",
-    castingApproved: true as const,
-    exactRevisionRequired: true as const,
-    chapterListeningApprovalRequired: true as const,
-    defaultNarrator: false as const,
-    titleReleaseAuthority: false as const,
-    publicationAuthority: false as const,
-  };
-  return { ...base, fingerprint: stableHash(base) };
-}
-
-test("private narrator queue admission persists only casting-bound production jobs", async () => {
+test("private narrator queue admission persists only profile-admission-bound production jobs", async () => {
   const root = await mkdtemp(join(tmpdir(), "storyteller-narrator-production-queue-"));
   try {
     const queue = new FileGenerationQueue(new FileProjectStore(root));
-    const approved = casting();
+    const admittedCasting = createTestAdmittedNarratorCasting(manifest.id);
     const admitted = await enqueueNarratorProduction({
       queue,
       manifest,
-      casting: approved,
+      admittedCasting,
       candidateCount: 3,
       options: { now: new Date("2026-08-10T03:10:00.000Z") },
     });
@@ -92,31 +71,39 @@ test("private narrator queue admission persists only casting-bound production jo
       now: new Date("2026-08-10T03:10:01.000Z"),
     });
     assert.ok(claim);
-    assert.doesNotThrow(() => assertNarratorProductionClaim(claim, approved, {
-      mode: "production",
-      voiceProfileId: approved.voice.profileId,
-      voiceRevision: approved.voice.revision,
-      voiceProfileHash: approved.voice.profileHash,
-    }));
+    assert.doesNotThrow(() => assertNarratorProductionClaim(
+      claim,
+      admittedCasting,
+      {
+        mode: "production",
+        voiceProfileId: admittedCasting.casting.voice.profileId,
+        voiceRevision: admittedCasting.casting.voice.revision,
+        voiceProfileHash: admittedCasting.casting.voice.profileHash,
+      },
+    ));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("claim validation rejects profile substitution after queue admission", async () => {
+test("claim validation rejects profile-admission substitution after queue admission", async () => {
   const root = await mkdtemp(join(tmpdir(), "storyteller-narrator-production-queue-drift-"));
   try {
     const queue = new FileGenerationQueue(new FileProjectStore(root));
-    const approved = casting();
-    await enqueueNarratorProduction({ queue, manifest, casting: approved });
+    const admittedCasting = createTestAdmittedNarratorCasting(manifest.id);
+    await enqueueNarratorProduction({ queue, manifest, admittedCasting });
     const claim = await queue.claimNext({ workerId: "worker_narrator_001" });
     assert.ok(claim);
-    assert.throws(() => assertNarratorProductionClaim(claim, approved, {
+    const replacement = createTestAdmittedNarratorCasting(manifest.id, {
+      seed: "replacement",
+      profileRevision: admittedCasting.casting.voice.revision + 1,
+    });
+    assert.throws(() => assertNarratorProductionClaim(claim, replacement, {
       mode: "production",
-      voiceProfileId: approved.voice.profileId,
-      voiceRevision: approved.voice.revision,
-      voiceProfileHash: "1".repeat(64),
-    }), /NARRATOR_PROFILE_PIN_MISMATCH/u);
+      voiceProfileId: replacement.casting.voice.profileId,
+      voiceRevision: replacement.casting.voice.revision,
+      voiceProfileHash: replacement.casting.voice.profileHash,
+    }), /NARRATOR_PRODUCTION_PROFILE_ADMISSION_MISMATCH|NARRATOR_PRODUCTION_ADMITTED_CASTING_MISMATCH/u);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

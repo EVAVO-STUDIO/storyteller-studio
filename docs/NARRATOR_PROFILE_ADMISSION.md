@@ -5,8 +5,8 @@ chapter direction, listening review, mastering approval and complete-book author
 
 A valid `evavo_storyteller_narrator_voice_profile_v1` proves that one exact Audio
 Studio model revision passed its governed short-form tournament and single-use
-continuous holdout. The new profile-admission boundary additionally proves whether
-that model is zero-shot or adapted, and, for an adapted model, which exact training
+continuous holdout. The profile-admission boundary additionally proves whether that
+model is zero-shot or adapted, and, for an adapted model, which exact training
 campaign produced its immutable artifact tree.
 
 ## Zero-shot admission
@@ -70,8 +70,13 @@ commands, credentials, raw text, transcripts, stdout/stderr and reviewer identit
 
 ## Casting
 
-`approveNarratorCastingFromAdmission` first validates the complete admission and then
-uses the existing exact profile casting contract. Admission still retains:
+`approveNarratorCastingFromAdmission` remains the low-level exact-profile casting
+primitive. Direct narrator production does not consume its standalone casting document.
+Production uses `approveAdmittedNarratorCasting`, which validates the complete profile
+admission, creates the human casting approval and binds both documents into
+`storyteller-admitted-narrator-casting-v1`.
+
+The profile admission itself retains:
 
 ```text
 profileAdmissionEligible=true
@@ -82,15 +87,32 @@ titleReleaseAuthority=false
 publicationAuthority=false
 ```
 
-Casting remains an explicit human Storyteller action. The public admission view exposes
-only bounded profile identity, mode, whether training provenance exists, the adaptation
-method and whether an exact checkpoint/model binding exists. It redacts dataset,
-checkpoint, capability, receipt and engine-lock evidence.
+The admitted casting separately records the explicit human decision while retaining:
+
+```text
+admissionVerified=true
+castingApproved=true
+defaultNarrator=false
+exactRevisionRequired=true
+chapterListeningApprovalRequired=true
+titleReleaseAuthority=false
+publicationAuthority=false
+```
+
+A raw casting approval can no longer be passed directly into narrator job creation,
+queue admission or the guarded narrator worker. Those boundaries require the exact
+admitted-casting fingerprint and profile-admission hash. See
+`docs/NARRATOR_CASTING_ADMISSION.md` for the private CLI and production-job contract.
+
+The public profile-admission view exposes only bounded profile identity, mode, whether
+training provenance exists, the adaptation method and whether an exact checkpoint/model
+binding exists. It redacts dataset, checkpoint, capability, receipt and engine-lock
+evidence.
 
 ## Complete-book authority remains separate
 
-Profile admission does not approve generated chapter audio. Every chapter must still
-pass exact-source generation, objective monitoring, complete independent listening,
-mastering review and narrator-bound sequence admission. The assembled reference master
-then requires its own continuous whole-book review before any release or publication
-decision.
+Profile admission and admitted casting do not approve generated chapter audio. Every
+chapter must still pass exact-source generation, objective monitoring, complete
+independent listening, mastering review and narrator-bound sequence admission. The
+assembled reference master then requires its own continuous whole-book review before
+any release or publication decision.

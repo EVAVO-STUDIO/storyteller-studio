@@ -81,6 +81,7 @@
     "./narration-production-policy": "./src/narration-production-policy.ts",
     "./narrator-voice-profile": "./src/narrator-voice-profile.ts",
     "./narrator-profile-admission": "./src/narrator-profile-admission.ts",
+    "./narrator-casting-admission": "./src/narrator-casting-admission.ts",
     "./narrator-production-job": "./src/narrator-production-job.ts",
     "./narrator-production-queue": "./src/narrator-production-queue.ts",
     "./narrator-production-worker": "./src/narrator-production-worker.ts",

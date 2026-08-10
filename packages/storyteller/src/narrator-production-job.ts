@@ -5,17 +5,21 @@ import {
   type ProjectManifest,
 } from "./index.js";
 import {
+  assertAdmittedNarratorCasting,
+  type AdmittedNarratorCasting,
+} from "./narrator-casting-admission.js";
+import {
   assertExactNarratorVoicePin,
-  assertNarratorCasting,
-  type NarratorCastingApproval,
   type PinnedNarratorVoice,
 } from "./narrator-voice-profile.js";
 
 export const STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA =
-  "storyteller-narrator-production-job-v1" as const;
+  "storyteller-narrator-production-job-v2" as const;
 
 export interface NarratorProductionJob extends GenerationJob {
   narratorProductionSchema: typeof STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA;
+  narratorProfileAdmissionHash: string;
+  narratorAdmittedCastingFingerprint: string;
   narratorCastingFingerprint: string;
   narratorVoice: PinnedNarratorVoice;
 }
@@ -30,12 +34,16 @@ function requireHash(value: string, code: string): string {
 export function narratorProductionBinding(
   job: GenerationJob,
 ): Readonly<{
+  profileAdmissionHash: string;
+  admittedCastingFingerprint: string;
   castingFingerprint: string;
   voice: PinnedNarratorVoice;
 }> | null {
   const candidate = job as Partial<NarratorProductionJob>;
   if (
     candidate.narratorProductionSchema === undefined
+    && candidate.narratorProfileAdmissionHash === undefined
+    && candidate.narratorAdmittedCastingFingerprint === undefined
     && candidate.narratorCastingFingerprint === undefined
     && candidate.narratorVoice === undefined
   ) {
@@ -44,6 +52,14 @@ export function narratorProductionBinding(
   if (candidate.narratorProductionSchema !== STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA) {
     throw new Error("NARRATOR_PRODUCTION_JOB_SCHEMA_INVALID");
   }
+  const profileAdmissionHash = requireHash(
+    candidate.narratorProfileAdmissionHash ?? "",
+    "NARRATOR_PRODUCTION_PROFILE_ADMISSION_HASH_INVALID",
+  );
+  const admittedCastingFingerprint = requireHash(
+    candidate.narratorAdmittedCastingFingerprint ?? "",
+    "NARRATOR_PRODUCTION_ADMITTED_CASTING_FINGERPRINT_INVALID",
+  );
   const castingFingerprint = requireHash(
     candidate.narratorCastingFingerprint ?? "",
     "NARRATOR_PRODUCTION_CASTING_FINGERPRINT_INVALID",
@@ -55,19 +71,31 @@ export function narratorProductionBinding(
     profileHash: candidate.narratorVoice.profileHash,
   });
   assertExactNarratorVoicePin(voice, voice);
-  return Object.freeze({ castingFingerprint, voice });
+  return Object.freeze({
+    profileAdmissionHash,
+    admittedCastingFingerprint,
+    castingFingerprint,
+    voice,
+  });
 }
 
 export function assertNarratorProductionJob(
   job: GenerationJob,
-  casting: NarratorCastingApproval,
+  admittedCasting: AdmittedNarratorCasting,
 ): asserts job is NarratorProductionJob {
-  assertNarratorCasting(casting);
-  if (job.projectId !== casting.projectId) {
+  assertAdmittedNarratorCasting(admittedCasting);
+  const casting = admittedCasting.casting;
+  if (job.projectId !== admittedCasting.projectId) {
     throw new Error("NARRATOR_PRODUCTION_PROJECT_MISMATCH");
   }
   const binding = narratorProductionBinding(job);
-  if (!binding) throw new Error("NARRATOR_PRODUCTION_CASTING_REQUIRED");
+  if (!binding) throw new Error("NARRATOR_PRODUCTION_CASTING_ADMISSION_REQUIRED");
+  if (binding.profileAdmissionHash !== admittedCasting.profileAdmission.admissionHash) {
+    throw new Error("NARRATOR_PRODUCTION_PROFILE_ADMISSION_MISMATCH");
+  }
+  if (binding.admittedCastingFingerprint !== admittedCasting.fingerprint) {
+    throw new Error("NARRATOR_PRODUCTION_ADMITTED_CASTING_MISMATCH");
+  }
   if (binding.castingFingerprint !== casting.fingerprint) {
     throw new Error("NARRATOR_PRODUCTION_CASTING_MISMATCH");
   }
@@ -77,11 +105,12 @@ export function assertNarratorProductionJob(
 
 export function createNarratorProductionJobs(
   manifest: ProjectManifest,
-  casting: NarratorCastingApproval,
+  admittedCasting: AdmittedNarratorCasting,
   candidateCount = 3,
 ): NarratorProductionJob[] {
-  assertNarratorCasting(casting);
-  if (manifest.id !== casting.projectId) {
+  assertAdmittedNarratorCasting(admittedCasting);
+  const casting = admittedCasting.casting;
+  if (manifest.id !== admittedCasting.projectId) {
     throw new Error("NARRATOR_PRODUCTION_PROJECT_MISMATCH");
   }
   if (manifest.status !== "planned") {
@@ -94,6 +123,8 @@ export function createNarratorProductionJobs(
     }
     const cacheKey = stableHash({
       baseCacheKey: job.cacheKey,
+      profileAdmissionHash: admittedCasting.profileAdmission.admissionHash,
+      admittedCastingFingerprint: admittedCasting.fingerprint,
       castingFingerprint: casting.fingerprint,
       voice: casting.voice,
     });
@@ -102,10 +133,14 @@ export function createNarratorProductionJobs(
       id: `job_${stableHash({
         baseJobId: job.id,
         cacheKey,
+        profileAdmissionHash: admittedCasting.profileAdmission.admissionHash,
+        admittedCastingFingerprint: admittedCasting.fingerprint,
         castingFingerprint: casting.fingerprint,
       }).slice(0, 20)}`,
       cacheKey,
       narratorProductionSchema: STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA,
+      narratorProfileAdmissionHash: admittedCasting.profileAdmission.admissionHash,
+      narratorAdmittedCastingFingerprint: admittedCasting.fingerprint,
       narratorCastingFingerprint: casting.fingerprint,
       narratorVoice: Object.freeze({ ...casting.voice }),
     });
@@ -128,7 +163,7 @@ export function assertPinnedProductionMaterial(
     if (binding) throw new Error("NARRATOR_PRODUCTION_PROFILE_HASH_REQUIRED");
     return;
   }
-  if (!binding) throw new Error("NARRATOR_PRODUCTION_CASTING_REQUIRED");
+  if (!binding) throw new Error("NARRATOR_PRODUCTION_CASTING_ADMISSION_REQUIRED");
   assertExactNarratorVoicePin(binding.voice, {
     profileId: material.voiceProfileId,
     revision: material.voiceRevision,

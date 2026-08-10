@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  stableHash,
-  type ProjectManifest,
-} from "./index.js";
+import type { ProjectManifest } from "./index.js";
 import {
   assertPinnedProductionMaterial,
   createNarratorProductionJobs,
   narratorProductionBinding,
 } from "./narrator-production-job.js";
-import type { NarratorCastingApproval } from "./narrator-voice-profile.js";
+import type { AdmittedNarratorCasting } from "./narrator-casting-admission.js";
+import {
+  createTestAdmittedNarratorCasting,
+} from "../test-support/narrator-casting.js";
 
 const sourceHash = "a".repeat(64);
 
@@ -60,40 +60,14 @@ const manifest: ProjectManifest = {
   findings: [],
 };
 
-function casting(overrides: Partial<NarratorCastingApproval> = {}): NarratorCastingApproval {
-  const partial = {
-    schemaVersion: "storyteller-narrator-casting-v1" as const,
-    projectId: manifest.id,
-    voice: {
-      profileId: "magician_narrator",
-      revision: 7,
-      profileHash: "c".repeat(64),
-    },
-    voiceIdentityId: "magician_narrator_identity",
-    engineKey: "qwen3_tts_local",
-    mode: "adapted" as const,
-    modelArtifactTreeSha256: "d".repeat(64),
-    sourceRightsFingerprint: "e".repeat(64),
-    evidenceHash: "f".repeat(64),
-    approvedBy: "storyteller_casting_editor",
-    approvedAt: "2026-08-10T03:05:00.000Z",
-    castingApproved: true as const,
-    exactRevisionRequired: true as const,
-    chapterListeningApprovalRequired: true as const,
-    defaultNarrator: false as const,
-    titleReleaseAuthority: false as const,
-    publicationAuthority: false as const,
-    ...overrides,
-  };
-  const { fingerprint: _ignored, ...base } = partial as NarratorCastingApproval;
-  return {
-    ...base,
-    fingerprint: stableHash(base),
-  };
+function admitted(
+  options: Readonly<{ profileRevision?: number; seed?: string }> = {},
+): AdmittedNarratorCasting {
+  return createTestAdmittedNarratorCasting(manifest.id, options);
 }
 
-test("narrator production jobs bind exact casting and voice into deterministic identity", () => {
-  const approved = casting();
+test("narrator production jobs bind exact admission, casting and voice into deterministic identity", () => {
+  const approved = admitted();
   const first = createNarratorProductionJobs(manifest, approved, 3);
   const second = createNarratorProductionJobs(manifest, approved, 3);
   assert.deepEqual(first, second);
@@ -101,51 +75,75 @@ test("narrator production jobs bind exact casting and voice into deterministic i
   const job = first[0]!;
   const binding = narratorProductionBinding(job);
   assert.ok(binding);
-  assert.equal(binding.castingFingerprint, approved.fingerprint);
-  assert.deepEqual(binding.voice, approved.voice);
+  assert.equal(
+    binding.profileAdmissionHash,
+    approved.profileAdmission.admissionHash,
+  );
+  assert.equal(binding.admittedCastingFingerprint, approved.fingerprint);
+  assert.equal(binding.castingFingerprint, approved.casting.fingerprint);
+  assert.deepEqual(binding.voice, approved.casting.voice);
   assert.equal(job.candidateCount, 3);
   assert.equal(job.status, "ready");
 });
 
-test("casting changes produce different production job and cache identities", () => {
-  const firstCasting = casting();
-  const secondCasting = casting({
-    voice: {
-      profileId: "magician_narrator",
-      revision: 8,
-      profileHash: "1".repeat(64),
-    },
+test("admission or casting changes produce different production job and cache identities", () => {
+  const firstCasting = admitted();
+  const secondCasting = admitted({
+    profileRevision: firstCasting.casting.voice.revision + 1,
+    seed: "second-casting",
   });
   const first = createNarratorProductionJobs(manifest, firstCasting)[0]!;
   const second = createNarratorProductionJobs(manifest, secondCasting)[0]!;
   assert.notEqual(first.id, second.id);
   assert.notEqual(first.cacheKey, second.cacheKey);
-  assert.notEqual(first.narratorCastingFingerprint, second.narratorCastingFingerprint);
+  assert.notEqual(
+    first.narratorProfileAdmissionHash,
+    second.narratorProfileAdmissionHash,
+  );
+  assert.notEqual(
+    first.narratorAdmittedCastingFingerprint,
+    second.narratorAdmittedCastingFingerprint,
+  );
+  assert.notEqual(
+    first.narratorCastingFingerprint,
+    second.narratorCastingFingerprint,
+  );
 });
 
-test("production material must match the exact casting-bound narrator profile", () => {
-  const approved = casting();
+test("production material must match the exact admission-bound narrator profile", () => {
+  const approved = admitted();
   const job = createNarratorProductionJobs(manifest, approved)[0]!;
   assert.doesNotThrow(() => assertPinnedProductionMaterial(job, {
     mode: "production",
-    voiceProfileId: approved.voice.profileId,
-    voiceRevision: approved.voice.revision,
-    voiceProfileHash: approved.voice.profileHash,
+    voiceProfileId: approved.casting.voice.profileId,
+    voiceRevision: approved.casting.voice.revision,
+    voiceProfileHash: approved.casting.voice.profileHash,
   }));
   assert.throws(() => assertPinnedProductionMaterial(job, {
     mode: "production",
-    voiceProfileId: approved.voice.profileId,
-    voiceRevision: approved.voice.revision + 1,
-    voiceProfileHash: approved.voice.profileHash,
+    voiceProfileId: approved.casting.voice.profileId,
+    voiceRevision: approved.casting.voice.revision + 1,
+    voiceProfileHash: approved.casting.voice.profileHash,
   }), /NARRATOR_PROFILE_PIN_MISMATCH/u);
   assert.throws(() => assertPinnedProductionMaterial(job, {
     mode: "production",
-    voiceProfileId: approved.voice.profileId,
-    voiceRevision: approved.voice.revision,
+    voiceProfileId: approved.casting.voice.profileId,
+    voiceRevision: approved.casting.voice.revision,
   }), /NARRATOR_PRODUCTION_PROFILE_HASH_REQUIRED/u);
 });
 
-test("a pinned production profile cannot execute on an uncast generic job", () => {
+test("a standalone casting approval cannot create narrator production jobs", () => {
+  const approved = admitted();
+  assert.throws(
+    () => createNarratorProductionJobs(
+      manifest,
+      approved.casting as unknown as AdmittedNarratorCasting,
+    ),
+    /NARRATOR_CASTING_ADMISSION_SHAPE_INVALID/u,
+  );
+});
+
+test("a pinned production profile cannot execute on an unadmitted generic job", () => {
   const generic = {
     id: "job_generic_001",
     projectId: manifest.id,
@@ -157,14 +155,14 @@ test("a pinned production profile cannot execute on an uncast generic job", () =
   };
   assert.throws(() => assertPinnedProductionMaterial(generic, {
     mode: "production",
-    voiceProfileId: "magician_narrator",
-    voiceRevision: 7,
+    voiceProfileId: "magician-narrator",
+    voiceRevision: 4,
     voiceProfileHash: "c".repeat(64),
-  }), /NARRATOR_PRODUCTION_CASTING_REQUIRED/u);
+  }), /NARRATOR_PRODUCTION_CASTING_ADMISSION_REQUIRED/u);
   assert.doesNotThrow(() => assertPinnedProductionMaterial(generic, {
     mode: "preview",
-    voiceProfileId: "magician_narrator",
-    voiceRevision: 7,
+    voiceProfileId: "magician-narrator",
+    voiceRevision: 4,
     voiceProfileHash: "c".repeat(64),
   }));
 });

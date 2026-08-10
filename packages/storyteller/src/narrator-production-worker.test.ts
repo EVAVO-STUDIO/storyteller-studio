@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { stableHash } from "./index.js";
+import type { ProjectManifest } from "./index.js";
 import { createNarratorProductionJobs } from "./narrator-production-job.js";
 import { runNarratorProductionWorker } from "./narrator-production-worker.js";
-import type { NarratorCastingApproval } from "./narrator-voice-profile.js";
-import type { ProjectManifest } from "./index.js";
+import {
+  createTestAdmittedNarratorCasting,
+} from "../test-support/narrator-casting.js";
 
 const sourceHash = "a".repeat(64);
 const manifest: ProjectManifest = {
@@ -44,32 +45,9 @@ const manifest: ProjectManifest = {
   findings: [],
 };
 
-function casting(profileHash = "c".repeat(64)): NarratorCastingApproval {
-  const base = {
-    schemaVersion: "storyteller-narrator-casting-v1" as const,
-    projectId: manifest.id,
-    voice: { profileId: "magician_narrator", revision: 7, profileHash },
-    voiceIdentityId: "magician_narrator_identity",
-    engineKey: "qwen3_tts_local",
-    mode: "adapted" as const,
-    modelArtifactTreeSha256: "d".repeat(64),
-    sourceRightsFingerprint: "e".repeat(64),
-    evidenceHash: "f".repeat(64),
-    approvedBy: "storyteller_casting_editor",
-    approvedAt: "2026-08-10T03:05:00.000Z",
-    castingApproved: true as const,
-    exactRevisionRequired: true as const,
-    chapterListeningApprovalRequired: true as const,
-    defaultNarrator: false as const,
-    titleReleaseAuthority: false as const,
-    publicationAuthority: false as const,
-  };
-  return { ...base, fingerprint: stableHash(base) };
-}
-
-test("narrator worker rejects a changed casting before touching provider dependencies", async () => {
-  const approved = casting();
-  const job = createNarratorProductionJobs(manifest, approved)[0]!;
+test("narrator worker rejects a changed profile admission before touching provider dependencies", async () => {
+  const admittedCasting = createTestAdmittedNarratorCasting(manifest.id);
+  const job = createNarratorProductionJobs(manifest, admittedCasting)[0]!;
   const claim = {
     envelope: {} as never,
     item: {
@@ -89,6 +67,10 @@ test("narrator worker rejects a changed casting before touching provider depende
     } as never,
     leaseToken: "x".repeat(43),
   };
+  const replacement = createTestAdmittedNarratorCasting(manifest.id, {
+    profileRevision: admittedCasting.casting.voice.revision + 1,
+    seed: "replacement-worker-casting",
+  });
   await assert.rejects(
     runNarratorProductionWorker({
       queue: null as never,
@@ -100,9 +82,9 @@ test("narrator worker rejects a changed casting before touching provider depende
       material: {
         text: "The room remembered him.",
         immutableSourceHash: sourceHash,
-        voiceProfileId: approved.voice.profileId,
-        voiceRevision: approved.voice.revision,
-        voiceProfileHash: approved.voice.profileHash,
+        voiceProfileId: admittedCasting.casting.voice.profileId,
+        voiceRevision: admittedCasting.casting.voice.revision,
+        voiceProfileHash: admittedCasting.casting.voice.profileHash,
         direction: {
           segmentId: job.segmentId,
           narrativeDistance: "close",
@@ -125,8 +107,8 @@ test("narrator worker rejects a changed casting before touching provider depende
         },
       },
       workerActorId: "worker_narrator_001",
-      casting: casting("1".repeat(64)),
+      admittedCasting: replacement,
     }),
-    /NARRATOR_PRODUCTION_CASTING_MISMATCH|NARRATOR_PROFILE_PIN_MISMATCH/u,
+    /NARRATOR_PRODUCTION_PROFILE_ADMISSION_MISMATCH|NARRATOR_PRODUCTION_ADMITTED_CASTING_MISMATCH/u,
   );
 });

@@ -19,6 +19,10 @@ function requireTokens(path, tokens) {
 
 for (const path of [
   "packages/storyteller/src/narrator-voice-profile.ts",
+  "packages/storyteller/src/narrator-profile-admission.ts",
+  "packages/storyteller/src/narrator-casting-admission.ts",
+  "packages/storyteller/src/narrator-casting-admission.test.ts",
+  "packages/storyteller/test-support/narrator-casting.ts",
   "packages/storyteller/src/narrator-production-job.ts",
   "packages/storyteller/src/narrator-production-job.test.ts",
   "packages/storyteller/src/narrator-production-queue.ts",
@@ -31,29 +35,57 @@ for (const path of [
   "apps/api/src/queue-runtime.ts",
   "packages/storyteller/package.json",
   "packages/cli/package.json",
+  "docs/NARRATOR_PROFILE_ADMISSION.md",
+  "docs/NARRATOR_CASTING_ADMISSION.md",
 ]) requireFile(path);
 
+requireTokens("packages/storyteller/src/narrator-casting-admission.ts", [
+  "STORYTELLER_ADMITTED_NARRATOR_CASTING_SCHEMA",
+  "approveAdmittedNarratorCasting",
+  "assertAdmittedNarratorCasting",
+  "narratorCastingFromAdmission",
+  "admittedNarratorCastingPublicView",
+  "profileAdmission: AudioStudioNarratorProfileAdmission",
+  "admissionVerified: true",
+  "castingApproved: true",
+  "defaultNarrator: false",
+  "titleReleaseAuthority: false",
+  "publicationAuthority: false",
+  "NARRATOR_CASTING_ADMISSION_FINGERPRINT_INVALID",
+]);
+requireTokens("packages/storyteller/src/narrator-casting-admission.test.ts", [
+  "binds the full adapted profile admission",
+  "zero-shot casting retains an explicit admission",
+  "standalone casting approval is not a production casting admission",
+  "rehashing cannot substitute the admitted profile",
+  "cannot gain default, release or publication authority",
+  "public admitted-casting view omits private training and human identity evidence",
+]);
 requireTokens("packages/storyteller/src/narrator-production-job.ts", [
-  "STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA",
+  "storyteller-narrator-production-job-v2",
+  "narratorProfileAdmissionHash",
+  "narratorAdmittedCastingFingerprint",
   "narratorCastingFingerprint",
   "narratorVoice",
   "createNarratorProductionJobs",
   "assertPinnedProductionMaterial",
+  "profileAdmissionHash: admittedCasting.profileAdmission.admissionHash",
+  "admittedCastingFingerprint: admittedCasting.fingerprint",
   "castingFingerprint: casting.fingerprint",
-  "voice: casting.voice",
-  "NARRATOR_PRODUCTION_CASTING_REQUIRED",
+  "NARRATOR_PRODUCTION_CASTING_ADMISSION_REQUIRED",
   "NARRATOR_PRODUCTION_PROFILE_HASH_REQUIRED",
 ]);
 requireTokens("packages/storyteller/src/narrator-production-queue.ts", [
   "enqueueNarratorProduction",
   "assertNarratorProductionClaim",
-  "createNarratorProductionJobs",
+  "assertNarratorProductionJob",
+  "admittedCasting: AdmittedNarratorCasting",
   "assertPinnedProductionMaterial",
 ]);
 requireTokens("packages/storyteller/src/narrator-production-worker.ts", [
   "assertNarratorProductionClaim",
   "runClaimedGenerationWorker",
-  "casting: NarratorCastingApproval",
+  "admittedCasting: AdmittedNarratorCasting",
 ]);
 requireTokens("packages/storyteller/src/narration-production-policy.ts", [
   "assertPinnedProductionMaterial",
@@ -62,16 +94,29 @@ requireTokens("packages/storyteller/src/narration-production-policy.ts", [
   "NARRATOR_PRODUCTION_VOICE_PIN_REQUIRED",
 ]);
 requireTokens("packages/cli/src/narrator-production.ts", [
+  'command: "cast"',
   'command: "jobs" | "queue"',
-  "NARRATOR_PRODUCTION_CASTING_REQUIRED",
-  "assertNarratorCasting(casting)",
+  "castingAdmissionPath",
+  "approveAdmittedNarratorCasting",
+  "assertAdmittedNarratorCasting(admittedCasting)",
   "createNarratorProductionJobs",
   "enqueueNarratorProduction",
+  '"casting-admission"',
+]);
+requireTokens("docs/NARRATOR_CASTING_ADMISSION.md", [
+  "storyteller-admitted-narrator-casting-v1",
+  "storyteller-narrator-production-job-v2",
+  "--casting-admission",
+  "narratorProfileAdmissionHash",
+  "narratorAdmittedCastingFingerprint",
+  "Legacy casting documents",
+  "Authority remains separated",
 ]);
 
 if (existsSync(resolve(root, "packages/storyteller/package.json"))) {
   const pkg = JSON.parse(read("packages/storyteller/package.json"));
   for (const [key, value] of [
+    ["./narrator-casting-admission", "./src/narrator-casting-admission.ts"],
     ["./narrator-production-job", "./src/narrator-production-job.ts"],
     ["./narrator-production-queue", "./src/narrator-production-queue.ts"],
     ["./narrator-production-worker", "./src/narrator-production-worker.ts"],
@@ -96,10 +141,35 @@ if (existsSync(resolve(root, "apps/api/src/queue-runtime.ts"))) {
     for (const forbidden of [
       "job: item.job",
       "narratorVoice",
+      "narratorProfileAdmissionHash",
+      "narratorAdmittedCastingFingerprint",
       "narratorCastingFingerprint",
       "voiceProfileHash",
     ]) {
       if (view.includes(forbidden)) problems.push(`generation queue public view exposes narrator production identity: ${forbidden}`);
+    }
+  }
+}
+
+for (const path of [
+  "packages/storyteller/src/narrator-casting-admission.ts",
+  "packages/storyteller/src/narrator-production-job.ts",
+  "packages/storyteller/src/narrator-production-queue.ts",
+  "packages/storyteller/src/narrator-production-worker.ts",
+  "packages/cli/src/narrator-production.ts",
+  "docs/NARRATOR_CASTING_ADMISSION.md",
+]) {
+  if (!existsSync(resolve(root, path))) continue;
+  const source = read(path);
+  for (const forbidden of [
+    "admissionVerified: false",
+    "castingApproved: false",
+    "defaultNarrator: true",
+    "titleReleaseAuthority: true",
+    "publicationAuthority: true",
+  ]) {
+    if (source.includes(forbidden)) {
+      problems.push(`${path} grants or weakens forbidden narrator production authority: ${forbidden}`);
     }
   }
 }
@@ -111,9 +181,10 @@ if (problems.length > 0) {
 }
 
 console.log("storyteller_narrator_production_binding_check_passed");
-console.log("- production job identity is bound to one approved casting fingerprint and exact voice revision");
-console.log("- private queue admission creates only casting-bound narrator production jobs");
-console.log("- pinned profile material is rechecked at persistence and worker execution boundaries");
-console.log("- the guarded worker validates the exact claim, casting and material before provider execution");
-console.log("- dedicated CLI jobs and queue commands require the full casting approval document");
-console.log("- queue public views expose no narrator profile, profile hash or casting fingerprint");
+console.log("- human casting is bound to the full validated Audio Studio profile admission");
+console.log("- standalone casting approvals cannot create, queue or execute narrator production jobs");
+console.log("- production job identity binds admission, admitted casting, raw casting and exact voice revision");
+console.log("- private queue admission and guarded workers recheck the complete production binding");
+console.log("- dedicated CLI cast, jobs and queue commands require the admitted-casting workflow");
+console.log("- queue public views expose no narrator profile, admission or casting identity");
+console.log("- casting admission remains separate from chapter, title release and publication authority");

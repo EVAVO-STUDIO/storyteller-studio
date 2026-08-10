@@ -6,24 +6,36 @@ import { fileURLToPath } from "node:url";
 import type { ProjectManifest } from "@evavo/storyteller-engine";
 import { FileGenerationQueue } from "@evavo/storyteller-engine/generation-queue";
 import {
+  approveAdmittedNarratorCasting,
+  assertAdmittedNarratorCasting,
+  type AdmittedNarratorCasting,
+} from "@evavo/storyteller-engine/narrator-casting-admission";
+import type {
+  AudioStudioNarratorProfileAdmission,
+} from "@evavo/storyteller-engine/narrator-profile-admission";
+import {
   createNarratorProductionJobs,
 } from "@evavo/storyteller-engine/narrator-production-job";
 import {
   enqueueNarratorProduction,
 } from "@evavo/storyteller-engine/narrator-production-queue";
-import {
-  assertNarratorCasting,
-  type NarratorCastingApproval,
-} from "@evavo/storyteller-engine/narrator-voice-profile";
 import { FileProjectStore } from "@evavo/storyteller-engine/project-store";
 
-export interface NarratorProductionCliInput {
-  command: "jobs" | "queue";
-  projectPath: string;
-  castingPath: string;
-  candidateCount: number;
-  dataDirectory?: string;
-}
+export type NarratorProductionCliInput =
+  | Readonly<{
+      command: "cast";
+      admissionPath: string;
+      projectId: string;
+      approvedBy: string;
+      approvedAt: string;
+    }>
+  | Readonly<{
+      command: "jobs" | "queue";
+      projectPath: string;
+      castingAdmissionPath: string;
+      candidateCount: number;
+      dataDirectory?: string;
+    }>;
 
 function readJson<T>(pathValue: string): T {
   const path = resolve(pathValue);
@@ -35,11 +47,7 @@ function readJson<T>(pathValue: string): T {
   }
 }
 
-function parse(argv: readonly string[]): NarratorProductionCliInput {
-  const [commandRaw, ...tokens] = argv;
-  if (commandRaw !== "jobs" && commandRaw !== "queue") {
-    throw new Error("NARRATOR_PRODUCTION_COMMAND_INVALID");
-  }
+function flagsFrom(tokens: readonly string[]): Map<string, string> {
   const flags = new Map<string, string>();
   for (let index = 0; index < tokens.length; index += 2) {
     const key = tokens[index];
@@ -47,12 +55,53 @@ function parse(argv: readonly string[]): NarratorProductionCliInput {
     if (!key?.startsWith("--") || !value || value.startsWith("--")) {
       throw new Error("NARRATOR_PRODUCTION_ARGUMENT_INVALID");
     }
-    flags.set(key.slice(2), value);
+    const name = key.slice(2);
+    if (flags.has(name)) throw new Error(`NARRATOR_PRODUCTION_ARGUMENT_DUPLICATE:${name}`);
+    flags.set(name, value);
   }
-  const projectPath = flags.get("project");
-  const castingPath = flags.get("casting");
-  if (!projectPath) throw new Error("NARRATOR_PRODUCTION_PROJECT_REQUIRED");
-  if (!castingPath) throw new Error("NARRATOR_PRODUCTION_CASTING_REQUIRED");
+  return flags;
+}
+
+function requireFlag(flags: ReadonlyMap<string, string>, name: string): string {
+  const value = flags.get(name);
+  if (!value) throw new Error(`NARRATOR_PRODUCTION_ARGUMENT_REQUIRED:${name}`);
+  return value;
+}
+
+function rejectUnknownFlags(
+  flags: ReadonlyMap<string, string>,
+  allowed: ReadonlySet<string>,
+): void {
+  for (const name of flags.keys()) {
+    if (!allowed.has(name)) throw new Error(`NARRATOR_PRODUCTION_ARGUMENT_UNKNOWN:${name}`);
+  }
+}
+
+function parse(argv: readonly string[]): NarratorProductionCliInput {
+  const [commandRaw, ...tokens] = argv;
+  if (commandRaw !== "cast" && commandRaw !== "jobs" && commandRaw !== "queue") {
+    throw new Error("NARRATOR_PRODUCTION_COMMAND_INVALID");
+  }
+  const flags = flagsFrom(tokens);
+  if (commandRaw === "cast") {
+    rejectUnknownFlags(
+      flags,
+      new Set(["admission", "project-id", "approved-by", "approved-at"]),
+    );
+    return {
+      command: "cast",
+      admissionPath: requireFlag(flags, "admission"),
+      projectId: requireFlag(flags, "project-id"),
+      approvedBy: requireFlag(flags, "approved-by"),
+      approvedAt: requireFlag(flags, "approved-at"),
+    };
+  }
+  rejectUnknownFlags(
+    flags,
+    new Set(["project", "casting-admission", "candidates", "data-dir"]),
+  );
+  const projectPath = requireFlag(flags, "project");
+  const castingAdmissionPath = requireFlag(flags, "casting-admission");
   const candidateCount = Number(flags.get("candidates") ?? "3");
   if (!Number.isSafeInteger(candidateCount) || candidateCount < 1 || candidateCount > 8) {
     throw new Error("NARRATOR_PRODUCTION_CANDIDATE_COUNT_INVALID");
@@ -64,7 +113,7 @@ function parse(argv: readonly string[]): NarratorProductionCliInput {
   return {
     command: commandRaw,
     projectPath,
-    castingPath,
+    castingAdmissionPath,
     candidateCount,
     ...(dataDirectory ? { dataDirectory } : {}),
   };
@@ -73,11 +122,19 @@ function parse(argv: readonly string[]): NarratorProductionCliInput {
 export async function executeNarratorProductionCommand(
   input: NarratorProductionCliInput,
 ): Promise<unknown> {
+  if (input.command === "cast") {
+    return approveAdmittedNarratorCasting({
+      projectId: input.projectId,
+      admission: readJson<AudioStudioNarratorProfileAdmission>(input.admissionPath),
+      approvedBy: input.approvedBy,
+      approvedAt: input.approvedAt,
+    });
+  }
   const manifest = readJson<ProjectManifest>(input.projectPath);
-  const casting = readJson<NarratorCastingApproval>(input.castingPath);
-  assertNarratorCasting(casting);
+  const admittedCasting = readJson<AdmittedNarratorCasting>(input.castingAdmissionPath);
+  assertAdmittedNarratorCasting(admittedCasting);
   if (input.command === "jobs") {
-    return createNarratorProductionJobs(manifest, casting, input.candidateCount);
+    return createNarratorProductionJobs(manifest, admittedCasting, input.candidateCount);
   }
   const dataDirectory = input.dataDirectory;
   if (!dataDirectory) throw new Error("NARRATOR_PRODUCTION_DATA_DIRECTORY_REQUIRED");
@@ -87,7 +144,7 @@ export async function executeNarratorProductionCommand(
   const rows = await enqueueNarratorProduction({
     queue,
     manifest,
-    casting,
+    admittedCasting,
     candidateCount: input.candidateCount,
   });
   return rows.map((row) => ({
