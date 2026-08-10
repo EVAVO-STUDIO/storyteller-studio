@@ -90,6 +90,8 @@
     "./narrator-mastering-chain": "./src/narrator-mastering-chain.ts",
     "./narrator-mastering-admission": "./src/narrator-mastering-admission.ts",
     "./narrator-mastered-review": "./src/narrator-mastered-review.ts",
-    "./narrator-book-sequence": "./src/narrator-book-sequence.ts"
+    "./narrator-mastered-review-admission": "./src/narrator-mastered-review-admission.ts",
+    "./narrator-book-sequence": "./src/narrator-book-sequence.ts",
+    "./narrator-book-sequence-admission": "./src/narrator-book-sequence-admission.ts"
   }
 }
