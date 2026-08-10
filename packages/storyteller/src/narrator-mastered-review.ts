@@ -376,17 +376,20 @@ export function recordNarratorMasteredReview(
     ...acknowledgementPartial,
     fingerprint: stableHash(acknowledgementBase(acknowledgementPartial)),
   });
-  const partial: Omit<NarratorMasteredReviewBinding, "fingerprint"> = {
-    ...binding,
-    reviewSession: nextSession,
-    acknowledgements: Object.freeze([...binding.acknowledgements, acknowledgement]),
-    revision: binding.revision + 1,
-    previousFingerprint: binding.fingerprint,
-    createdAt: binding.createdAt,
-    updatedAt: review.decidedAt,
-    fingerprint: undefined as never,
-  };
-  delete (partial as Partial<NarratorMasteredReviewBinding>).fingerprint;
+  const {
+  fingerprint: _fingerprint,
+  previousFingerprint: _previousFingerprint,
+  ...base
+} = binding;
+const partial: Omit<NarratorMasteredReviewBinding, "fingerprint"> = {
+  ...base,
+  reviewSession: nextSession,
+  acknowledgements: Object.freeze([...binding.acknowledgements, acknowledgement]),
+  revision: binding.revision + 1,
+  previousFingerprint: binding.fingerprint,
+  createdAt: binding.createdAt,
+  updatedAt: review.decidedAt,
+};
   const next = Object.freeze({ ...partial, fingerprint: stableHash(bindingBase(partial)) });
   assertNarratorMasteredReviewBinding(next);
   return next;

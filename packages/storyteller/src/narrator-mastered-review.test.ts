@@ -592,7 +592,7 @@ test("book sequencing rejects missing, duplicate or substituted narrator evidenc
       sequence: genericSequence,
       chapterApprovals: [first.approval, { ...second.approval, approvedArtifact: first.approval.approvedArtifact }],
     }),
-    /NARRATOR_MASTERED_REVIEW_APPROVAL_FINGERPRINT_INVALID|NARRATOR_BOOK_SEQUENCE_CHAPTER_BINDING_MISMATCH/u,
+    /NARRATOR_MASTERED_REVIEW_APPROVED_ARTIFACT_MISMATCH|NARRATOR_MASTERED_REVIEW_APPROVAL_FINGERPRINT_INVALID|NARRATOR_BOOK_SEQUENCE_CHAPTER_BINDING_MISMATCH/u,
   );
 });
 
