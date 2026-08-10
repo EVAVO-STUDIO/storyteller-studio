@@ -140,6 +140,14 @@ It does not prove that the assembled book has been listened to continuously. Cre
 
 The narrator sequence therefore cannot grant complete-book listening approval, title release or publication authority.
 
+## Validation and failure-order semantics
+
+The narrator wrappers validate their embedded evidence before comparing it with the next production boundary. A forged approval may therefore be rejected by the mastered-review validator before the book-sequence validator is reached. This is intentional: the earliest specific integrity failure is preferred over a later generic mismatch.
+
+Regression tests accept only the documented fail-closed classes for each substitution attempt. They do not require one exact error when a stronger upstream validator can reject the same forged evidence first.
+
+The normal verification workflow checks the source contract, TypeScript compilation, the complete engine suite, protected API, private worker, CLI and workspace builds. The read-only Sentinel repeats the narrator boundary, type and artifact audits without modifying the repository. No recurring workflow is permitted to rewrite production source or push corrections automatically.
+
 ## Production rule
 
 For production narrator audiobooks:
