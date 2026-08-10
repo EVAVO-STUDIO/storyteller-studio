@@ -44,6 +44,12 @@ jobs:
           set -o pipefail
           npm run verify:private-boundary 2>&1 | tee .verification/private-boundary.log
 
+      - name: Verify narrator production casting boundary
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-narrator-production-binding.mjs 2>&1 | tee .verification/narrator-production.log
+
       - name: Type-check repository
         shell: bash
         run: |
@@ -108,6 +114,7 @@ jobs:
             const logFiles = [
               ".verification/foundation.log",
               ".verification/private-boundary.log",
+              ".verification/narrator-production.log",
               ".verification/typecheck.log",
               ".verification/artifacts.log",
               ".verification/engine-tests.log",
@@ -151,7 +158,7 @@ jobs:
                 }
               }
               if (!diagnostic) {
-                const failedLog = logs.find((log) => /artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
+                const failedLog = logs.find((log) => /narrator-production|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
                 if (failedLog) {
                   const fallback = failedLog.source
                     .split(/\r?\n/)
@@ -163,7 +170,7 @@ jobs:
               }
             }
             const description = state === "success"
-              ? "Foundation, boundaries, typecheck, artifacts, worker, tests and builds passed"
+              ? "Foundation, narrator casting, boundaries, typecheck, artifacts, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
