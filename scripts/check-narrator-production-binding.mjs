@@ -115,8 +115,10 @@ requireTokens("packages/storyteller/src/narration-production-policy.ts", [
   "NARRATOR_PRODUCTION_VOICE_PIN_REQUIRED",
 ]);
 requireTokens("packages/cli/src/narrator-production.ts", [
-  'command: "cast" | "jobs" | "queue"',
-  "NARRATOR_PRODUCTION_CASTING_ADMISSION_REQUIRED",
+  'command: "cast";',
+  'command: "jobs" | "queue";',
+  "castingAdmissionPath: string",
+  'requireFlag(flags, "casting-admission")',
   "approveAdmittedNarratorCasting",
   "assertAdmittedNarratorCasting",
   "createNarratorProductionJobs",
