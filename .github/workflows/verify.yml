@@ -50,6 +50,12 @@ jobs:
           set -o pipefail
           node scripts/check-narrator-production-binding.mjs 2>&1 | tee .verification/narrator-production.log
 
+      - name: Verify narrator profile training admission
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-narrator-profile-admission.mjs 2>&1 | tee .verification/narrator-profile-admission.log
+
       - name: Verify whole-book narrator monitoring
         shell: bash
         run: |
@@ -133,6 +139,7 @@ jobs:
               ".verification/foundation.log",
               ".verification/private-boundary.log",
               ".verification/narrator-production.log",
+              ".verification/narrator-profile-admission.log",
               ".verification/narrator-book-monitoring.log",
               ".verification/narrator-mastering-chain.log",
               ".verification/narrator-mastered-review-sequence.log",
@@ -179,7 +186,7 @@ jobs:
                 }
               }
               if (!diagnostic) {
-                const failedLog = logs.find((log) => /narrator-production|narrator-book-monitoring|narrator-mastering-chain|narrator-mastered-review-sequence|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
+                const failedLog = logs.find((log) => /narrator-production|narrator-profile-admission|narrator-book-monitoring|narrator-mastering-chain|narrator-mastered-review-sequence|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
                 if (failedLog) {
                   const fallback = failedLog.source
                     .split(/\r?\n/)
@@ -191,7 +198,7 @@ jobs:
               }
             }
             const description = state === "success"
-              ? "Narrator casting, monitoring, mastering/review sequence, tests and builds passed"
+              ? "Narrator training admission, casting, monitoring, review sequence, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
