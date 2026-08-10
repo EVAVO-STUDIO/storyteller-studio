@@ -577,7 +577,15 @@ test("a human review for another render cannot authorize mastering", async () =>
 
 test("source master or engineering substitution is rejected before a plan is created", async () => {
   const value = await fixture();
-  const changedMaster = { ...value.chapterMaster, revision: value.chapterMaster.revision + 1 };
+  const changedMaster = verifiedArtifact({
+    id: "artifact_chapter_master_narrator_other",
+    kind: "chapter-master",
+    bytes: value.sourceBytes,
+    sourceContentHash: manuscriptSourceHash,
+    generationRequestHash: value.chapterRenderEvidence.commandFingerprint,
+    parentArtifactIds: ["artifact_chapter_render_evidence_other"],
+    reviewRequired: true,
+  });
   assert.throws(
     () => createNarratorApprovedMasteringPlan({
       authorization: value.authorization,
@@ -592,7 +600,7 @@ test("source master or engineering substitution is rejected before a plan is cre
       createdByActorId: "mastering-engineer",
       createdAt: t6,
     }),
-    /ARTIFACT_FINGERPRINT_MISMATCH|NARRATOR_MASTERING_SOURCE_MASTER_CHANGED/u,
+    /NARRATOR_MASTERING_SOURCE_MASTER_CHANGED/u,
   );
 });
 
@@ -656,7 +664,6 @@ test("mastered chapter receipt carries the exact review through the complete mas
         rights: rights(),
         actorId: "mastering-worker",
         verifierActorId: "mastering-verifier",
-        engineering: postEngineeringPolicy(outputBytes),
         comparisonPolicy: comparisonPolicy(),
         now: t8,
         engineering: {

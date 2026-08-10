@@ -163,6 +163,8 @@ export interface NarratorApprovedMasteredChapterReceipt {
   schemaVersion: typeof NARRATOR_APPROVED_MASTERED_CHAPTER_SCHEMA;
   projectId: string;
   chapterId: string;
+  planId: string;
+  planFingerprint: string;
   authorizationFingerprint: string;
   chapterNarratorReviewFingerprint: string;
   objectiveMonitoringFingerprint: string;
@@ -418,7 +420,11 @@ export function createNarratorMasteringAuthorization(
   if (Date.parse(input.review.reviewedAt) < Date.parse(input.chapterRenderEvidence.renderedAt)) {
     throw new NarratorMasteringChainError("NARRATOR_MASTERING_REVIEW_PRECEDES_RENDER");
   }
-  const authorizedAt = (input.authorizedAt ?? new Date()).toISOString();
+  const authorizedAtDate = input.authorizedAt ?? new Date();
+  if (Number.isNaN(authorizedAtDate.getTime())) {
+    throw new NarratorMasteringChainError("NARRATOR_MASTERING_AUTHORIZATION_DATE_INVALID");
+  }
+  const authorizedAt = authorizedAtDate.toISOString();
   if (Date.parse(authorizedAt) < Date.parse(input.review.reviewedAt)) {
     throw new NarratorMasteringChainError("NARRATOR_MASTERING_AUTHORIZATION_PRECEDES_REVIEW");
   }
@@ -790,6 +796,8 @@ export function createNarratorApprovedMasteredChapterReceipt(
     schemaVersion: NARRATOR_APPROVED_MASTERED_CHAPTER_SCHEMA,
     projectId: input.approvedPlan.authorization.projectId,
     chapterId: input.approvedPlan.authorization.chapterId,
+    planId: input.approvedPlan.plan.id,
+    planFingerprint: input.approvedPlan.plan.fingerprint,
     authorizationFingerprint: input.approvedPlan.authorization.fingerprint,
     chapterNarratorReviewFingerprint:
       input.approvedPlan.chapterNarratorReviewFingerprint,
@@ -821,7 +829,9 @@ export function assertNarratorApprovedMasteredChapterReceipt(
   }
   requireIdentifier(receipt.projectId, "NARRATOR_MASTERED_CHAPTER_PROJECT_INVALID");
   requireIdentifier(receipt.chapterId, "NARRATOR_MASTERED_CHAPTER_CHAPTER_INVALID");
+  requireIdentifier(receipt.planId, "NARRATOR_MASTERED_CHAPTER_PLAN_ID_INVALID");
   for (const hash of [
+    receipt.planFingerprint,
     receipt.authorizationFingerprint,
     receipt.chapterNarratorReviewFingerprint,
     receipt.objectiveMonitoringFingerprint,
@@ -898,7 +908,7 @@ export function narratorApprovedMasteredChapterPublicView(
   assertNarratorApprovedMasteredChapterReceipt(receipt);
   return Object.freeze({
     chapterId: receipt.chapterId,
-    planId: receipt.masteredArtifact.id,
+    planId: receipt.planId,
     masteredArtifactId: receipt.masteredArtifact.id,
     masteredRevision: receipt.masteredArtifact.revision,
     narratorEvidenceBound: true,
