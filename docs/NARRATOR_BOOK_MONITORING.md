@@ -48,6 +48,28 @@ eligible-for-human-review
 
 It never becomes human-approved automatically.
 
+## Exact human-review binding
+
+The human `ChapterNarratorReview` schema is version 2 and requires the exact objective monitoring result used for that review. The review binds:
+
+- monitoring fingerprint;
+- policy fingerprint;
+- reference fingerprint;
+- objective-observation fingerprint;
+- source fingerprint;
+- render fingerprint;
+- casting fingerprint and exact voice revision;
+- monitoring status and continuity result;
+- objective warning and finding codes;
+- explicit reviewer acknowledgement of every warning;
+- monitoring and review timestamps.
+
+The human review is rejected when the monitoring evidence belongs to another project, chapter, casting, voice revision, source or render. A `requires-regeneration` result cannot be converted into an approval by adding strong subjective scores. Warning-only evidence can proceed only when the exact warning-code set is acknowledged in the sealed review.
+
+The review timestamp must be at or after the objective monitoring timestamp. This prevents a pre-existing approval from being rebound to monitoring evidence created later.
+
+The resulting chapter-review fingerprint seals both the human scores and the objective monitoring evidence. The existing title-narrator approval consumes those chapter-review fingerprints, so title approval cannot substitute a different chapter render after monitoring or listening.
+
 ## Whole-book monitoring
 
 The book monitor requires every expected chapter exactly once and in the expected order. It aggregates chapter results and also compares adjacent chapter acoustic signatures, catching drift that may be modest relative to the original reference but obvious across consecutive chapters.
@@ -86,8 +108,8 @@ exact Audio Studio voice revision
 → private synthesis and artifact evidence
 → objective chapter monitoring
 → regeneration or human attention where required
-→ human chapter listening review
-→ all-chapter narrator approval
+→ exact monitoring fingerprint bound into human chapter listening review
+→ all monitored chapter-review fingerprints bound into title narrator approval
 → separate mastering and release governance
 ```
 
