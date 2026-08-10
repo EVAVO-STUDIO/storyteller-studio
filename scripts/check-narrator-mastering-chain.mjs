@@ -23,8 +23,11 @@ function requireTokens(path, tokens) {
 for (const path of [
   "packages/storyteller/src/narrator-mastering-chain.ts",
   "packages/storyteller/src/narrator-mastering-chain.test.ts",
+  "packages/storyteller/src/narrator-mastering-admission.ts",
+  "packages/storyteller/src/narrator-mastering-admission.test.ts",
   "packages/storyteller/package.json",
   "docs/NARRATOR_MASTERING_CHAIN.md",
+  "docs/NARRATOR_MASTERING_ADMISSION.md",
 ]) requireFile(path);
 
 requireTokens("packages/storyteller/src/narrator-mastering-chain.ts", [
@@ -61,6 +64,44 @@ requireTokens("packages/storyteller/src/narrator-mastering-chain.ts", [
   "publicationAuthority: false",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-mastering-admission.ts", [
+  "ADMITTED_NARRATOR_MASTERING_AUTHORIZATION_SCHEMA",
+  "ADMITTED_NARRATOR_APPROVED_MASTERING_PLAN_SCHEMA",
+  "ADMITTED_NARRATOR_APPROVED_MASTERING_RENDER_SCHEMA",
+  "ADMITTED_NARRATOR_APPROVED_MASTERED_CHAPTER_SCHEMA",
+  "AdmittedNarratorMasteringContext",
+  "bindAdmittedNarratorMasteringAuthorization",
+  "createAdmittedNarratorMasteringAuthorization",
+  "assertAdmittedNarratorMasteringAuthorization",
+  "createAdmittedNarratorApprovedMasteringPlan",
+  "assertAdmittedNarratorApprovedMasteringPlan",
+  "createAdmittedNarratorApprovedMasteringRenderReceipt",
+  "assertAdmittedNarratorApprovedMasteringRenderReceipt",
+  "renderAdmittedNarratorApprovedMasteringPlan",
+  "createAdmittedNarratorApprovedMasteredChapterReceipt",
+  "assertAdmittedNarratorApprovedMasteredChapterReceipt",
+  "ingestAdmittedNarratorApprovedMasteredChapter",
+  "admittedNarratorApprovedMasteredChapterPublicView",
+  "profileAdmissionHash",
+  "admittedCastingFingerprint",
+  "chapterSourceFingerprint",
+  "productionSetFingerprint",
+  "productionJobCount",
+  "admittedChapterReviewFingerprint",
+  "admittedMonitoringFingerprint",
+  "objectiveMonitoringFingerprint",
+  "chapterNarratorReviewFingerprint",
+  "ADMITTED_NARRATOR_MASTERING_TECHNICAL_AUTHORIZATION_MISMATCH",
+  "ADMITTED_NARRATOR_MASTERING_PLAN_BINDING_MISMATCH",
+  "ADMITTED_NARRATOR_MASTERING_RENDER_BINDING_MISMATCH",
+  "ADMITTED_NARRATOR_MASTERED_CHAPTER_BINDING_MISMATCH",
+  "masteredListeningApproval: false",
+  "completeBookListeningApproval: false",
+  "titleNarratorApproval: false",
+  "titleReleaseAuthority: false",
+  "publicationAuthority: false",
+]);
+
 requireTokens("packages/storyteller/src/narrator-mastering-chain.test.ts", [
   "authorization binds the exact reviewed render, source master and engineering evidence",
   "a human review for another render cannot authorize mastering",
@@ -70,6 +111,15 @@ requireTokens("packages/storyteller/src/narrator-mastering-chain.test.ts", [
   "mastered chapter receipt carries the exact review through the complete mastering chain",
   "mastered chapter receipt detects review, plan and output substitution",
   "publicJson.includes(\"magician-narrator\")",
+]);
+
+requireTokens("packages/storyteller/src/narrator-mastering-admission.test.ts", [
+  "adapted mastering authorization retains the complete profile admission and production lineage",
+  "zero-shot and adapted voices use the same admitted mastering boundary without invented training evidence",
+  "a technical authorization for another render cannot be attached to an admitted chapter review",
+  "rehashing cannot substitute the profile admission, production set or admitted review",
+  "an admitted review from another casting cannot authorize mastering",
+  "outer authority escalation fails even after the admitted authorization is rehashed",
 ]);
 
 requireTokens("docs/NARRATOR_MASTERING_CHAIN.md", [
@@ -86,13 +136,30 @@ requireTokens("docs/NARRATOR_MASTERING_CHAIN.md", [
   "ingestNarratorApprovedMasteredChapter",
 ]);
 
+requireTokens("docs/NARRATOR_MASTERING_ADMISSION.md", [
+  "Why this boundary exists",
+  "Private context",
+  "Authorization",
+  "Plan, render and mastered receipt",
+  "Public privacy boundary",
+  "Human authority boundary",
+  "createAdmittedNarratorMasteringAuthorization",
+  "bindAdmittedNarratorMasteringAuthorization",
+  "renderAdmittedNarratorApprovedMasteringPlan",
+  "ingestAdmittedNarratorApprovedMasteredChapter",
+  "productionSetFingerprint",
+  "admittedChapterReviewFingerprint",
+]);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
-  if (
-    packageJson.exports?.["./narrator-mastering-chain"]
-      !== "./src/narrator-mastering-chain.ts"
-  ) {
-    problems.push("storyteller package does not export ./narrator-mastering-chain");
+  for (const [key, value] of [
+    ["./narrator-mastering-chain", "./src/narrator-mastering-chain.ts"],
+    ["./narrator-mastering-admission", "./src/narrator-mastering-admission.ts"],
+  ]) {
+    if (packageJson.exports?.[key] !== value) {
+      problems.push(`storyteller package does not export ${key}`);
+    }
   }
 }
 
@@ -121,6 +188,49 @@ if (existsSync(fromRoot("packages/storyteller/src/narrator-mastering-chain.ts"))
   }
 }
 
+if (existsSync(fromRoot("packages/storyteller/src/narrator-mastering-admission.ts"))) {
+  const source = read("packages/storyteller/src/narrator-mastering-admission.ts");
+  for (const forbidden of [
+    "masteredListeningApproval: true",
+    "completeBookListeningApproval: true",
+    "titleNarratorApproval: true",
+    "titleReleaseAuthority: true",
+    "publicationAuthority: true",
+  ]) {
+    if (source.includes(forbidden)) {
+      problems.push(`admitted narrator mastering grants forbidden authority: ${forbidden}`);
+    }
+  }
+  const publicViewStart = source.indexOf(
+    "export function admittedNarratorApprovedMasteredChapterPublicView",
+  );
+  if (publicViewStart < 0) {
+    problems.push("admitted narrator mastered public view is missing");
+  } else {
+    const publicView = source.slice(publicViewStart);
+    for (const forbidden of [
+      "profileAdmissionHash:",
+      "admittedCastingFingerprint:",
+      "castingFingerprint:",
+      "profileHash:",
+      "productionSetFingerprint:",
+      "admittedChapterReviewFingerprint:",
+      "admittedMonitoringFingerprint:",
+      "objectiveMonitoringFingerprint:",
+      "chapterNarratorReviewFingerprint:",
+      "selectedCheckpointId",
+      "trainingReceiptHash",
+      "productionJobIds",
+      "productionCacheKeys",
+      "reviewerIds",
+    ]) {
+      if (publicView.includes(forbidden)) {
+        problems.push(`admitted narrator mastered public view exposes private evidence: ${forbidden}`);
+      }
+    }
+  }
+}
+
 if (problems.length > 0) {
   console.error("Storyteller narrator mastering chain check failed:\n");
   for (const problem of problems) console.error(`- ${problem}`);
@@ -128,9 +238,9 @@ if (problems.length > 0) {
 }
 
 console.log("storyteller_narrator_mastering_chain_check_passed");
-console.log("- narrator mastering authorization binds the exact casting, render, monitor, human review, source master and engineering evidence");
-console.log("- narrator-approved mastering plans reopen and revalidate the exact approved source artifacts");
-console.log("- mastering render receipts bind the exact plan, source, operations and output bytes");
-console.log("- mastered chapter receipts retain the narrator review and objective monitor through post-master engineering");
-console.log("- public projections redact voice, casting, reviewer and private evidence identities");
-console.log("- mastering eligibility never becomes listening, title-release or publication authority");
+console.log("- technical narrator mastering still binds the exact render, human review, source master and engineering evidence");
+console.log("- production mastering now reopens the complete profile admission, admitted casting and chapter-review context");
+console.log("- the ordered narrator production set and immutable chapter source survive through plan, render and mastered receipts");
+console.log("- zero-shot and adapted profiles retain their distinct Audio Studio provenance through mastering");
+console.log("- public projections redact training, voice, casting, job, reviewer and private evidence identities");
+console.log("- mastering eligibility never becomes listening, title-narrator, release or publication authority");
