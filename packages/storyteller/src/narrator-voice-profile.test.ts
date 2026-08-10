@@ -2,10 +2,19 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import {
+  createNarratorChapterObjectiveObservation,
+  createNarratorMonitoringPolicy,
+  createNarratorQualityReference,
+  monitorNarratorChapter,
+  type NarratorChapterMonitoringResult,
+  type NarratorChapterObjectiveObservation,
+} from "./narrator-book-monitor.js";
+import {
   AUDIO_STUDIO_NARRATOR_PROFILE_SCHEMA,
   approveNarratorCasting,
   approveTitleNarrator,
   assertAudioStudioNarratorVoiceProfile,
+  assertChapterNarratorReview,
   assertExactNarratorVoicePin,
   assertNarratorCasting,
   assertTitleNarratorApproval,
@@ -13,6 +22,7 @@ import {
   pinNarratorVoiceProfile,
   type AudioStudioNarratorVoiceProfile,
   type ChapterNarratorReviewInput,
+  type NarratorCastingApproval,
 } from "./narrator-voice-profile.js";
 
 function digest(value: string): string {
@@ -89,16 +99,89 @@ function profile(mode: "zero-shot" | "adapted" = "adapted"): AudioStudioNarrator
   };
 }
 
+const acoustic = Object.freeze({
+  medianPitchHz: 128,
+  pitchRangeSemitones: 9.5,
+  speakingRateWpm: 151,
+  pauseRatio: 0.18,
+  energyRmsDb: -21,
+  embeddingDistanceFromAnchor: 0.08,
+});
+
+function objectiveMonitoring(
+  chapterId: string,
+  casting: NarratorCastingApproval,
+  renderFingerprint: string,
+  overrides: Partial<Omit<NarratorChapterObjectiveObservation, "fingerprint">> = {},
+): NarratorChapterMonitoringResult {
+  const policy = createNarratorMonitoringPolicy({
+    minimumTranscriptCoverage: 0.995,
+    maximumInsertionRatio: 0.01,
+    minimumSpeakerIdentitySimilarity: 0.86,
+    maximumCadenceTemplateSimilarity: 0.78,
+    maximumSentenceFinalContourRepetitionRatio: 0.62,
+    maximumNoiseFloorDb: -55,
+    maximumRoomToneDriftDb: 4,
+    maximumSeamDiscontinuityScore: 0.25,
+    maximumChapterDurationDriftRatio: 0.18,
+    requireFinalWord: true,
+    requireZeroClipping: true,
+    forbidUnexpectedSpeakerChange: true,
+  });
+  const reference = createNarratorQualityReference({
+    casting,
+    acousticSignature: acoustic,
+    expectedChapterDurationSeconds: 1_800,
+    roomToneRmsDb: -58,
+    evidenceHash: digest("approved-reference"),
+  });
+  const observation = createNarratorChapterObjectiveObservation({
+    projectId: casting.projectId,
+    chapterId,
+    castingFingerprint: casting.fingerprint,
+    voice: casting.voice,
+    renderFingerprint,
+    sourceFingerprint: digest(`source:${chapterId}`),
+    segmentCount: 20,
+    transcriptCoverage: 0.999,
+    insertionRatio: 0.002,
+    finalWordPresent: true,
+    clippedSampleCount: 0,
+    unexpectedSpeakerChangeCount: 0,
+    minimumSpeakerIdentitySimilarity: 0.94,
+    acousticSignature: acoustic,
+    chapterDurationSeconds: 1_790,
+    cadenceTemplateSimilarity: 0.44,
+    sentenceFinalContourRepetitionRatio: 0.31,
+    noiseFloorDb: -62,
+    roomToneRmsDb: -57.5,
+    maximumSeamDiscontinuityScore: 0.08,
+    transcriptEvidenceHash: digest(`transcript:${chapterId}`),
+    speakerIdentityEvidenceHash: digest(`speaker:${chapterId}`),
+    acousticEvidenceHash: digest(`acoustic:${chapterId}`),
+    engineeringEvidenceHash: digest(`engineering:${chapterId}`),
+    measuredAt: "2026-08-10T06:55:00+10:00",
+    ...overrides,
+  });
+  return monitorNarratorChapter({ casting, policy, reference, observation });
+}
+
 function chapterInput(
   chapterId: string,
-  casting: ReturnType<typeof approveNarratorCasting>,
+  casting: NarratorCastingApproval,
   overrides: Partial<ChapterNarratorReviewInput> = {},
 ): ChapterNarratorReviewInput {
+  const renderFingerprint = overrides.renderFingerprint ?? digest(`render:${chapterId}`);
+  const monitoring = overrides.objectiveMonitoring
+    ?? objectiveMonitoring(chapterId, casting, renderFingerprint);
   return {
     projectId: "book_001",
     chapterId,
     casting,
-    renderFingerprint: digest(`render:${chapterId}`),
+    renderFingerprint,
+    objectiveMonitoring: monitoring,
+    objectiveFindingAcknowledgements:
+      overrides.objectiveFindingAcknowledgements ?? monitoring.findingCodes,
     expectedSegmentCount: 20,
     renderedSegmentCount: 20,
     transcriptErrorCount: 0,
@@ -111,9 +194,18 @@ function chapterInput(
     syntheticArtifactFlags: [],
     fatigueFlags: [],
     reviewerIds: ["reviewer-a", "reviewer-b", "reviewer-c"],
-    reviewedAt: "2026-08-10T06:40:00+10:00",
+    reviewedAt: "2026-08-10T07:10:00+10:00",
     ...overrides,
   };
+}
+
+function casting(): NarratorCastingApproval {
+  return approveNarratorCasting({
+    projectId: "book_001",
+    profile: profile(),
+    approvedBy: "Greg",
+    approvedAt: "2026-08-10T06:30:00+10:00",
+  });
 }
 
 test("pins exact Audio Studio profile id, revision and hash", () => {
@@ -141,62 +233,141 @@ test("rejects profile hash drift and mutable aliases", () => {
 });
 
 test("explicit casting remains non-default and non-publishing", () => {
-  const value = profile();
-  const casting = approveNarratorCasting({
-    projectId: "book_001",
-    profile: value,
-    approvedBy: "Greg",
-    approvedAt: "2026-08-10T06:30:00+10:00",
-  });
-  assertNarratorCasting(casting);
-  assert.equal(casting.castingApproved, true);
-  assert.equal(casting.defaultNarrator, false);
-  assert.equal(casting.titleReleaseAuthority, false);
-  assert.equal(casting.publicationAuthority, false);
+  const value = casting();
+  assertNarratorCasting(value);
+  assert.equal(value.castingApproved, true);
+  assert.equal(value.defaultNarrator, false);
+  assert.equal(value.titleReleaseAuthority, false);
+  assert.equal(value.publicationAuthority, false);
   assert.throws(
-    () => assertExactNarratorVoicePin(casting.voice, { ...casting.voice, revision: 4 }),
+    () => assertExactNarratorVoicePin(value.voice, { ...value.voice, revision: 4 }),
     /NARRATOR_PROFILE_PIN_MISMATCH/u,
   );
 });
 
 test("chapter approval rejects fatigue, drift and transcript faults", () => {
-  const casting = approveNarratorCasting({
-    projectId: "book_001",
-    profile: profile(),
-    approvedBy: "Greg",
-    approvedAt: "2026-08-10T06:30:00+10:00",
-  });
+  const value = casting();
   assert.throws(
-    () => createChapterNarratorReview(chapterInput("chapter_1", casting, { fatigueFlags: ["repetitive-cadence"] })),
+    () => createChapterNarratorReview(chapterInput("chapter_1", value, { fatigueFlags: ["repetitive-cadence"] })),
     /CHAPTER_NARRATOR_FATIGUE_REPORTED/u,
   );
   assert.throws(
-    () => createChapterNarratorReview(chapterInput("chapter_1", casting, { continuityScore: 3.9 })),
+    () => createChapterNarratorReview(chapterInput("chapter_1", value, { continuityScore: 3.9 })),
     /CHAPTER_NARRATOR_SCORE_BELOW_THRESHOLD/u,
   );
   assert.throws(
-    () => createChapterNarratorReview(chapterInput("chapter_1", casting, { transcriptErrorCount: 1 })),
+    () => createChapterNarratorReview(chapterInput("chapter_1", value, { transcriptErrorCount: 1 })),
     /CHAPTER_NARRATOR_TRANSCRIPT_ERROR/u,
   );
 });
 
-test("title narrator requires an approved review for every chapter", () => {
-  const casting = approveNarratorCasting({
-    projectId: "book_001",
-    profile: profile(),
-    approvedBy: "Greg",
-    approvedAt: "2026-08-10T06:30:00+10:00",
+test("human review is bound to the exact monitored project, chapter and render", () => {
+  const value = casting();
+  const originalRender = digest("render:chapter_1");
+  const monitoring = objectiveMonitoring("chapter_1", value, originalRender);
+  assert.throws(
+    () => createChapterNarratorReview(chapterInput("chapter_1", value, {
+      renderFingerprint: digest("render:replacement"),
+      objectiveMonitoring: monitoring,
+    })),
+    /CHAPTER_NARRATOR_MONITOR_RENDER_MISMATCH/u,
+  );
+  assert.throws(
+    () => createChapterNarratorReview(chapterInput("chapter_2", value, {
+      renderFingerprint: originalRender,
+      objectiveMonitoring: monitoring,
+    })),
+    /CHAPTER_NARRATOR_MONITOR_CHAPTER_MISMATCH/u,
+  );
+});
+
+test("regeneration-required objective monitoring cannot be human-approved", () => {
+  const value = casting();
+  const renderFingerprint = digest("render:chapter_bad");
+  const monitoring = objectiveMonitoring("chapter_bad", value, renderFingerprint, {
+    clippedSampleCount: 2,
   });
-  const first = createChapterNarratorReview(chapterInput("chapter_1", casting));
-  const second = createChapterNarratorReview(chapterInput("chapter_2", casting));
+  assert.equal(monitoring.status, "requires-regeneration");
+  assert.throws(
+    () => createChapterNarratorReview(chapterInput("chapter_bad", value, {
+      renderFingerprint,
+      objectiveMonitoring: monitoring,
+    })),
+    /CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED/u,
+  );
+});
+
+test("objective warnings require exact human acknowledgement", () => {
+  const value = casting();
+  const renderFingerprint = digest("render:chapter_attention");
+  const monitoring = objectiveMonitoring("chapter_attention", value, renderFingerprint, {
+    cadenceTemplateSimilarity: 0.91,
+    sentenceFinalContourRepetitionRatio: 0.83,
+  });
+  assert.equal(monitoring.status, "requires-human-attention");
+  const review = createChapterNarratorReview(chapterInput("chapter_attention", value, {
+    renderFingerprint,
+    objectiveMonitoring: monitoring,
+    objectiveFindingAcknowledgements: monitoring.findingCodes,
+  }));
+  assert.equal(review.objectiveMonitoringStatus, "requires-human-attention");
+  assert.deepEqual(review.objectiveFindingAcknowledgements, monitoring.findingCodes);
+  assert.throws(
+    () => createChapterNarratorReview(chapterInput("chapter_attention", value, {
+      renderFingerprint,
+      objectiveMonitoring: monitoring,
+      objectiveFindingAcknowledgements: [],
+    })),
+    /CHAPTER_NARRATOR_MONITOR_FINDINGS_UNACKNOWLEDGED/u,
+  );
+});
+
+test("monitor evidence cannot be altered or reviewed before it existed", () => {
+  const value = casting();
+  const renderFingerprint = digest("render:chapter_3");
+  const monitoring = objectiveMonitoring("chapter_3", value, renderFingerprint);
+  assert.throws(
+    () => createChapterNarratorReview(chapterInput("chapter_3", value, {
+      renderFingerprint,
+      objectiveMonitoring: { ...monitoring, sourceFingerprint: digest("other-source") },
+    })),
+    /CHAPTER_NARRATOR_MONITOR_FINGERPRINT_INVALID/u,
+  );
+  assert.throws(
+    () => createChapterNarratorReview(chapterInput("chapter_3", value, {
+      renderFingerprint,
+      objectiveMonitoring: monitoring,
+      reviewedAt: "2026-08-10T06:50:00+10:00",
+    })),
+    /CHAPTER_NARRATOR_REVIEW_PRECEDES_MONITORING/u,
+  );
+});
+
+test("chapter review fingerprint seals its monitoring evidence", () => {
+  const value = casting();
+  const review = createChapterNarratorReview(chapterInput("chapter_4", value));
+  assert.doesNotThrow(() => assertChapterNarratorReview(review, value));
+  assert.throws(
+    () => assertChapterNarratorReview({
+      ...review,
+      objectiveMonitoringFingerprint: digest("other-monitor"),
+    }, value),
+    /CHAPTER_NARRATOR_REVIEW_FINGERPRINT_INVALID/u,
+  );
+});
+
+test("title narrator requires a monitored approved review for every chapter", () => {
+  const value = casting();
+  const first = createChapterNarratorReview(chapterInput("chapter_1", value));
+  const second = createChapterNarratorReview(chapterInput("chapter_2", value));
   const approval = approveTitleNarrator({
     projectId: "book_001",
-    casting,
+    casting: value,
     expectedChapterIds: ["chapter_1", "chapter_2"],
     chapterReviews: [first, second],
-    approvedAt: "2026-08-10T06:50:00+10:00",
+    approvedAt: "2026-08-10T07:30:00+10:00",
   });
-  assertTitleNarratorApproval(approval, casting);
+  assertTitleNarratorApproval(approval, value);
   assert.equal(approval.titleNarratorApproved, true);
   assert.equal(approval.titleReleaseAuthority, false);
   assert.equal(approval.publicationAuthority, false);
@@ -204,10 +375,10 @@ test("title narrator requires an approved review for every chapter", () => {
   assert.throws(
     () => approveTitleNarrator({
       projectId: "book_001",
-      casting,
+      casting: value,
       expectedChapterIds: ["chapter_1", "chapter_2", "chapter_3"],
       chapterReviews: [first, second],
-      approvedAt: "2026-08-10T06:50:00+10:00",
+      approvedAt: "2026-08-10T07:30:00+10:00",
     }),
     /TITLE_NARRATOR_REVIEW_COUNT_MISMATCH/u,
   );
