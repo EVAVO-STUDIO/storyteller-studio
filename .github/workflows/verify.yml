@@ -62,6 +62,12 @@ jobs:
           set -o pipefail
           node scripts/check-narrator-mastering-chain.mjs 2>&1 | tee .verification/narrator-mastering-chain.log
 
+      - name: Verify narrator mastered review and sequence
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-narrator-mastered-review-sequence.mjs 2>&1 | tee .verification/narrator-mastered-review-sequence.log
+
       - name: Type-check repository
         shell: bash
         run: |
@@ -129,6 +135,7 @@ jobs:
               ".verification/narrator-production.log",
               ".verification/narrator-book-monitoring.log",
               ".verification/narrator-mastering-chain.log",
+              ".verification/narrator-mastered-review-sequence.log",
               ".verification/typecheck.log",
               ".verification/artifacts.log",
               ".verification/engine-tests.log",
@@ -172,7 +179,7 @@ jobs:
                 }
               }
               if (!diagnostic) {
-                const failedLog = logs.find((log) => /narrator-production|narrator-book-monitoring|narrator-mastering-chain|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
+                const failedLog = logs.find((log) => /narrator-production|narrator-book-monitoring|narrator-mastering-chain|narrator-mastered-review-sequence|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
                 if (failedLog) {
                   const fallback = failedLog.source
                     .split(/\r?\n/)
@@ -184,7 +191,7 @@ jobs:
               }
             }
             const description = state === "success"
-              ? "Narrator casting, monitoring, mastering, boundaries, tests and builds passed"
+              ? "Narrator casting, monitoring, mastering/review sequence, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
