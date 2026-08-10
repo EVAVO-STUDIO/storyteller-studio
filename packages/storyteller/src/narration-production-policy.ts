@@ -6,6 +6,10 @@ import {
   type SegmentedManuscript,
 } from "./index.js";
 import { AUDIO_STUDIO_PROVIDER_ID } from "./audio-studio-types.js";
+import {
+  assertPinnedProductionMaterial,
+  narratorProductionBinding,
+} from "./narrator-production-job.js";
 import type { ProviderExecutionMode } from "./provider-adapter.js";
 
 export const NARRATION_PRODUCTION_PLAN_SCHEMA_VERSION =
@@ -53,6 +57,9 @@ export interface NaturalNarrationMaterialView {
   immutableSourceHash: string;
   direction: PerformanceDirection;
   mode?: ProviderExecutionMode;
+  voiceProfileId?: string;
+  voiceRevision?: number;
+  voiceProfileHash?: string;
   naturalNarration?: NaturalNarrationProductionPlan;
 }
 
@@ -425,6 +432,26 @@ export function assertNaturalNarrationWorkerInput(
     }
     return;
   }
+
+  const narratorBinding = narratorProductionBinding(job);
+  if (narratorBinding || material.voiceProfileHash !== undefined) {
+    if (
+      typeof material.voiceProfileId !== "string"
+      || !Number.isSafeInteger(material.voiceRevision)
+      || (material.voiceRevision ?? 0) < 1
+    ) {
+      throw new Error("NARRATOR_PRODUCTION_VOICE_PIN_REQUIRED");
+    }
+    assertPinnedProductionMaterial(job, {
+      mode,
+      voiceProfileId: material.voiceProfileId,
+      voiceRevision: material.voiceRevision!,
+      ...(material.voiceProfileHash !== undefined
+        ? { voiceProfileHash: material.voiceProfileHash }
+        : {}),
+    });
+  }
+
   if (!material.naturalNarration) {
     throw new Error("NARRATION_PRODUCTION_PLAN_REQUIRED");
   }
