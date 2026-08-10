@@ -80,6 +80,7 @@
     "./worker-service": "./src/worker-service.ts",
     "./narration-production-policy": "./src/narration-production-policy.ts",
     "./narrator-voice-profile": "./src/narrator-voice-profile.ts",
-    "./narrator-production-job": "./src/narrator-production-job.ts"
+    "./narrator-production-job": "./src/narrator-production-job.ts",
+    "./narrator-production-queue": "./src/narrator-production-queue.ts"
   }
 }
