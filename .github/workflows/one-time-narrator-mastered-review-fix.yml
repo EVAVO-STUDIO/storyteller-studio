@@ -36,19 +36,12 @@ jobs:
 
           path = Path("packages/storyteller/src/narrator-mastered-review.ts")
           source = path.read_text(encoding="utf-8")
-          old = '''  const partial: Omit<NarratorMasteredReviewBinding, "fingerprint"> = {
-            ...binding,
-            reviewSession: nextSession,
-            acknowledgements: Object.freeze([...binding.acknowledgements, acknowledgement]),
-            revision: binding.revision + 1,
-            previousFingerprint: binding.fingerprint,
-            createdAt: binding.createdAt,
-            updatedAt: review.decidedAt,
-            fingerprint: undefined as never,
-          };
-          delete (partial as Partial<NarratorMasteredReviewBinding>).fingerprint;
-          '''
-          new = '''  const {
+          function_start = source.index("export function recordNarratorMasteredReview(")
+          start_marker = '  const partial: Omit<NarratorMasteredReviewBinding, "fingerprint"> = {\n    ...binding,\n'
+          end_marker = '  delete (partial as Partial<NarratorMasteredReviewBinding>).fingerprint;\n'
+          start = source.index(start_marker, function_start)
+          end = source.index(end_marker, start) + len(end_marker)
+          replacement = '''  const {
             fingerprint: _fingerprint,
             previousFingerprint: _previousFingerprint,
             ...base
@@ -63,9 +56,10 @@ jobs:
             updatedAt: review.decidedAt,
           };
           '''
-          if old not in source:
-              raise SystemExit("expected narrator mastered review block not found")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          updated = source[:start] + replacement + source[end:]
+          if updated == source:
+              raise SystemExit("narrator mastered review source was not changed")
+          path.write_text(updated, encoding="utf-8")
           PY
 
       - name: Validate narrator mastered review correction
