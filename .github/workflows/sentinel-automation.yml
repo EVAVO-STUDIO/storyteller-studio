@@ -69,12 +69,13 @@ jobs:
           set -o pipefail
           npm run verify:private-boundary 2>&1 | tee .verification/sentinel/private-boundary.log
 
-      - name: Audit narrator production and monitoring boundaries
+      - name: Audit narrator production, monitoring and mastering boundaries
         shell: bash
         run: |
           set -o pipefail
           node scripts/check-narrator-production-binding.mjs 2>&1 | tee .verification/sentinel/narrator-production.log
           node scripts/check-narrator-book-monitoring.mjs 2>&1 | tee .verification/sentinel/narrator-monitoring.log
+          node scripts/check-narrator-mastering-chain.mjs 2>&1 | tee .verification/sentinel/narrator-mastering.log
 
       - name: Audit TypeScript contracts
         shell: bash
@@ -131,7 +132,7 @@ jobs:
               state,
               context: "storyteller/sentinel",
               description: state === "success"
-                ? "Read-only architecture, privacy, narrator, type and artifact audits passed"
+                ? "Read-only architecture, privacy, narrator and artifact audits passed"
                 : "Read-only Sentinel repository audit failed",
               target_url: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
