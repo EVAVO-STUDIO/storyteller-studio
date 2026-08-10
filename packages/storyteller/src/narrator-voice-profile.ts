@@ -301,7 +301,7 @@ function assertReviewableObjectiveMonitoring(
     monitoring.observationFingerprint,
     monitoring.fingerprint,
   ]) requireHash(hash, "CHAPTER_NARRATOR_MONITOR_HASH_INVALID");
-  requireRatio(monitoring.continuityScore, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");
+  requireFinite(monitoring.continuityScore, 0, 100, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");
   requireRatio(monitoring.transcriptCoverage, "CHAPTER_NARRATOR_MONITOR_TRANSCRIPT_COVERAGE_INVALID");
   requireRatio(monitoring.insertionRatio, "CHAPTER_NARRATOR_MONITOR_INSERTION_RATIO_INVALID");
   requireRatio(monitoring.minimumSpeakerIdentitySimilarity, "CHAPTER_NARRATOR_MONITOR_IDENTITY_INVALID");
@@ -636,7 +636,7 @@ export function assertChapterNarratorReview(
   if (review.objectiveMonitoringContinuitySeverity !== "stable" && review.objectiveMonitoringContinuitySeverity !== "review") {
     throw new Error("CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED");
   }
-  requireRatio(review.objectiveMonitoringContinuityScore, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");
+  requireFinite(review.objectiveMonitoringContinuityScore, 0, 100, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");
   requireDate(review.objectiveMonitoringMeasuredAt, "CHAPTER_NARRATOR_MONITOR_DATE_INVALID");
   requireDate(review.reviewedAt, "CHAPTER_NARRATOR_REVIEW_DATE_INVALID");
   if (Date.parse(review.reviewedAt) < Date.parse(review.objectiveMonitoringMeasuredAt)) {
