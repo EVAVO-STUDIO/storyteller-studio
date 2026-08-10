@@ -87,6 +87,9 @@ requireTokens("docs/NARRATOR_MASTERED_REVIEW_SEQUENCE.md", [
   "Narrator-bound book sequence",
   "Public privacy boundary",
   "Complete-book authority remains separate",
+  "Validation and failure-order semantics",
+  "earliest specific integrity failure",
+  "No recurring workflow is permitted to rewrite production source",
   "NarratorApprovedMasteredChapterReceipt",
   "createNarratorBookChapterSequence",
 ]);
@@ -121,6 +124,16 @@ for (const path of [
   }
 }
 
+for (const path of [
+  ".github/workflows/one-time-narrator-mastered-review-fix.yml",
+  ".github/workflows/narrator-mastered-review-fix.yml",
+  ".github/workflows/narrator-review-auto-fix.yml",
+]) {
+  if (existsSync(fromRoot(path))) {
+    problems.push(`temporary or recurring narrator review mutation workflow must not remain: ${path}`);
+  }
+}
+
 if (problems.length > 0) {
   console.error("Storyteller narrator mastered-review sequence check failed:\n");
   for (const problem of problems) console.error(`- ${problem}`);
@@ -134,3 +147,4 @@ console.log("- final mastered listening approval remains independent and bound t
 console.log("- book sequencing requires one exact narrator mastered approval for every chapter");
 console.log("- public views redact voice, casting, reviewer and private evidence identities");
 console.log("- per-chapter approval cannot grant complete-book, title-release or publication authority");
+console.log("- temporary correction workflows are absent and recurring source mutation is prohibited");
