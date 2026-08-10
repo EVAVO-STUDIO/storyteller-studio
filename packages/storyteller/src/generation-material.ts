@@ -49,9 +49,7 @@ export interface GenerationMaterialPublicView {
   candidateCount: number;
   textHash: string;
   characterCount: number;
-  voiceProfileId: string;
   voiceRevision: number;
-  voiceProfileHash?: string;
   directionFingerprint: string;
   pronunciationCount: number;
   mode: ProviderExecutionMode;
@@ -504,9 +502,7 @@ export function generationMaterialPublicView(
     candidateCount: record.candidateCount,
     textHash: record.textHash,
     characterCount: material.text.length,
-    voiceProfileId: material.voiceProfileId,
     voiceRevision: material.voiceRevision,
-    ...(material.voiceProfileHash !== undefined ? { voiceProfileHash: material.voiceProfileHash } : {}),
     directionFingerprint: stableHash(material.direction),
     pronunciationCount: material.pronunciations?.length ?? 0,
     mode: material.mode ?? "production",
@@ -568,9 +564,6 @@ export class FileGenerationMaterialStore {
           candidateCount: record.candidateCount,
           textHash: record.textHash,
           materialFingerprint: record.fingerprint,
-          ...(record.material.voiceProfileHash
-            ? { voiceProfileHash: record.material.voiceProfileHash }
-            : {}),
         },
         occurredAt: now,
       });
