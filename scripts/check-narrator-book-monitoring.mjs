@@ -23,6 +23,8 @@ function requireTokens(path, tokens) {
 for (const path of [
   "packages/storyteller/src/narrator-book-monitor.ts",
   "packages/storyteller/src/narrator-book-monitor.test.ts",
+  "packages/storyteller/src/narrator-voice-profile.ts",
+  "packages/storyteller/src/narrator-voice-profile.test.ts",
   "packages/storyteller/package.json",
   "docs/NARRATOR_BOOK_MONITORING.md",
 ]) requireFile(path);
@@ -66,9 +68,35 @@ requireTokens("packages/storyteller/src/narrator-book-monitor.test.ts", [
   "adjacent chapter acoustic drift is measured across the complete ordered book",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-voice-profile.ts", [
+  'storyteller-chapter-narrator-review-v2',
+  "objectiveMonitoring: NarratorChapterMonitoringResult",
+  "objectiveFindingAcknowledgements",
+  "assertReviewableObjectiveMonitoring",
+  "objectiveMonitoringFingerprint",
+  "objectiveMonitoringPolicyFingerprint",
+  "objectiveMonitoringReferenceFingerprint",
+  "objectiveMonitoringObservationFingerprint",
+  "objectiveMonitoringMeasuredAt",
+  "CHAPTER_NARRATOR_MONITOR_RENDER_MISMATCH",
+  "CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED",
+  "CHAPTER_NARRATOR_MONITOR_FINDINGS_UNACKNOWLEDGED",
+  "CHAPTER_NARRATOR_REVIEW_PRECEDES_MONITORING",
+]);
+
+requireTokens("packages/storyteller/src/narrator-voice-profile.test.ts", [
+  "human review is bound to the exact monitored project, chapter and render",
+  "regeneration-required objective monitoring cannot be human-approved",
+  "objective warnings require exact human acknowledgement",
+  "monitor evidence cannot be altered or reviewed before it existed",
+  "chapter review fingerprint seals its monitoring evidence",
+  "title narrator requires a monitored approved review for every chapter",
+]);
+
 requireTokens("docs/NARRATOR_BOOK_MONITORING.md", [
   "Objective chapter evidence",
   "Fail-closed chapter gates",
+  "Exact human-review binding",
   "Whole-book monitoring",
   "Human authority boundary",
   "eligible-for-human-review",
@@ -76,6 +104,9 @@ requireTokens("docs/NARRATOR_BOOK_MONITORING.md", [
   "repeated cadence templates",
   "sentence-final contours",
   "adjacent chapter acoustic signatures",
+  "monitoring fingerprint",
+  "requires-regeneration",
+  "review timestamp",
 ]);
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
@@ -85,18 +116,29 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   }
 }
 
-const source = existsSync(fromRoot("packages/storyteller/src/narrator-book-monitor.ts"))
+const monitorSource = existsSync(fromRoot("packages/storyteller/src/narrator-book-monitor.ts"))
   ? read("packages/storyteller/src/narrator-book-monitor.ts")
   : "";
-for (const forbidden of [
-  "humanListeningApproval: true",
-  "titleNarratorApproval: true",
-  "titleReleaseAuthority: true",
-  "publicationAuthority: true",
+const reviewSource = existsSync(fromRoot("packages/storyteller/src/narrator-voice-profile.ts"))
+  ? read("packages/storyteller/src/narrator-voice-profile.ts")
+  : "";
+for (const [label, source] of [
+  ["narrator monitor", monitorSource],
+  ["chapter review", reviewSource],
 ]) {
-  if (source.includes(forbidden)) {
-    problems.push(`narrator monitor grants forbidden authority: ${forbidden}`);
+  for (const forbidden of [
+    "humanListeningApproval: true",
+    "titleReleaseAuthority: true",
+    "publicationAuthority: true",
+  ]) {
+    if (source.includes(forbidden)) {
+      problems.push(`${label} grants forbidden authority: ${forbidden}`);
+    }
   }
+}
+
+if (reviewSource.includes('storyteller-chapter-narrator-review-v1')) {
+  problems.push("chapter narrator review still exposes the unmonitored v1 schema");
 }
 
 if (problems.length > 0) {
@@ -109,4 +151,6 @@ console.log("storyteller_narrator_book_monitoring_check_passed");
 console.log("- objective chapter evidence is bound to the exact approved narrator casting and voice revision");
 console.log("- transcript, identity, acoustic, monotony, noise, room-tone and seam anomalies fail or flag explicitly");
 console.log("- adjacent chapter acoustics are compared across the complete expected book");
+console.log("- human chapter review is sealed to the same monitored source, render, policy, reference and observation");
+console.log("- regeneration-required evidence cannot be approved and warning findings require exact acknowledgement");
 console.log("- monitoring can require regeneration or human attention but never human-approve or publish narration");
