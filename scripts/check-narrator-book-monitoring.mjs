@@ -122,17 +122,30 @@ const monitorSource = existsSync(fromRoot("packages/storyteller/src/narrator-boo
 const reviewSource = existsSync(fromRoot("packages/storyteller/src/narrator-voice-profile.ts"))
   ? read("packages/storyteller/src/narrator-voice-profile.ts")
   : "";
-for (const [label, source] of [
-  ["narrator monitor", monitorSource],
-  ["chapter review", reviewSource],
-]) {
-  for (const forbidden of [
-    "humanListeningApproval: true",
-    "titleReleaseAuthority: true",
-    "publicationAuthority: true",
-  ]) {
-    if (source.includes(forbidden)) {
-      problems.push(`${label} grants forbidden authority: ${forbidden}`);
+const authorityChecks = [
+  {
+    label: "narrator monitor",
+    source: monitorSource,
+    forbidden: [
+      "humanListeningApproval: true",
+      "titleNarratorApproval: true",
+      "titleReleaseAuthority: true",
+      "publicationAuthority: true",
+    ],
+  },
+  {
+    label: "chapter review",
+    source: reviewSource,
+    forbidden: [
+      "titleReleaseAuthority: true",
+      "publicationAuthority: true",
+    ],
+  },
+];
+for (const check of authorityChecks) {
+  for (const forbidden of check.forbidden) {
+    if (check.source.includes(forbidden)) {
+      problems.push(`${check.label} grants forbidden authority: ${forbidden}`);
     }
   }
 }
