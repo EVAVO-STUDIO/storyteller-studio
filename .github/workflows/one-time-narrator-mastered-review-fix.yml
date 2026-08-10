@@ -28,14 +28,14 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Apply exact narrator mastered review correction
+      - name: Apply exact narrator mastered review corrections
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("packages/storyteller/src/narrator-mastered-review.ts")
-          source = path.read_text(encoding="utf-8")
+          source_path = Path("packages/storyteller/src/narrator-mastered-review.ts")
+          source = source_path.read_text(encoding="utf-8")
           function_start = source.index("export function recordNarratorMasteredReview(")
           start_marker = '  const partial: Omit<NarratorMasteredReviewBinding, "fingerprint"> = {\n    ...binding,\n'
           end_marker = '  delete (partial as Partial<NarratorMasteredReviewBinding>).fingerprint;\n'
@@ -56,13 +56,18 @@ jobs:
             updatedAt: review.decidedAt,
           };
           '''
-          updated = source[:start] + replacement + source[end:]
-          if updated == source:
-              raise SystemExit("narrator mastered review source was not changed")
-          path.write_text(updated, encoding="utf-8")
+          source_path.write_text(source[:start] + replacement + source[end:], encoding="utf-8")
+
+          test_path = Path("packages/storyteller/src/narrator-mastered-review.test.ts")
+          tests = test_path.read_text(encoding="utf-8")
+          old = '/NARRATOR_MASTERED_REVIEW_APPROVAL_FINGERPRINT_INVALID|NARRATOR_BOOK_SEQUENCE_CHAPTER_BINDING_MISMATCH/u,'
+          new = '/NARRATOR_MASTERED_REVIEW_APPROVED_ARTIFACT_MISMATCH|NARRATOR_MASTERED_REVIEW_APPROVAL_FINGERPRINT_INVALID|NARRATOR_BOOK_SEQUENCE_CHAPTER_BINDING_MISMATCH/u,'
+          if old not in tests:
+              raise SystemExit("expected narrator sequence substitution assertion not found")
+          test_path.write_text(tests.replace(old, new, 1), encoding="utf-8")
           PY
 
-      - name: Validate narrator mastered review correction
+      - name: Validate narrator mastered review corrections
         shell: bash
         run: |
           npm install --no-audit --no-fund
@@ -76,7 +81,7 @@ jobs:
           rm .github/workflows/one-time-narrator-mastered-review-fix.yml
           git config user.name "EVAVO Studio Automation"
           git config user.email "evavo.studio@gmail.com"
-          git add packages/storyteller/src/narrator-mastered-review.ts .github/workflows/one-time-narrator-mastered-review-fix.yml
+          git add packages/storyteller/src/narrator-mastered-review.ts packages/storyteller/src/narrator-mastered-review.test.ts .github/workflows/one-time-narrator-mastered-review-fix.yml
           git diff --cached --check
-          git commit -m "fix: correct narrator mastered review revision update"
+          git commit -m "fix: correct narrator mastered review validation"
           git push origin HEAD:main
