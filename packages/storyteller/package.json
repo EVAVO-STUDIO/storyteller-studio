@@ -82,6 +82,7 @@
     "./narrator-voice-profile": "./src/narrator-voice-profile.ts",
     "./narrator-production-job": "./src/narrator-production-job.ts",
     "./narrator-production-queue": "./src/narrator-production-queue.ts",
-    "./narrator-production-worker": "./src/narrator-production-worker.ts"
+    "./narrator-production-worker": "./src/narrator-production-worker.ts",
+    "./narrator-book-monitor": "./src/narrator-book-monitor.ts"
   }
 }
