@@ -79,6 +79,8 @@ requireTokens("packages/storyteller/src/narrator-voice-profile.ts", [
   "objectiveMonitoringObservationFingerprint",
   "objectiveMonitoringMeasuredAt",
   'objectiveMonitoringContinuitySeverity: input.objectiveMonitoring.continuitySeverity as "stable" | "review"',
+  'requireFinite(monitoring.continuityScore, 0, 100, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID")',
+  'requireFinite(review.objectiveMonitoringContinuityScore, 0, 100, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID")',
   "CHAPTER_NARRATOR_MONITOR_RENDER_MISMATCH",
   "CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED",
   "CHAPTER_NARRATOR_MONITOR_FINDINGS_UNACKNOWLEDGED",
