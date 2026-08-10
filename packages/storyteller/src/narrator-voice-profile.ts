@@ -569,7 +569,7 @@ export function createChapterNarratorReview(input: ChapterNarratorReviewInput): 
     objectiveMonitoringObservationFingerprint: input.objectiveMonitoring.observationFingerprint,
     objectiveMonitoringStatus: monitoring.status,
     objectiveMonitoringContinuityScore: input.objectiveMonitoring.continuityScore,
-    objectiveMonitoringContinuitySeverity: input.objectiveMonitoring.continuitySeverity,
+    objectiveMonitoringContinuitySeverity: input.objectiveMonitoring.continuitySeverity as "stable" | "review",
     objectiveMonitoringErrorCount: 0,
     objectiveMonitoringWarningCount: input.objectiveMonitoring.warningCount,
     objectiveMonitoringFindingCodes: monitoring.findingCodes,
