@@ -85,6 +85,7 @@
     "./narrator-production-job": "./src/narrator-production-job.ts",
     "./narrator-production-queue": "./src/narrator-production-queue.ts",
     "./narrator-production-worker": "./src/narrator-production-worker.ts",
+    "./narrator-chapter-admission": "./src/narrator-chapter-admission.ts",
     "./narrator-book-monitor": "./src/narrator-book-monitor.ts",
     "./narrator-mastering-chain": "./src/narrator-mastering-chain.ts",
     "./narrator-mastered-review": "./src/narrator-mastered-review.ts",
