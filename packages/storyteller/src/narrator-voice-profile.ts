@@ -1,16 +1,24 @@
 import { createHash } from "node:crypto";
 import { stableHash } from "./index.js";
+import type {
+  NarratorChapterMonitoringResult,
+  NarratorChapterMonitoringStatus,
+} from "./narrator-book-monitor.js";
 
 export const AUDIO_STUDIO_NARRATOR_PROFILE_SCHEMA =
   "evavo_storyteller_narrator_voice_profile_v1" as const;
 export const STORYTELLER_NARRATOR_CASTING_SCHEMA =
   "storyteller-narrator-casting-v1" as const;
 export const STORYTELLER_CHAPTER_NARRATOR_REVIEW_SCHEMA =
-  "storyteller-chapter-narrator-review-v1" as const;
+  "storyteller-chapter-narrator-review-v2" as const;
 export const STORYTELLER_TITLE_NARRATOR_APPROVAL_SCHEMA =
   "storyteller-title-narrator-approval-v1" as const;
 
 export type NarratorProfileMode = "zero-shot" | "adapted";
+export type ReviewableNarratorMonitoringStatus = Exclude<
+  NarratorChapterMonitoringStatus,
+  "requires-regeneration"
+>;
 
 export interface AudioStudioNarratorVoiceProfile {
   schema: typeof AUDIO_STUDIO_NARRATOR_PROFILE_SCHEMA;
@@ -91,6 +99,8 @@ export interface ChapterNarratorReviewInput {
   chapterId: string;
   casting: NarratorCastingApproval;
   renderFingerprint: string;
+  objectiveMonitoring: NarratorChapterMonitoringResult;
+  objectiveFindingAcknowledgements: readonly string[];
   expectedSegmentCount: number;
   renderedSegmentCount: number;
   transcriptErrorCount: number;
@@ -113,6 +123,19 @@ export interface ChapterNarratorReview {
   castingFingerprint: string;
   voice: PinnedNarratorVoice;
   renderFingerprint: string;
+  sourceFingerprint: string;
+  objectiveMonitoringFingerprint: string;
+  objectiveMonitoringPolicyFingerprint: string;
+  objectiveMonitoringReferenceFingerprint: string;
+  objectiveMonitoringObservationFingerprint: string;
+  objectiveMonitoringStatus: ReviewableNarratorMonitoringStatus;
+  objectiveMonitoringContinuityScore: number;
+  objectiveMonitoringContinuitySeverity: "stable" | "review";
+  objectiveMonitoringErrorCount: 0;
+  objectiveMonitoringWarningCount: number;
+  objectiveMonitoringFindingCodes: readonly string[];
+  objectiveFindingAcknowledgements: readonly string[];
+  objectiveMonitoringMeasuredAt: string;
   expectedSegmentCount: number;
   renderedSegmentCount: number;
   transcriptErrorCount: number;
@@ -149,10 +172,12 @@ export interface TitleNarratorApproval {
 
 const HASH = /^[a-f0-9]{64}$/u;
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const FINDING_CODE = /^[A-Z][A-Z0-9._:-]{2,127}$/u;
 const CONTROL = /[\u0000-\u001f\u007f]/u;
 const FORBIDDEN_ALIAS = /^(?:latest|current|default|auto|automatic|newest|production)$/iu;
 const MINIMUM_REVIEWERS = 3;
 const MINIMUM_CHAPTER_SCORE = 4;
+const CHAPTER_MONITOR_SCHEMA = "storyteller-narrator-chapter-monitor-v1";
 
 function canonicalAudioStudioValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalAudioStudioValue);
@@ -202,9 +227,17 @@ function requireInteger(value: number, minimum: number, maximum: number, code: s
   return value;
 }
 
-function requireScore(value: number, code: string): number {
-  if (!Number.isFinite(value) || value < 1 || value > 5) throw new Error(code);
+function requireFinite(value: number, minimum: number, maximum: number, code: string): number {
+  if (!Number.isFinite(value) || value < minimum || value > maximum) throw new Error(code);
   return value;
+}
+
+function requireRatio(value: number, code: string): number {
+  return requireFinite(value, 0, 1, code);
+}
+
+function requireScore(value: number, code: string): number {
+  return requireFinite(value, 1, 5, code);
 }
 
 function requirePinnedVoice(value: PinnedNarratorVoice): PinnedNarratorVoice {
@@ -213,6 +246,20 @@ function requirePinnedVoice(value: PinnedNarratorVoice): PinnedNarratorVoice {
     revision: requireInteger(value.revision, 1, 999_999, "NARRATOR_PROFILE_REVISION_INVALID"),
     profileHash: requireHash(value.profileHash, "NARRATOR_PROFILE_HASH_INVALID"),
   };
+}
+
+function requireFindingCodes(values: readonly string[], code: string): readonly string[] {
+  if (!Array.isArray(values)) throw new Error(code);
+  const normalised = values.map((value) => {
+    if (typeof value !== "string" || !FINDING_CODE.test(value)) throw new Error(code);
+    return value;
+  });
+  if (new Set(normalised).size !== normalised.length) throw new Error(code);
+  return Object.freeze([...normalised].sort((left, right) => left.localeCompare(right, "en-AU")));
+}
+
+function equalStringLists(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function castingBase(value: Omit<NarratorCastingApproval, "fingerprint">): Readonly<Record<string, unknown>> {
@@ -225,6 +272,83 @@ function chapterReviewBase(value: Omit<ChapterNarratorReview, "fingerprint">): R
 
 function titleApprovalBase(value: Omit<TitleNarratorApproval, "fingerprint">): Readonly<Record<string, unknown>> {
   return value;
+}
+
+function assertReviewableObjectiveMonitoring(
+  monitoring: NarratorChapterMonitoringResult,
+  casting: NarratorCastingApproval,
+  expected: Readonly<{
+    projectId: string;
+    chapterId: string;
+    renderFingerprint: string;
+  }>,
+): Readonly<{
+  findingCodes: readonly string[];
+  status: ReviewableNarratorMonitoringStatus;
+}> {
+  if (monitoring.schemaVersion !== CHAPTER_MONITOR_SCHEMA) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_SCHEMA_UNSUPPORTED");
+  }
+  requireIdentifier(monitoring.projectId, "CHAPTER_NARRATOR_MONITOR_PROJECT_INVALID");
+  requireIdentifier(monitoring.chapterId, "CHAPTER_NARRATOR_MONITOR_CHAPTER_INVALID");
+  requireHash(monitoring.castingFingerprint, "CHAPTER_NARRATOR_MONITOR_CASTING_HASH_INVALID");
+  assertExactNarratorVoicePin(casting.voice, monitoring.voice);
+  for (const hash of [
+    monitoring.renderFingerprint,
+    monitoring.sourceFingerprint,
+    monitoring.policyFingerprint,
+    monitoring.referenceFingerprint,
+    monitoring.observationFingerprint,
+    monitoring.fingerprint,
+  ]) requireHash(hash, "CHAPTER_NARRATOR_MONITOR_HASH_INVALID");
+  requireRatio(monitoring.continuityScore, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");
+  requireRatio(monitoring.transcriptCoverage, "CHAPTER_NARRATOR_MONITOR_TRANSCRIPT_COVERAGE_INVALID");
+  requireRatio(monitoring.insertionRatio, "CHAPTER_NARRATOR_MONITOR_INSERTION_RATIO_INVALID");
+  requireRatio(monitoring.minimumSpeakerIdentitySimilarity, "CHAPTER_NARRATOR_MONITOR_IDENTITY_INVALID");
+  requireRatio(monitoring.cadenceTemplateSimilarity, "CHAPTER_NARRATOR_MONITOR_CADENCE_INVALID");
+  requireRatio(monitoring.sentenceFinalContourRepetitionRatio, "CHAPTER_NARRATOR_MONITOR_CONTOUR_INVALID");
+  requireFinite(monitoring.chapterDurationSeconds, 1, 24 * 60 * 60, "CHAPTER_NARRATOR_MONITOR_DURATION_INVALID");
+  const warningCount = requireInteger(monitoring.warningCount, 0, 1_000_000, "CHAPTER_NARRATOR_MONITOR_WARNING_COUNT_INVALID");
+  const errorCount = requireInteger(monitoring.errorCount, 0, 1_000_000, "CHAPTER_NARRATOR_MONITOR_ERROR_COUNT_INVALID");
+  const findingCodes = requireFindingCodes(monitoring.findingCodes, "CHAPTER_NARRATOR_MONITOR_FINDING_CODES_INVALID");
+  requireDate(monitoring.measuredAt, "CHAPTER_NARRATOR_MONITOR_DATE_INVALID");
+  if (
+    monitoring.humanListeningApproval !== false
+    || monitoring.titleReleaseAuthority !== false
+    || monitoring.publicationAuthority !== false
+  ) throw new Error("CHAPTER_NARRATOR_MONITOR_AUTHORITY_INVALID");
+  if (
+    monitoring.continuitySeverity !== "stable"
+    && monitoring.continuitySeverity !== "review"
+    && monitoring.continuitySeverity !== "reject"
+  ) throw new Error("CHAPTER_NARRATOR_MONITOR_CONTINUITY_SEVERITY_INVALID");
+  if (
+    monitoring.status !== "eligible-for-human-review"
+    && monitoring.status !== "requires-human-attention"
+    && monitoring.status !== "requires-regeneration"
+  ) throw new Error("CHAPTER_NARRATOR_MONITOR_STATUS_INVALID");
+  const { fingerprint, ...partial } = monitoring;
+  if (fingerprint !== stableHash(partial)) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_FINGERPRINT_INVALID");
+  }
+  if (monitoring.projectId !== expected.projectId) throw new Error("CHAPTER_NARRATOR_MONITOR_PROJECT_MISMATCH");
+  if (monitoring.chapterId !== expected.chapterId) throw new Error("CHAPTER_NARRATOR_MONITOR_CHAPTER_MISMATCH");
+  if (monitoring.castingFingerprint !== casting.fingerprint) throw new Error("CHAPTER_NARRATOR_MONITOR_CASTING_MISMATCH");
+  if (monitoring.renderFingerprint !== expected.renderFingerprint) throw new Error("CHAPTER_NARRATOR_MONITOR_RENDER_MISMATCH");
+  if (errorCount > 0 || monitoring.status === "requires-regeneration" || monitoring.continuitySeverity === "reject") {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED");
+  }
+  const expectedStatus: ReviewableNarratorMonitoringStatus = warningCount > 0
+    ? "requires-human-attention"
+    : "eligible-for-human-review";
+  if (monitoring.status !== expectedStatus) throw new Error("CHAPTER_NARRATOR_MONITOR_STATUS_INCONSISTENT");
+  if ((warningCount === 0) !== (findingCodes.length === 0)) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_FINDINGS_INCONSISTENT");
+  }
+  if (monitoring.continuitySeverity === "review" && warningCount === 0) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_CONTINUITY_INCONSISTENT");
+  }
+  return Object.freeze({ findingCodes, status: expectedStatus });
 }
 
 export function assertAudioStudioNarratorVoiceProfile(
@@ -389,6 +513,18 @@ export function createChapterNarratorReview(input: ChapterNarratorReviewInput): 
   if (projectId !== input.casting.projectId) throw new Error("CHAPTER_NARRATOR_CASTING_PROJECT_MISMATCH");
   const chapterId = requireIdentifier(input.chapterId, "CHAPTER_NARRATOR_CHAPTER_INVALID");
   const renderFingerprint = requireHash(input.renderFingerprint, "CHAPTER_NARRATOR_RENDER_HASH_INVALID");
+  const monitoring = assertReviewableObjectiveMonitoring(input.objectiveMonitoring, input.casting, {
+    projectId,
+    chapterId,
+    renderFingerprint,
+  });
+  const acknowledgements = requireFindingCodes(
+    input.objectiveFindingAcknowledgements,
+    "CHAPTER_NARRATOR_MONITOR_ACKNOWLEDGEMENTS_INVALID",
+  );
+  if (!equalStringLists(monitoring.findingCodes, acknowledgements)) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_FINDINGS_UNACKNOWLEDGED");
+  }
   const expectedSegmentCount = requireInteger(input.expectedSegmentCount, 1, 100_000, "CHAPTER_NARRATOR_EXPECTED_SEGMENTS_INVALID");
   const renderedSegmentCount = requireInteger(input.renderedSegmentCount, 0, 100_000, "CHAPTER_NARRATOR_RENDERED_SEGMENTS_INVALID");
   if (renderedSegmentCount !== expectedSegmentCount) throw new Error("CHAPTER_NARRATOR_SEGMENT_COUNT_MISMATCH");
@@ -416,6 +552,9 @@ export function createChapterNarratorReview(input: ChapterNarratorReviewInput): 
   const reviewers = [...new Set(input.reviewerIds.map((value) => requireText(value, "CHAPTER_NARRATOR_REVIEWER_INVALID")))].sort();
   if (reviewers.length < MINIMUM_REVIEWERS) throw new Error("CHAPTER_NARRATOR_REVIEWER_COUNT_INSUFFICIENT");
   const reviewedAt = requireDate(input.reviewedAt, "CHAPTER_NARRATOR_REVIEW_DATE_INVALID");
+  if (Date.parse(reviewedAt) < Date.parse(input.objectiveMonitoring.measuredAt)) {
+    throw new Error("CHAPTER_NARRATOR_REVIEW_PRECEDES_MONITORING");
+  }
   const partial: Omit<ChapterNarratorReview, "fingerprint"> = {
     schemaVersion: STORYTELLER_CHAPTER_NARRATOR_REVIEW_SCHEMA,
     projectId,
@@ -423,6 +562,19 @@ export function createChapterNarratorReview(input: ChapterNarratorReviewInput): 
     castingFingerprint: input.casting.fingerprint,
     voice: input.casting.voice,
     renderFingerprint,
+    sourceFingerprint: input.objectiveMonitoring.sourceFingerprint,
+    objectiveMonitoringFingerprint: input.objectiveMonitoring.fingerprint,
+    objectiveMonitoringPolicyFingerprint: input.objectiveMonitoring.policyFingerprint,
+    objectiveMonitoringReferenceFingerprint: input.objectiveMonitoring.referenceFingerprint,
+    objectiveMonitoringObservationFingerprint: input.objectiveMonitoring.observationFingerprint,
+    objectiveMonitoringStatus: monitoring.status,
+    objectiveMonitoringContinuityScore: input.objectiveMonitoring.continuityScore,
+    objectiveMonitoringContinuitySeverity: input.objectiveMonitoring.continuitySeverity,
+    objectiveMonitoringErrorCount: 0,
+    objectiveMonitoringWarningCount: input.objectiveMonitoring.warningCount,
+    objectiveMonitoringFindingCodes: monitoring.findingCodes,
+    objectiveFindingAcknowledgements: acknowledgements,
+    objectiveMonitoringMeasuredAt: input.objectiveMonitoring.measuredAt,
     expectedSegmentCount,
     renderedSegmentCount,
     transcriptErrorCount: 0,
@@ -458,7 +610,38 @@ export function assertChapterNarratorReview(
     throw new Error("CHAPTER_NARRATOR_CASTING_MISMATCH");
   }
   assertExactNarratorVoicePin(casting.voice, review.voice);
-  requireHash(review.renderFingerprint, "CHAPTER_NARRATOR_RENDER_HASH_INVALID");
+  for (const hash of [
+    review.renderFingerprint,
+    review.sourceFingerprint,
+    review.objectiveMonitoringFingerprint,
+    review.objectiveMonitoringPolicyFingerprint,
+    review.objectiveMonitoringReferenceFingerprint,
+    review.objectiveMonitoringObservationFingerprint,
+    review.reviewerPanelFingerprint,
+  ]) requireHash(hash, "CHAPTER_NARRATOR_REVIEW_HASH_INVALID");
+  const findingCodes = requireFindingCodes(review.objectiveMonitoringFindingCodes, "CHAPTER_NARRATOR_MONITOR_FINDING_CODES_INVALID");
+  const acknowledgements = requireFindingCodes(review.objectiveFindingAcknowledgements, "CHAPTER_NARRATOR_MONITOR_ACKNOWLEDGEMENTS_INVALID");
+  if (!equalStringLists(findingCodes, acknowledgements)) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_FINDINGS_UNACKNOWLEDGED");
+  }
+  const objectiveWarnings = requireInteger(review.objectiveMonitoringWarningCount, 0, 1_000_000, "CHAPTER_NARRATOR_MONITOR_WARNING_COUNT_INVALID");
+  if (review.objectiveMonitoringErrorCount !== 0) throw new Error("CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED");
+  const expectedStatus: ReviewableNarratorMonitoringStatus = objectiveWarnings > 0
+    ? "requires-human-attention"
+    : "eligible-for-human-review";
+  if (review.objectiveMonitoringStatus !== expectedStatus) throw new Error("CHAPTER_NARRATOR_MONITOR_STATUS_INCONSISTENT");
+  if ((objectiveWarnings === 0) !== (findingCodes.length === 0)) {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_FINDINGS_INCONSISTENT");
+  }
+  if (review.objectiveMonitoringContinuitySeverity !== "stable" && review.objectiveMonitoringContinuitySeverity !== "review") {
+    throw new Error("CHAPTER_NARRATOR_MONITOR_REGENERATION_REQUIRED");
+  }
+  requireRatio(review.objectiveMonitoringContinuityScore, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");
+  requireDate(review.objectiveMonitoringMeasuredAt, "CHAPTER_NARRATOR_MONITOR_DATE_INVALID");
+  requireDate(review.reviewedAt, "CHAPTER_NARRATOR_REVIEW_DATE_INVALID");
+  if (Date.parse(review.reviewedAt) < Date.parse(review.objectiveMonitoringMeasuredAt)) {
+    throw new Error("CHAPTER_NARRATOR_REVIEW_PRECEDES_MONITORING");
+  }
   if (
     review.expectedSegmentCount !== review.renderedSegmentCount
     || review.transcriptErrorCount !== 0
@@ -474,8 +657,6 @@ export function assertChapterNarratorReview(
   if (Math.min(review.performanceScore, review.continuityScore, review.listeningEaseScore, review.identityStabilityScore) < MINIMUM_CHAPTER_SCORE) {
     throw new Error("CHAPTER_NARRATOR_SCORE_BELOW_THRESHOLD");
   }
-  requireHash(review.reviewerPanelFingerprint, "CHAPTER_NARRATOR_REVIEWER_PANEL_INVALID");
-  requireDate(review.reviewedAt, "CHAPTER_NARRATOR_REVIEW_DATE_INVALID");
   const { fingerprint, ...partial } = review;
   if (!HASH.test(fingerprint) || fingerprint !== stableHash(chapterReviewBase(partial))) {
     throw new Error("CHAPTER_NARRATOR_REVIEW_FINGERPRINT_INVALID");
