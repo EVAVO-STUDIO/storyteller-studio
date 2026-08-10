@@ -361,7 +361,7 @@ test("an admitted review from another casting cannot authorize mastering", () =>
       review: substituted.review,
       authorization: selected.technicalAuthorization,
     }),
-    /ADMITTED_CHAPTER_REVIEW_|NARRATOR_PRODUCTION_PROFILE_ADMISSION_MISMATCH|NARRATOR_PRODUCTION_ADMITTED_CASTING_MISMATCH/u,
+    /ADMITTED_CHAPTER_(?:REVIEW|MONITOR)_|NARRATOR_PRODUCTION_PROFILE_ADMISSION_MISMATCH|NARRATOR_PRODUCTION_ADMITTED_CASTING_MISMATCH/u,
   );
 });
 
