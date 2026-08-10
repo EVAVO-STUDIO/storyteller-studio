@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/main.ts",
+    "narrator-production": "tsx src/narrator-production.ts",
     "build": "tsc -p ../../tsconfig.json --noEmit"
   },
   "dependencies": {
