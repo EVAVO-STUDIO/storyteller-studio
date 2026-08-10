@@ -77,9 +77,9 @@ storyteller-admitted-narrator-approved-mastered-chapter-v1
 
 The admission-bound plan wraps the existing approved mastering plan and verifies that its low-level authorization is the exact authorization nested in the admitted record.
 
-The admission-bound render receipt carries the exact profile admission, admitted casting, production set, admitted review and admitted monitor fingerprints beside the existing shell-free mastering render receipt and output-byte identity.
+The admission-bound render receipt carries the exact profile admission, admitted casting, production set, admitted review and admitted monitor fingerprints beside the existing shell-free mastering render receipt and output-byte identity. Production rendering uses `renderAdmittedNarratorApprovedMasteringPlan`.
 
-The admission-bound mastered chapter receipt carries the same lineage beside the existing mastered artifact chain, post-master engineering evidence, final mastered bytes and human-review eligibility.
+The admission-bound mastered chapter receipt carries the same lineage beside the existing mastered artifact chain, post-master engineering evidence, final mastered bytes and human-review eligibility. Production ingestion uses `ingestAdmittedNarratorApprovedMasteredChapter`.
 
 A changed profile admission, job set, review, monitoring result, plan, render receipt, mastered artifact or outer fingerprint fails closed.
 
