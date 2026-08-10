@@ -49,13 +49,13 @@ export function narratorProductionBinding(
     "NARRATOR_PRODUCTION_CASTING_FINGERPRINT_INVALID",
   );
   if (!candidate.narratorVoice) throw new Error("NARRATOR_PRODUCTION_VOICE_REQUIRED");
-  const voice = {
+  const voice = Object.freeze({
     profileId: candidate.narratorVoice.profileId,
     revision: candidate.narratorVoice.revision,
     profileHash: candidate.narratorVoice.profileHash,
-  };
+  });
   assertExactNarratorVoicePin(voice, voice);
-  return Object.freeze({ castingFingerprint, voice: Object.freeze(voice) });
+  return Object.freeze({ castingFingerprint, voice });
 }
 
 export function assertNarratorProductionJob(
@@ -72,19 +72,7 @@ export function assertNarratorProductionJob(
     throw new Error("NARRATOR_PRODUCTION_CASTING_MISMATCH");
   }
   assertExactNarratorVoicePin(casting.voice, binding.voice);
-  const expectedCacheKey = stableHash({
-    baseCacheKey: stableHash({
-      projectFingerprint: (job as NarratorProductionJob & { baseProjectFingerprint?: string }).baseProjectFingerprint ?? null,
-      segmentId: job.segmentId,
-      candidateCount: job.candidateCount,
-    }),
-    castingFingerprint: casting.fingerprint,
-    voice: casting.voice,
-  });
-  if (!HASH.test(job.cacheKey)) throw new Error("NARRATOR_PRODUCTION_CACHE_KEY_INVALID");
-  // The exact cache key is verified at creation time by createNarratorProductionJobs.
-  // Runtime callers re-check casting + voice identity because the base manifest is not retained in a job.
-  void expectedCacheKey;
+  requireHash(job.cacheKey, "NARRATOR_PRODUCTION_CACHE_KEY_INVALID");
 }
 
 export function createNarratorProductionJobs(
