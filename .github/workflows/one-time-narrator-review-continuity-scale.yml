@@ -1,0 +1,64 @@
+name: One-time narrator review continuity scale correction
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/narrator-review-continuity-scale.trigger"
+
+permissions:
+  contents: write
+
+jobs:
+  correct:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Correct the established 0 to 100 continuity score validation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/narrator-voice-profile.ts")
+          source = path.read_text(encoding="utf-8")
+          replacements = {
+              '  requireRatio(monitoring.continuityScore, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");\n':
+              '  requireFinite(monitoring.continuityScore, 0, 100, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");\n',
+              '  requireRatio(review.objectiveMonitoringContinuityScore, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");\n':
+              '  requireFinite(review.objectiveMonitoringContinuityScore, 0, 100, "CHAPTER_NARRATOR_MONITOR_CONTINUITY_SCORE_INVALID");\n',
+          }
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f"NARRATOR_REVIEW_CONTINUITY_SCALE_TARGET_INVALID:{source.count(old)}")
+              source = source.replace(old, new)
+          path.write_text(source, encoding="utf-8", newline="\n")
+          PY
+      - name: Validate the focused review boundary
+        shell: bash
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          node --import tsx --test \
+            packages/storyteller/src/narrator-book-monitor.test.ts \
+            packages/storyteller/src/narrator-voice-profile.test.ts
+      - name: Remove the one-time automation and commit
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/one-time-narrator-review-continuity-scale.yml \
+            .github/narrator-review-continuity-scale.trigger
+          git config user.name "EVAVO Repository Automation"
+          git config user.email "174633320+EVAVO-STUDIO@users.noreply.github.com"
+          git add --all
+          git diff --cached --check
+          git commit -m "Fix narrator review continuity score scale"
+          git pull --rebase origin main
+          git push origin HEAD:main
