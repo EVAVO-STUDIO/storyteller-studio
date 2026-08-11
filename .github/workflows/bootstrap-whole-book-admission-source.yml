@@ -1,9 +1,7 @@
 name: Bootstrap narrator whole-book admission source
 
 on:
-  push:
-    branches:
-      - agent/bind-narrator-through-whole-book-review
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -28,7 +26,7 @@ jobs:
           set -euo pipefail
           cat .github/narrator-whole-book-payload/part-* > /tmp/narrator-whole-book-payload.b64
           base64 --decode /tmp/narrator-whole-book-payload.b64 > /tmp/narrator-whole-book-payload.tar.gz
-          echo '23e29b74232bc131eb370737dc4f2d43932e337d32dd14fc7ea5810188666038  /tmp/narrator-whole-book-payload.tar.gz' | sha256sum --check --strict
+          echo 'ac09879eee849500119ed5e2535520f4bff8527218de633c7564368fce57377a  /tmp/narrator-whole-book-payload.tar.gz' | sha256sum --check --strict
           cat > /tmp/expected-archive-paths.txt <<'EOF'
           docs/NARRATOR_AUDIOBOOK_ADMISSION.md
           packages/storyteller/package.json
@@ -48,7 +46,7 @@ jobs:
           50e0699c8b083f8619535c9bf7370b0bd7c246d6934c27e38d79801ed1a0f409  packages/storyteller/src/narrator-audiobook-admission.test.ts
           2f458909c621325ad47e892ad6c951e5e374342f13a66b092bc6b3743baf776f  packages/storyteller/src/narrator-audiobook-admission.ts
           c32f5e33e894914a172b757a3129ca114304473fe11037bf963a8c87c09aa077  packages/storyteller/src/narrator-credit-admission.ts
-          b5a1143f1cb8f49c9245382010a82d4fedd5ce0513608baa3a80385596999b44  packages/storyteller/test-support/narrator-audiobook.ts
+          8635af8700f53e1a2132114cab3e2579410b4fa9c72deef145a9b42791da3497  packages/storyteller/test-support/narrator-audiobook.ts
           19f8c42cacccb320ee68c2aaf9327fa7470f461cc5cb212b5b65174665db3dc3  scripts/check-narrator-mastered-review-sequence.mjs
           EOF
           sha256sum --check --strict /tmp/expected-source.sha256
