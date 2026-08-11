@@ -543,8 +543,6 @@ function assertDeliveryLineage(
     || value.submissionAuthority !== false
     || value.retailerAcceptanceAuthority !== false
     || value.publicationAuthority !== false
-    || attempt.receipt?.submissionInitiated === true
-    || attempt.receipt?.retailerAcceptanceClaimed === true
   ) {
     throw new AdmittedNarratorRetailReleaseDeliveryError(
       "ADMITTED_NARRATOR_RETAIL_DELIVERY_AUTHORITY_INVALID",
