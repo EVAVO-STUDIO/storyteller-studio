@@ -92,6 +92,8 @@
     "./narrator-mastered-review": "./src/narrator-mastered-review.ts",
     "./narrator-mastered-review-admission": "./src/narrator-mastered-review-admission.ts",
     "./narrator-book-sequence": "./src/narrator-book-sequence.ts",
-    "./narrator-book-sequence-admission": "./src/narrator-book-sequence-admission.ts"
+    "./narrator-book-sequence-admission": "./src/narrator-book-sequence-admission.ts",
+    "./narrator-credit-admission": "./src/narrator-credit-admission.ts",
+    "./narrator-audiobook-admission": "./src/narrator-audiobook-admission.ts"
   }
 }
