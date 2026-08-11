@@ -16,6 +16,12 @@ The production and approval boundary is implemented by:
 packages/storyteller/src/narrator-retail-track-production.ts
 ```
 
+The sample and package approval boundary is implemented by:
+
+```text
+packages/storyteller/src/narrator-retail-package-admission.ts
+```
+
 The established technical planner, renderer, encoder and reviewer remain reusable:
 
 ```text
@@ -140,6 +146,62 @@ eligibleForRetailSample = true
 
 It is still not a release decision.
 
+## Admission-bound sample production and review
+
+The sample boundary starts from one exact approved retail-track set. The selected source track must be the same approved artifact revision, content hash, byte count, review fingerprint and rights scope recorded by the admitted retail-track approval.
+
+The established sample planner, renderer, private artifact ingestion and review workflow remain authoritative. The admission wrapper reopens those records and requires:
+
+- an exact ready-for-rendering sample plan bound to the admitted retail policy and encode chain;
+- independent confirmation that the chosen range is representative of the book and that both boundaries were completely listened to;
+- a separate complete content-safety review that confirms the range comes from the audiobook and is suitable for a retail preview;
+- an exact rendered sample chain with no engineering findings;
+- complete editorial and engineering playback of the sample;
+- third-person approval of the exact sample artifact revision;
+- unchanged Audio Studio profile admission, Storyteller casting, voice pin and title-scoped platform authorisation.
+
+`createAdmittedNarratorRetailSampleApproval` rejects another track approval, another sample plan, another rendered chain, another review session or another approved sample artifact even when an outer record is rehashed.
+
+A successful sample approval may state:
+
+```text
+sampleContentSafetyApproval = true
+retailSampleEngineeringComplete = true
+retailSampleListeningApproval = true
+eligibleForRetailPackage = true
+```
+
+It cannot authorise delivery, release or publication.
+
+## Private package build, inspection and review
+
+The package boundary begins from the exact admission-bound sample approval and the same approved retail MP3 file set. It reuses the established package manifest, private package build, independent package inspection and human package-review stages.
+
+The package approval requires one coherent chain:
+
+```text
+admission-bound retail-track approval
+→ admission-bound sample approval
+→ immutable package manifest
+→ private content-addressed package build
+→ independent inspection of every expected package entry
+→ complete editorial and engineering package review
+→ third-person package approval
+```
+
+Validation requires the manifest, build and inspection to describe the same project, book, policy, track order, approved artifact revisions, sample artifact, media filenames, byte totals and package contents. Unexpected entries, substituted media, changed permissions, altered hashes, changed file counts or a review from another package fail closed.
+
+`createAdmittedNarratorRetailPackageApproval` preserves the narrator admission, casting, voice pin, synthetic-narration declaration and current platform authorisation while confirming:
+
+```text
+privatePackageBuildComplete = true
+privatePackageInspectionComplete = true
+retailPackageReviewApproval = true
+releaseDecisionEligible = true
+```
+
+`releaseDecisionEligible` means that a separate governed release authority may now evaluate the exact inspected package. It does not itself grant delivery, release, submission, retailer acceptance or publication authority.
+
 ## Zero-shot and adapted parity
 
 Both narrator modes use the same retail boundary.
@@ -152,11 +214,11 @@ training = null
 
 An adapted profile retains its exact campaign, capability, engine lock, data partitions, selected checkpoint, training receipt and model tree through the nested profile admission.
 
-Both remain synthetic narration and therefore require the same explicit platform authorisation. Retail MP3 rendering and review must not erase or invent training provenance.
+Both remain synthetic narration and therefore require the same explicit platform authorisation. Retail MP3 rendering, sample production and private package review must not erase or invent training provenance.
 
 ## Authority boundary
 
-An admitted retail track plan may report whether its technical track plan is ready for encoding. An admitted retail-track approval may report that exact MP3 engineering and human listening are complete. Neither can grant:
+An admitted retail track plan may report whether its technical track plan is ready for encoding. An admitted retail-track approval may report that exact MP3 engineering and human listening are complete. An admitted sample or package approval may report readiness for the next governed stage. None can grant:
 
 ```text
 deliveryAuthority = true
@@ -165,7 +227,7 @@ titleReleaseAuthority = true
 publicationAuthority = true
 ```
 
-Retail sample creation, sample approval, package build, independent package inspection, package review, delivery, submission, retailer acceptance and live publication remain separate governed stages.
+A separate release decision, delivery attempt, submission review, submission decision, retailer-status observation and live-publication verification remain mandatory.
 
 ## Public privacy boundary
 
@@ -180,13 +242,13 @@ The public planning projection exposes only bounded state:
 - encoding eligibility;
 - final wrapper fingerprint.
 
-The public production projection additionally exposes bounded track count, output byte count and completion state. It does not expose:
+The public production, sample and package projections additionally expose bounded counts, byte totals and completion state. They do not expose:
 
 - profile ID, revision or hash;
 - profile-admission or casting fingerprints;
 - training campaign, datasets, checkpoint or engine lock;
 - platform-authorisation evidence ID;
-- reference-master, plan, render or artifact hashes;
+- reference-master, plan, render, artifact or package hashes;
 - production job IDs or cache keys;
 - reviewer or approver identities;
 - manuscript text, transcripts, audio or private filesystem paths.
@@ -203,6 +265,8 @@ admission-bound complete audiobook approval
 → complete per-track human review
 → admission-bound retail-track approval
 → governed retail sample and sample review
+→ admission-bound sample approval
 → private package build, inspection and final package review
+→ admission-bound package approval
 → separate release decision and delivery attempt
 ```
