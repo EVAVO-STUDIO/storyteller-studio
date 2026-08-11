@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   apply-source:
-    if: "${{ github.event.head_commit.message == 'chore: stage narrator whole-book source payload' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
