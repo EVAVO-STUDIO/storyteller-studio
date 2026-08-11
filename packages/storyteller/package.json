@@ -96,6 +96,7 @@
     "./narrator-credit-admission": "./src/narrator-credit-admission.ts",
     "./narrator-audiobook-admission": "./src/narrator-audiobook-admission.ts",
     "./narrator-retail-track-admission": "./src/narrator-retail-track-admission.ts",
-    "./narrator-retail-track-production": "./src/narrator-retail-track-production.ts"
+    "./narrator-retail-track-production": "./src/narrator-retail-track-production.ts",
+    "./narrator-retail-package-admission": "./src/narrator-retail-package-admission.ts"
   }
 }
