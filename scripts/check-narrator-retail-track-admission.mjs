@@ -25,7 +25,10 @@ for (const path of [
   "packages/storyteller/src/narrator-retail-track-admission.test.ts",
   "packages/storyteller/src/narrator-retail-track-production.ts",
   "packages/storyteller/src/narrator-retail-track-production.test.ts",
+  "packages/storyteller/src/narrator-retail-package-admission.ts",
+  "packages/storyteller/src/narrator-retail-package-admission.test.ts",
   "packages/storyteller/test-support/narrator-retail.ts",
+  "packages/storyteller/test-support/narrator-retail-package.ts",
   "packages/storyteller/package.json",
   "docs/NARRATOR_RETAIL_TRACK_ADMISSION.md",
 ]) requireFile(path);
@@ -69,6 +72,37 @@ requireTokens("packages/storyteller/src/narrator-retail-track-production.ts", [
   "publicationAuthority: false",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-package-admission.ts", [
+  "ADMITTED_NARRATOR_RETAIL_SAMPLE_APPROVAL_SCHEMA",
+  "ADMITTED_NARRATOR_RETAIL_PACKAGE_APPROVAL_SCHEMA",
+  "createAdmittedNarratorRetailSampleApproval",
+  "assertAdmittedNarratorRetailSampleApproval",
+  "admittedNarratorRetailSampleApprovalPublicView",
+  "createAdmittedNarratorRetailPackageApproval",
+  "assertAdmittedNarratorRetailPackageApproval",
+  "admittedNarratorRetailPackageApprovalPublicView",
+  "assertAudiobookRetailSamplePlanMatchesSources",
+  "assertAudiobookRetailSampleReviewMatchesChain",
+  "assertAudiobookRetailPackageManifestMatchesSources",
+  "assertAudiobookRetailPackageBuildMatchesManifest",
+  "assertAudiobookRetailPackageInspectionMatchesSources",
+  "assertAudiobookRetailPackageReviewMatchesSources",
+  "ADMITTED_NARRATOR_RETAIL_SAMPLE_ARTIFACT_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_SAMPLE_LINEAGE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_PACKAGE_LINEAGE_MISMATCH",
+  "sampleContentSafetyApproval: true",
+  "retailSampleEngineeringComplete: true",
+  "retailSampleListeningApproval: true",
+  "privatePackageBuildComplete: true",
+  "privatePackageInspectionComplete: true",
+  "retailPackageReviewApproval: true",
+  "releaseDecisionEligible: true",
+  "deliveryAuthority: false",
+  "releaseDecisionAuthority: false",
+  "titleReleaseAuthority: false",
+  "publicationAuthority: false",
+]);
+
 requireTokens("packages/storyteller/src/narrator-retail-track-admission.test.ts", [
   "adapted narrator retail planning retains exact whole-book admission and platform authorisation",
   "zero-shot narrator uses the same authorised retail boundary without invented training provenance",
@@ -88,6 +122,16 @@ requireTokens("packages/storyteller/src/narrator-retail-track-production.test.ts
   "public retail track approval proves completion without narrator, platform or reviewer identity",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-package-admission.test.ts", [
+  "adapted narrator admission survives safety-reviewed sample and inspected retail package",
+  "zero-shot narrator uses the same package boundary without invented training provenance",
+  "sample approval cannot detach from the selected retail track approval",
+  "sample artifact substitution fails even after the outer record is rehashed",
+  "package manifest, build and inspection substitution fail closed",
+  "retail package approval cannot grant delivery, release or publication authority",
+  "public sample and package views prove completion without private narrator or reviewer identity",
+]);
+
 requireTokens("packages/storyteller/test-support/narrator-retail.ts", [
   "createTestAdmittedNarratorRetailTrackFixture",
   "renderAudiobookRetailTrackPlan",
@@ -97,10 +141,25 @@ requireTokens("packages/storyteller/test-support/narrator-retail.ts", [
   "createAdmittedNarratorRetailTrackApproval",
 ]);
 
+requireTokens("packages/storyteller/test-support/narrator-retail-package.ts", [
+  "createTestAdmittedNarratorRetailSampleFixture",
+  "createTestAdmittedNarratorRetailPackageFixture",
+  "createAudiobookRetailSamplePlan",
+  "renderAudiobookRetailSample",
+  "ingestAudiobookRetailSample",
+  "approveAudiobookRetailSampleReview",
+  "buildAudiobookRetailPackage",
+  "inspectAudiobookRetailPackage",
+  "approveAudiobookRetailPackageReview",
+  "createAdmittedNarratorRetailPackageApproval",
+]);
+
 requireTokens("docs/NARRATOR_RETAIL_TRACK_ADMISSION.md", [
   "Synthetic narration must be declared honestly",
   "Deterministic technical planning",
   "Admission-bound MP3 production and review",
+  "Admission-bound sample production and review",
+  "Private package build, inspection and review",
   "Zero-shot and adapted parity",
   "Authority boundary",
   "Public privacy boundary",
@@ -118,11 +177,16 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
     packageJson.exports?.["./narrator-retail-track-production"]
       !== "./src/narrator-retail-track-production.ts"
   ) problems.push("storyteller package does not export ./narrator-retail-track-production");
+  if (
+    packageJson.exports?.["./narrator-retail-package-admission"]
+      !== "./src/narrator-retail-package-admission.ts"
+  ) problems.push("storyteller package does not export ./narrator-retail-package-admission");
 }
 
 for (const sourcePath of [
   "packages/storyteller/src/narrator-retail-track-admission.ts",
   "packages/storyteller/src/narrator-retail-track-production.ts",
+  "packages/storyteller/src/narrator-retail-package-admission.ts",
 ]) {
   if (!existsSync(fromRoot(sourcePath))) continue;
   const source = read(sourcePath);
@@ -148,7 +212,8 @@ console.log("storyteller_narrator_retail_track_admission_check_passed");
 console.log("- retail planning begins from the exact admission-bound whole-book approval and reference master");
 console.log("- Audio Studio narration is declared synthetic for both zero-shot and adapted profiles");
 console.log("- current title-scoped Audible or ACX platform authorisation remains mandatory");
-console.log("- ownership, consent, licensing and quality approval cannot masquerade as platform permission");
 console.log("- exact retail MP3 rendering, engineering and human approval retain narrator admission lineage");
-console.log("- approved retail artifacts remain bound to the reviewed encode chain and exact bytes");
-console.log("- public state remains redacted and retail production cannot grant delivery, release or publication authority");
+console.log("- the governed sample retains exact source-track approval, content safety, engineering and listening evidence");
+console.log("- private package build and independent inspection retain the exact approved media-file set");
+console.log("- package review can create release-decision eligibility but not delivery, release or publication authority");
+console.log("- all public narrator retail projections remain redacted");
