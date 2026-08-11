@@ -74,6 +74,12 @@ jobs:
           set -o pipefail
           node scripts/check-narrator-mastered-review-sequence.mjs 2>&1 | tee .verification/narrator-mastered-review-sequence.log
 
+      - name: Verify narrator retail track admission
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/check-narrator-retail-track-admission.mjs 2>&1 | tee .verification/narrator-retail-track-admission.log
+
       - name: Type-check repository
         shell: bash
         run: |
@@ -143,6 +149,7 @@ jobs:
               ".verification/narrator-book-monitoring.log",
               ".verification/narrator-mastering-chain.log",
               ".verification/narrator-mastered-review-sequence.log",
+              ".verification/narrator-retail-track-admission.log",
               ".verification/typecheck.log",
               ".verification/artifacts.log",
               ".verification/engine-tests.log",
@@ -186,7 +193,7 @@ jobs:
                 }
               }
               if (!diagnostic) {
-                const failedLog = logs.find((log) => /narrator-production|narrator-profile-admission|narrator-book-monitoring|narrator-mastering-chain|narrator-mastered-review-sequence|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
+                const failedLog = logs.find((log) => /narrator-production|narrator-profile-admission|narrator-book-monitoring|narrator-mastering-chain|narrator-mastered-review-sequence|narrator-retail-track-admission|artifacts|engine-tests|api-tests|worker-tests|cli-tests/.test(log.file));
                 if (failedLog) {
                   const fallback = failedLog.source
                     .split(/\r?\n/)
@@ -198,7 +205,7 @@ jobs:
               }
             }
             const description = state === "success"
-              ? "Narrator training admission, casting, monitoring, review sequence, tests and builds passed"
+              ? "Narrator admission, retail policy, tests and builds passed"
               : (diagnostic || "Storyteller Studio verification failed").slice(0, 140);
             const targetUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.repos.createCommitStatus({
