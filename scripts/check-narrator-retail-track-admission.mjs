@@ -27,10 +27,14 @@ for (const path of [
   "packages/storyteller/src/narrator-retail-track-production.test.ts",
   "packages/storyteller/src/narrator-retail-package-admission.ts",
   "packages/storyteller/src/narrator-retail-package-admission.test.ts",
+  "packages/storyteller/src/narrator-retail-release-delivery.ts",
+  "packages/storyteller/src/narrator-retail-release-delivery.test.ts",
   "packages/storyteller/test-support/narrator-retail.ts",
   "packages/storyteller/test-support/narrator-retail-package.ts",
+  "packages/storyteller/test-support/narrator-retail-release.ts",
   "packages/storyteller/package.json",
   "docs/NARRATOR_RETAIL_TRACK_ADMISSION.md",
+  "docs/NARRATOR_RETAIL_RELEASE_DELIVERY.md",
 ]) requireFile(path);
 
 requireTokens("packages/storyteller/src/narrator-retail-track-admission.ts", [
@@ -103,6 +107,34 @@ requireTokens("packages/storyteller/src/narrator-retail-package-admission.ts", [
   "publicationAuthority: false",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-release-delivery.ts", [
+  "ADMITTED_NARRATOR_RETAIL_RELEASE_DECISION_SCHEMA",
+  "ADMITTED_NARRATOR_RETAIL_DELIVERY_ATTEMPT_SCHEMA",
+  "createAdmittedNarratorRetailReleaseDecision",
+  "assertAdmittedNarratorRetailReleaseDecision",
+  "admittedNarratorRetailReleaseDecisionPublicView",
+  "startAdmittedNarratorRetailDeliveryAttempt",
+  "recordAdmittedNarratorRetailDeliveryTransfer",
+  "recordAdmittedNarratorRetailDeliveryFailure",
+  "cancelAdmittedNarratorRetailDeliveryAttempt",
+  "assertAdmittedNarratorRetailDeliveryAttempt",
+  "admittedNarratorRetailDeliveryAttemptPublicView",
+  "assertAudiobookRetailReleaseDecisionMatchesSources",
+  "assertAudiobookRetailDeliveryAttemptMatchesSources",
+  "ADMITTED_NARRATOR_RETAIL_RELEASE_LINEAGE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_DELIVERY_LINEAGE_MISMATCH",
+  "controlledDeliveryAuthorised: true",
+  "maximumDeliveryAttempts: 1",
+  "deliveryTransferComplete",
+  "submissionReviewEligible",
+  "submissionInitiated: false",
+  "retailerAcceptanceClaimed: false",
+  "releaseDecisionAuthority: false",
+  "submissionAuthority: false",
+  "retailerAcceptanceAuthority: false",
+  "publicationAuthority: false",
+]);
+
 requireTokens("packages/storyteller/src/narrator-retail-track-admission.test.ts", [
   "adapted narrator retail planning retains exact whole-book admission and platform authorisation",
   "zero-shot narrator uses the same authorised retail boundary without invented training provenance",
@@ -132,6 +164,16 @@ requireTokens("packages/storyteller/src/narrator-retail-package-admission.test.t
   "public sample and package views prove completion without private narrator or reviewer identity",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-release-delivery.test.ts", [
+  "adapted narrator package approval becomes one admission-bound controlled delivery decision",
+  "zero-shot narrator uses the same release boundary without invented training provenance",
+  "cross-title package or distributor account evidence cannot authorise narrator delivery",
+  "successful controlled transfer preserves narrator admission without submission or retailer claims",
+  "failed and cancelled admitted delivery attempts remain terminal without retry or submission eligibility",
+  "release substitution and authority escalation fail even after outer records are rehashed",
+  "public release and delivery views prove bounded progress without private narrator, account or receipt identity",
+]);
+
 requireTokens("packages/storyteller/test-support/narrator-retail.ts", [
   "createTestAdmittedNarratorRetailTrackFixture",
   "renderAudiobookRetailTrackPlan",
@@ -154,6 +196,15 @@ requireTokens("packages/storyteller/test-support/narrator-retail-package.ts", [
   "createAdmittedNarratorRetailPackageApproval",
 ]);
 
+requireTokens("packages/storyteller/test-support/narrator-retail-release.ts", [
+  "createTestAdmittedNarratorRetailReleaseFixture",
+  "createTestAdmittedNarratorRetailDeliveryFixture",
+  "createAudiobookRetailDistributorAccountEvidence",
+  "createAdmittedNarratorRetailReleaseDecision",
+  "startAdmittedNarratorRetailDeliveryAttempt",
+  "recordAdmittedNarratorRetailDeliveryTransfer",
+]);
+
 requireTokens("docs/NARRATOR_RETAIL_TRACK_ADMISSION.md", [
   "Synthetic narration must be declared honestly",
   "Deterministic technical planning",
@@ -165,6 +216,18 @@ requireTokens("docs/NARRATOR_RETAIL_TRACK_ADMISSION.md", [
   "Public privacy boundary",
   "platform authorisation",
   "createAcxAudiobookRetailTrackPlan",
+]);
+
+requireTokens("docs/NARRATOR_RETAIL_RELEASE_DELIVERY.md", [
+  "Admission-bound release decision",
+  "One controlled delivery attempt",
+  "Independent authority",
+  "No submission or acceptance claim",
+  "Failure and cancellation",
+  "Public privacy boundary",
+  "createAdmittedNarratorRetailReleaseDecision",
+  "startAdmittedNarratorRetailDeliveryAttempt",
+  "recordAdmittedNarratorRetailDeliveryTransfer",
 ]);
 
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
@@ -181,18 +244,25 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
     packageJson.exports?.["./narrator-retail-package-admission"]
       !== "./src/narrator-retail-package-admission.ts"
   ) problems.push("storyteller package does not export ./narrator-retail-package-admission");
+  if (
+    packageJson.exports?.["./narrator-retail-release-delivery"]
+      !== "./src/narrator-retail-release-delivery.ts"
+  ) problems.push("storyteller package does not export ./narrator-retail-release-delivery");
 }
 
 for (const sourcePath of [
   "packages/storyteller/src/narrator-retail-track-admission.ts",
   "packages/storyteller/src/narrator-retail-track-production.ts",
   "packages/storyteller/src/narrator-retail-package-admission.ts",
+  "packages/storyteller/src/narrator-retail-release-delivery.ts",
 ]) {
   if (!existsSync(fromRoot(sourcePath))) continue;
   const source = read(sourcePath);
   for (const forbidden of [
     "deliveryAuthority: true",
     "releaseDecisionAuthority: true",
+    "submissionAuthority: true",
+    "retailerAcceptanceAuthority: true",
     "titleReleaseAuthority: true",
     "publicationAuthority: true",
   ]) {
@@ -215,5 +285,7 @@ console.log("- current title-scoped Audible or ACX platform authorisation remain
 console.log("- exact retail MP3 rendering, engineering and human approval retain narrator admission lineage");
 console.log("- the governed sample retains exact source-track approval, content safety, engineering and listening evidence");
 console.log("- private package build and independent inspection retain the exact approved media-file set");
-console.log("- package review can create release-decision eligibility but not delivery, release or publication authority");
+console.log("- the independent release decision authorises exactly one controlled manual delivery attempt");
+console.log("- successful transfer remains awaiting separate submission review and claims no retailer acceptance");
+console.log("- failed and cancelled attempts retain terminal evidence without retry authority");
 console.log("- all public narrator retail projections remain redacted");
