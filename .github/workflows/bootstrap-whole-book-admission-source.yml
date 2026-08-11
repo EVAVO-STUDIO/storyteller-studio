@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/narrator-whole-book-fix/part-* > /tmp/narrator-candidate.patch
+          cp .github/narrator-whole-book-fix/candidate.patch /tmp/narrator-candidate.patch
           echo '8fa3da277ad205c426de43dac3fdf0604ab3b2943f79559cb3e2276ed5bafcbc  /tmp/narrator-candidate.patch' | sha256sum --check --strict
           patch --fuzz=0 -p0 < /tmp/narrator-candidate.patch
           echo '8635af8700f53e1a2132114cab3e2579410b4fa9c72deef145a9b42791da3497  packages/storyteller/test-support/narrator-audiobook.ts' | sha256sum --check --strict
