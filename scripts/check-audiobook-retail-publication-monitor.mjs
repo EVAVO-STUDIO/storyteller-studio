@@ -45,9 +45,13 @@ function collectRuntimeFiles(directory, output = []) {
 for (const path of [
   "packages/storyteller/src/audiobook-retail-publication-monitor.ts",
   "packages/storyteller/src/audiobook-retail-publication-monitor.test.ts",
+  "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
+  "packages/storyteller/src/narrator-retail-publication-monitor-admission.test.ts",
+  "packages/storyteller/test-support/narrator-retail-publication-monitor-admission.ts",
   "packages/storyteller/package.json",
   "package.json",
   "docs/AUDIOBOOK_RETAIL_PUBLICATION_MONITOR.md",
+  "docs/NARRATOR_RETAIL_PUBLICATION_MONITOR_ADMISSION.md",
 ]) requireFile(path);
 
 requireTokens(
@@ -108,6 +112,64 @@ requireTokens("docs/AUDIOBOOK_RETAIL_PUBLICATION_MONITOR.md", [
   "It does not guarantee future availability",
 ]);
 
+requireTokens(
+  "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
+  [
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_MONITOR_SCHEMA",
+    "createAdmittedNarratorRetailPublicationMonitor",
+    "recordAdmittedNarratorRetailPublicationRefresh",
+    "markAdmittedNarratorRetailPublicationMonitorStale",
+    "assertAdmittedNarratorRetailPublicationMonitor",
+    "admittedNarratorRetailPublicationMonitorPublicView",
+    "initialLivePublicationConfirmed: true",
+    "continuousNarratorLineageBound: true",
+    "admittedListingIdentityInvariant: true",
+    "staleEvidence",
+    "automaticRemediationAuthority: false",
+    "automaticRepublishAuthority: false",
+    "publicationAuthority: false",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_MONITOR_INITIAL_LIVE_REQUIRED",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_MONITOR_NARRATOR_LINEAGE_MISMATCH",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_MONITOR_ENTRY_LINEAGE_MISMATCH",
+  ],
+);
+
+requireTokens(
+  "packages/storyteller/src/narrator-retail-publication-monitor-admission.test.ts",
+  [
+    "initial published-and-live narrator verification starts one admission-bound healthy monitor",
+    "narrator metadata drift records a regression without losing original narrator lineage",
+    "purchase or sample degradation can recover only through the same admitted narrator listing",
+    "overdue evidence becomes stale without inventing another narrator verification",
+    "a non-live verification cannot initialize post-publication narrator monitoring",
+    "cross-title, replacement narrator and public product substitutions cannot enter an existing monitor",
+    "rehashing a narrator monitor cannot manufacture remediation or republish authority",
+    "public monitor projection exposes drift health without private narrator or evidence identities",
+    "healthy-live",
+    "mismatch",
+    "degraded",
+    "recovery",
+    "stale",
+  ],
+);
+
+requireTokens("docs/NARRATOR_RETAIL_PUBLICATION_MONITOR_ADMISSION.md", [
+  "Admission boundary",
+  "Initial live proof",
+  "Exact narrator lineage",
+  "Immutable verification history",
+  "Health and transitions",
+  "Narrator and metadata drift",
+  "Purchase and sample degradation",
+  "Freshness and stale evidence",
+  "Public product identity",
+  "Authority boundary",
+  "Public projection",
+  "Alerting boundary",
+  "Output boundary",
+  "It does not guarantee future availability",
+]);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
   if (
@@ -116,6 +178,14 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   ) {
     problems.push(
       "storyteller package does not export ./audiobook-retail-publication-monitor",
+    );
+  }
+  if (
+    packageJson.exports?.["./narrator-retail-publication-monitor-admission"]
+      !== "./src/narrator-retail-publication-monitor-admission.ts"
+  ) {
+    problems.push(
+      "storyteller package does not export ./narrator-retail-publication-monitor-admission",
     );
   }
 }
@@ -141,6 +211,27 @@ if (existsSync(fromRoot("package.json"))) {
   }
 }
 
+if (
+  existsSync(fromRoot(
+    "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
+  ))
+) {
+  const source = read(
+    "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
+  );
+  for (const forbidden of [
+    "automaticRemediationAuthority: true",
+    "automaticRepublishAuthority: true",
+    "publicationAuthority: true",
+  ]) {
+    if (source.includes(forbidden)) {
+      problems.push(
+        `narrator publication monitor grants forbidden authority: ${forbidden}`,
+      );
+    }
+  }
+}
+
 for (const path of [
   ...collectRuntimeFiles("apps/api/src"),
   ...collectRuntimeFiles("apps/web/src"),
@@ -148,9 +239,13 @@ for (const path of [
   const runtime = read(path);
   for (const forbidden of [
     "@evavo/storyteller-engine/audiobook-retail-publication-monitor",
+    "@evavo/storyteller-engine/narrator-retail-publication-monitor-admission",
     "createAudiobookRetailPublicationMonitor",
+    "createAdmittedNarratorRetailPublicationMonitor",
     "recordAudiobookRetailPublicationRefresh",
+    "recordAdmittedNarratorRetailPublicationRefresh",
     "markAudiobookRetailPublicationMonitorStale",
+    "markAdmittedNarratorRetailPublicationMonitorStale",
     "FileAudiobookRetailPublicationMonitorStore",
   ]) {
     if (runtime.includes(forbidden)) {
@@ -174,3 +269,5 @@ console.log("- regression, recovery, refresh and stale transitions remain eviden
 console.log("- refresh deadlines cannot outlive the underlying public observation");
 console.log("- public and audit projections omit source evidence and private identities");
 console.log("- normal API and web runtimes cannot mutate publication monitoring");
+console.log("- narrator monitor history remains bound to the exact admitted narrator and Audible ASIN");
+console.log("- narrator regression and stale evidence never grant remediation or republish authority");

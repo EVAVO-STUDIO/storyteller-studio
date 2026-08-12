@@ -102,6 +102,7 @@
     "./narrator-retail-submission": "./src/narrator-retail-submission.ts",
     "./narrator-retail-status-admission": "./src/narrator-retail-status-admission.ts",
     "./narrator-retail-listing-admission": "./src/narrator-retail-listing-admission.ts",
-    "./narrator-retail-publication-admission": "./src/narrator-retail-publication-admission.ts"
+    "./narrator-retail-publication-admission": "./src/narrator-retail-publication-admission.ts",
+    "./narrator-retail-publication-monitor-admission": "./src/narrator-retail-publication-monitor-admission.ts"
   }
 }
