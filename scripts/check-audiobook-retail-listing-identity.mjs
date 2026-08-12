@@ -46,9 +46,13 @@ for (const path of [
   "packages/storyteller/src/audiobook-retail-listing-policy.ts",
   "packages/storyteller/src/audiobook-retail-listing-identity.ts",
   "packages/storyteller/src/audiobook-retail-listing-identity.test.ts",
+  "packages/storyteller/src/narrator-retail-listing-admission.ts",
+  "packages/storyteller/src/narrator-retail-listing-admission.test.ts",
+  "packages/storyteller/test-support/narrator-retail-listing-admission.ts",
   "packages/storyteller/package.json",
   "package.json",
   "docs/AUDIOBOOK_RETAIL_LISTING_IDENTITY.md",
+  "docs/NARRATOR_RETAIL_LISTING_ADMISSION.md",
 ]) requireFile(path);
 
 requireTokens("packages/storyteller/src/audiobook-retail-listing-policy.ts", [
@@ -101,6 +105,45 @@ requireTokens("packages/storyteller/src/audiobook-retail-listing-identity.test.t
   "AUDIOBOOK_RETAIL_LISTING_SOURCE_MISMATCH",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-listing-admission.ts", [
+  "ADMITTED_NARRATOR_RETAIL_LISTING_IDENTITY_SCHEMA",
+  "createAdmittedNarratorRetailListingIdentity",
+  "recordAdmittedNarratorRetailListingReview",
+  "approveAdmittedNarratorRetailListingIdentity",
+  "assertAdmittedNarratorRetailListingIdentity",
+  "admittedNarratorRetailListingIdentityPublicView",
+  "assertAdmittedNarratorRetailerStatusEvidence",
+  "assertAudiobookRetailListingIdentityMatchesSources",
+  "ADMITTED_NARRATOR_RETAIL_LISTING_RETAILER_ACCEPTANCE_REQUIRED",
+  "ADMITTED_NARRATOR_RETAIL_LISTING_SOURCE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_LISTING_LINEAGE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_LISTING_AUTHORITY_INVALID",
+  "retailerAcceptanceConfirmed: true",
+  "admittedPackageManifestBound: true",
+  "spokenNarratorCreditBound: true",
+  "publicationConfirmed: false",
+  "liveConfirmed: false",
+  "automaticPublicationAuthority: false",
+  "publicationAuthority: false",
+]);
+
+requireTokens("packages/storyteller/src/narrator-retail-listing-admission.test.ts", [
+  "adapted narrator retailer acceptance becomes one admission-bound approved listing identity",
+  "zero-shot narrator uses the same listing boundary without invented training provenance",
+  "processing evidence cannot create an admission-bound retail listing",
+  "another title package and spoken credits cannot be attached after retailer acceptance",
+  "rehashing cannot replace the narrator credit metadata inside an approved listing",
+  "rehashing cannot turn listing approval into publication or automatic publication authority",
+  "public listing view exposes intended retail credits without private narrator or evidence identity",
+]);
+
+requireTokens("packages/storyteller/test-support/narrator-retail-listing-admission.ts", [
+  "createTestAdmittedNarratorRetailListingSources",
+  "createTestAdmittedNarratorRetailListingFixture",
+  "accepted-awaiting-publication",
+  "EVAVO Narrator",
+]);
+
 requireTokens("docs/AUDIOBOOK_RETAIL_LISTING_IDENTITY.md", [
   "Admission boundary",
   "Canonical public metadata",
@@ -116,6 +159,19 @@ requireTokens("docs/AUDIOBOOK_RETAIL_LISTING_IDENTITY.md", [
   "It does not mean the audiobook is published",
 ]);
 
+requireTokens("docs/NARRATOR_RETAIL_LISTING_ADMISSION.md", [
+  "Retailer acceptance is mandatory",
+  "Exact admitted package binding",
+  "Spoken narrator credit binding",
+  "Independent listing review",
+  "Independent publisher approval",
+  "Zero-shot and adapted parity",
+  "Substitution resistance",
+  "Public privacy boundary",
+  "approved for publication verification",
+  "publicationConfirmed = false",
+]);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
   for (const [name, target] of [
@@ -126,6 +182,10 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
     [
       "./audiobook-retail-listing-identity",
       "./src/audiobook-retail-listing-identity.ts",
+    ],
+    [
+      "./narrator-retail-listing-admission",
+      "./src/narrator-retail-listing-admission.ts",
     ],
   ]) {
     if (packageJson.exports?.[name] !== target) {
@@ -163,10 +223,12 @@ for (const path of [
   for (const forbidden of [
     "@evavo/storyteller-engine/audiobook-retail-listing-policy",
     "@evavo/storyteller-engine/audiobook-retail-listing-identity",
+    "@evavo/storyteller-engine/narrator-retail-listing-admission",
     "createAudiobookRetailCoverEvidence",
     "createAudiobookRetailListingIdentity",
     "approveAudiobookRetailListingIdentity",
     "FileAudiobookRetailListingIdentityStore",
+    "createAdmittedNarratorRetailListingIdentity",
   ]) {
     if (runtime.includes(forbidden)) {
       problems.push(
@@ -185,6 +247,8 @@ if (problems.length > 0) {
 console.log("storyteller_audiobook_retail_listing_identity_check_passed");
 console.log("- listing policy, cover evidence and eBook evidence remain versioned and current");
 console.log("- canonical metadata is rebound to exact approved spoken credits");
+console.log("- admission-bound listing requires exact accepted narrator retailer evidence");
+console.log("- exact admitted package and spoken narrator-credit hashes remain bound through listing review");
 console.log("- editorial, rights and merchandising review roles remain independent");
 console.log("- final publisher approval revalidates every source");
 console.log("- public projection exposes intended retail copy without internal evidence");
