@@ -170,7 +170,6 @@ function assertSameNarratorLineage(
 ): void {
   assertAdmittedNarratorRetailPublicationVerification(initial);
   assertAdmittedNarratorRetailPublicationVerification(candidate);
-  assertExactNarratorVoicePin(initial.voice, candidate.voice);
 
   const initialListing = initial.observation.listing;
   const candidateListing = candidate.observation.listing;
@@ -185,6 +184,9 @@ function assertSameNarratorLineage(
       !== initial.admittedCastingFingerprint
     || candidate.castingFingerprint !== initial.castingFingerprint
     || candidate.totalProductionJobCount !== initial.totalProductionJobCount
+    || candidate.voice.profileId !== initial.voice.profileId
+    || candidate.voice.revision !== initial.voice.revision
+    || candidate.voice.profileHash !== initial.voice.profileHash
     || candidateListing.fingerprint !== initialListing.fingerprint
     || candidateListing.identity.id !== initialListing.identity.id
     || candidateListing.identity.fingerprint !== initialListing.identity.fingerprint
@@ -198,6 +200,8 @@ function assertSameNarratorLineage(
       "ADMITTED_NARRATOR_RETAIL_PUBLICATION_MONITOR_NARRATOR_LINEAGE_MISMATCH",
     );
   }
+
+  assertExactNarratorVoicePin(initial.voice, candidate.voice);
 }
 
 function assertEntryMatchesVerification(
