@@ -32,9 +32,10 @@ jobs:
           set -euo pipefail
           mkdir -p packages/storyteller/src docs
 
-          cat .github/agent-payload/store-ts.part*.b64 \
+          cat .github/agent-payload/store-ts.gz.b64 \
             | tr -d '[:space:]' \
             | base64 --decode \
+            | gzip --decompress --stdout \
             > packages/storyteller/src/narrator-retail-publication-operations-store.ts
 
           cat .github/agent-payload/store-test-ts.part*.b64 \
