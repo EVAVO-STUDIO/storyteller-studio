@@ -29,12 +29,16 @@ for (const path of [
   "packages/storyteller/src/narrator-retail-package-admission.test.ts",
   "packages/storyteller/src/narrator-retail-release-delivery.ts",
   "packages/storyteller/src/narrator-retail-release-delivery.test.ts",
+  "packages/storyteller/src/narrator-retail-submission.ts",
+  "packages/storyteller/src/narrator-retail-submission.test.ts",
   "packages/storyteller/test-support/narrator-retail.ts",
   "packages/storyteller/test-support/narrator-retail-package.ts",
   "packages/storyteller/test-support/narrator-retail-release.ts",
+  "packages/storyteller/test-support/narrator-retail-submission.ts",
   "packages/storyteller/package.json",
   "docs/NARRATOR_RETAIL_TRACK_ADMISSION.md",
   "docs/NARRATOR_RETAIL_RELEASE_DELIVERY.md",
+  "docs/NARRATOR_RETAIL_SUBMISSION.md",
 ]) requireFile(path);
 
 requireTokens("packages/storyteller/src/narrator-retail-track-admission.ts", [
@@ -135,6 +139,40 @@ requireTokens("packages/storyteller/src/narrator-retail-release-delivery.ts", [
   "publicationAuthority: false",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-submission.ts", [
+  "ADMITTED_NARRATOR_RETAIL_SUBMISSION_REVIEW_SCHEMA",
+  "ADMITTED_NARRATOR_RETAIL_SUBMISSION_DECISION_SCHEMA",
+  "ADMITTED_NARRATOR_RETAIL_SUBMISSION_ATTEMPT_SCHEMA",
+  "createAdmittedNarratorRetailSubmissionReviewApproval",
+  "assertAdmittedNarratorRetailSubmissionReviewApproval",
+  "admittedNarratorRetailSubmissionReviewApprovalPublicView",
+  "createAdmittedNarratorRetailSubmissionDecision",
+  "assertAdmittedNarratorRetailSubmissionDecision",
+  "admittedNarratorRetailSubmissionDecisionPublicView",
+  "startAdmittedNarratorRetailSubmissionAttempt",
+  "recordAdmittedNarratorRetailSubmissionReceipt",
+  "recordAdmittedNarratorRetailSubmissionFailure",
+  "cancelAdmittedNarratorRetailSubmissionAttempt",
+  "assertAdmittedNarratorRetailSubmissionAttempt",
+  "admittedNarratorRetailSubmissionAttemptPublicView",
+  "assertAudiobookRetailSubmissionReviewMatchesSources",
+  "assertAudiobookRetailSubmissionDecisionMatchesSources",
+  "assertAudiobookRetailSubmissionAttemptMatchesSources",
+  "ADMITTED_NARRATOR_RETAIL_SUBMISSION_REVIEW_LINEAGE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_SUBMISSION_DECISION_LINEAGE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAIL_SUBMISSION_ATTEMPT_LINEAGE_MISMATCH",
+  "remoteDraftReviewComplete: true",
+  "submissionDecisionEligible: true",
+  "singleSubmissionAuthorised: true",
+  "maximumSubmissionAttempts: 1",
+  "submissionAttemptStarted: true",
+  "submissionComplete",
+  "retailerReviewEligible",
+  "automaticSubmissionAuthority: false",
+  "retailerAcceptanceAuthority: false",
+  "publicationAuthority: false",
+]);
+
 requireTokens("packages/storyteller/src/narrator-retail-track-admission.test.ts", [
   "adapted narrator retail planning retains exact whole-book admission and platform authorisation",
   "zero-shot narrator uses the same authorised retail boundary without invented training provenance",
@@ -174,6 +212,16 @@ requireTokens("packages/storyteller/src/narrator-retail-release-delivery.test.ts
   "public release and delivery views prove bounded progress without private narrator, account or receipt identity",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-submission.test.ts", [
+  "adapted narrator admission survives remote-draft review, submission authority and retailer handoff",
+  "zero-shot narrator uses the same submission boundary without invented training provenance",
+  "cross-title remote-draft review and delivery evidence cannot be attached to another narrator",
+  "successful admitted submission records processing handoff without retailer acceptance or publication claims",
+  "failed and cancelled narrator submissions remain terminal under the consumed decision",
+  "rehashing cannot substitute the approved review or escalate retailer and publication authority",
+  "public submission views prove governed progress without private narrator, account, reviewer or receipt identity",
+]);
+
 requireTokens("packages/storyteller/test-support/narrator-retail.ts", [
   "createTestAdmittedNarratorRetailTrackFixture",
   "renderAudiobookRetailTrackPlan",
@@ -205,6 +253,19 @@ requireTokens("packages/storyteller/test-support/narrator-retail-release.ts", [
   "recordAdmittedNarratorRetailDeliveryTransfer",
 ]);
 
+requireTokens("packages/storyteller/test-support/narrator-retail-submission.ts", [
+  "createTestAdmittedNarratorRetailSubmissionReviewFixture",
+  "createTestAdmittedNarratorRetailSubmissionDecisionFixture",
+  "createTestAdmittedNarratorRetailSubmissionAttemptFixture",
+  "createAudiobookRetailSubmissionReviewSession",
+  "recordAudiobookRetailSubmissionReview",
+  "approveAudiobookRetailSubmissionReview",
+  "createAdmittedNarratorRetailSubmissionReviewApproval",
+  "createAdmittedNarratorRetailSubmissionDecision",
+  "startAdmittedNarratorRetailSubmissionAttempt",
+  "recordAdmittedNarratorRetailSubmissionReceipt",
+]);
+
 requireTokens("docs/NARRATOR_RETAIL_TRACK_ADMISSION.md", [
   "Synthetic narration must be declared honestly",
   "Deterministic technical planning",
@@ -230,6 +291,20 @@ requireTokens("docs/NARRATOR_RETAIL_RELEASE_DELIVERY.md", [
   "recordAdmittedNarratorRetailDeliveryTransfer",
 ]);
 
+requireTokens("docs/NARRATOR_RETAIL_SUBMISSION.md", [
+  "Admission-bound remote-draft review",
+  "Independent single-submission decision",
+  "One governed submission attempt",
+  "Failure and cancellation",
+  "Zero-shot and adapted parity",
+  "Substitution resistance",
+  "Public privacy boundary",
+  "createAdmittedNarratorRetailSubmissionReviewApproval",
+  "createAdmittedNarratorRetailSubmissionDecision",
+  "startAdmittedNarratorRetailSubmissionAttempt",
+  "recordAdmittedNarratorRetailSubmissionReceipt",
+]);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
   if (
@@ -248,6 +323,10 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
     packageJson.exports?.["./narrator-retail-release-delivery"]
       !== "./src/narrator-retail-release-delivery.ts"
   ) problems.push("storyteller package does not export ./narrator-retail-release-delivery");
+  if (
+    packageJson.exports?.["./narrator-retail-submission"]
+      !== "./src/narrator-retail-submission.ts"
+  ) problems.push("storyteller package does not export ./narrator-retail-submission");
 }
 
 for (const sourcePath of [
@@ -255,6 +334,7 @@ for (const sourcePath of [
   "packages/storyteller/src/narrator-retail-track-production.ts",
   "packages/storyteller/src/narrator-retail-package-admission.ts",
   "packages/storyteller/src/narrator-retail-release-delivery.ts",
+  "packages/storyteller/src/narrator-retail-submission.ts",
 ]) {
   if (!existsSync(fromRoot(sourcePath))) continue;
   const source = read(sourcePath);
@@ -262,6 +342,7 @@ for (const sourcePath of [
     "deliveryAuthority: true",
     "releaseDecisionAuthority: true",
     "submissionAuthority: true",
+    "automaticSubmissionAuthority: true",
     "retailerAcceptanceAuthority: true",
     "titleReleaseAuthority: true",
     "publicationAuthority: true",
@@ -287,5 +368,8 @@ console.log("- the governed sample retains exact source-track approval, content 
 console.log("- private package build and independent inspection retain the exact approved media-file set");
 console.log("- the independent release decision authorises exactly one controlled manual delivery attempt");
 console.log("- successful transfer remains awaiting separate submission review and claims no retailer acceptance");
-console.log("- failed and cancelled attempts retain terminal evidence without retry authority");
+console.log("- remote-draft review retains the exact delivered narrator package and requires independent humans");
+console.log("- the independent submission decision authorises exactly one manual submission attempt");
+console.log("- successful submission records retailer processing without claiming acceptance or publication");
+console.log("- failed and cancelled delivery or submission attempts retain terminal evidence without retry authority");
 console.log("- all public narrator retail projections remain redacted");
