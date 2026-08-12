@@ -46,9 +46,13 @@ for (const path of [
   "packages/storyteller/src/audiobook-retail-publication-verification.ts",
   "packages/storyteller/src/audiobook-retail-publication-verification.test.ts",
   "packages/storyteller/src/test-support/retail-publication-verification-fixture.ts",
+  "packages/storyteller/src/narrator-retail-publication-admission.ts",
+  "packages/storyteller/src/narrator-retail-publication-admission.test.ts",
+  "packages/storyteller/test-support/narrator-retail-publication-admission.ts",
   "packages/storyteller/package.json",
   "package.json",
   "docs/AUDIOBOOK_RETAIL_PUBLICATION_VERIFICATION.md",
+  "docs/NARRATOR_RETAIL_PUBLICATION_ADMISSION.md",
 ]) requireFile(path);
 
 requireTokens(
@@ -94,6 +98,49 @@ requireTokens(
   ],
 );
 
+requireTokens(
+  "packages/storyteller/src/narrator-retail-publication-admission.ts",
+  [
+    "ADMITTED_NARRATOR_RETAIL_PUBLIC_LISTING_OBSERVATION_SCHEMA",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_VERIFICATION_SCHEMA",
+    "createAdmittedNarratorRetailPublicListingObservation",
+    "assertAdmittedNarratorRetailPublicListingObservation",
+    "verifyAdmittedNarratorRetailPublication",
+    "assertAdmittedNarratorRetailPublicationVerification",
+    "admittedNarratorRetailPublicListingObservationPublicView",
+    "admittedNarratorRetailPublicationVerificationPublicView",
+    "assertAudiobookRetailPublicListingObservation",
+    "assertAudiobookRetailPublicationVerificationMatchesSources",
+    "assertAdmittedNarratorRetailListingIdentity",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_APPROVED_LISTING_REQUIRED",
+    "ADMITTED_NARRATOR_RETAIL_PUBLIC_OBSERVATION_LINEAGE_MISMATCH",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_LINEAGE_MISMATCH",
+    "publicObservationRecorded: true",
+    "publicationVerificationComplete: false",
+    "publicationVerificationComplete: true",
+    "automaticPublicationAuthority: false",
+    "publicationAuthority: false",
+  ],
+);
+
+requireTokens(
+  "packages/storyteller/src/narrator-retail-publication-admission.test.ts",
+  [
+    "adapted narrator listing becomes live only after exact public observation and independent verification",
+    "zero-shot narrator uses the same storefront verification boundary without invented training provenance",
+    "public narrator credit drift is recorded as publication mismatch and never live",
+    "no accessible required-region storefront remains not yet published for the exact narrator listing",
+    "unavailable purchase or sample remains published but unavailable under the exact narrator listing",
+    "an unapproved narrator listing cannot create public storefront evidence",
+    "cross-title storefront observation cannot be rebound to another admitted narrator listing after rehashing",
+    "rehashing cannot escalate a publication mismatch to live or grant publication authority",
+    "public storefront views expose verified retail state without private narrator, actor or reference identity",
+    "published-and-live",
+    "publication-mismatch",
+    "published-but-unavailable",
+  ],
+);
+
 requireTokens("docs/AUDIOBOOK_RETAIL_PUBLICATION_VERIFICATION.md", [
   "Admission boundary",
   "Accepted is not published",
@@ -110,6 +157,23 @@ requireTokens("docs/AUDIOBOOK_RETAIL_PUBLICATION_VERIFICATION.md", [
   "It does not prove perpetual availability",
 ]);
 
+requireTokens("docs/NARRATOR_RETAIL_PUBLICATION_ADMISSION.md", [
+  "Admission boundary",
+  "Public storefront observation",
+  "Truthful mismatch evidence",
+  "Independent publication verification",
+  "Published and live",
+  "Authority boundary",
+  "Zero-shot and adapted parity",
+  "Substitution resistance",
+  "Public privacy boundary",
+  "Production flow",
+  "Output boundary",
+  "published-and-live",
+  "automaticPublicationAuthority = false",
+  "publicationAuthority = false",
+]);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
   if (
@@ -118,6 +182,14 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   ) {
     problems.push(
       "storyteller package does not export ./audiobook-retail-publication-verification",
+    );
+  }
+  if (
+    packageJson.exports?.["./narrator-retail-publication-admission"]
+      !== "./src/narrator-retail-publication-admission.ts"
+  ) {
+    problems.push(
+      "storyteller package does not export ./narrator-retail-publication-admission",
     );
   }
 }
@@ -150,8 +222,11 @@ for (const path of [
   const runtime = read(path);
   for (const forbidden of [
     "@evavo/storyteller-engine/audiobook-retail-publication-verification",
+    "@evavo/storyteller-engine/narrator-retail-publication-admission",
     "createAudiobookRetailPublicListingObservation",
     "verifyAudiobookRetailPublication",
+    "createAdmittedNarratorRetailPublicListingObservation",
+    "verifyAdmittedNarratorRetailPublication",
     "FileAudiobookRetailPublicationVerificationStore",
   ]) {
     if (runtime.includes(forbidden)) {
@@ -174,4 +249,6 @@ console.log("- public metadata, cover and eBook identity are compared with the a
 console.log("- purchase and sample playback are verified independently in every required region");
 console.log("- observer and final verifier remain separate human actors");
 console.log("- published-and-live requires exact identity, complete availability and zero findings");
+console.log("- exact narrator admission and approved listing identity now remain bound through storefront observation and verification");
+console.log("- public narrator-credit drift remains truthful mismatch evidence and cannot become a live claim");
 console.log("- normal API and web runtimes cannot create publication evidence");
