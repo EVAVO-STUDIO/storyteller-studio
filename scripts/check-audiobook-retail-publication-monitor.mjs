@@ -48,10 +48,13 @@ for (const path of [
   "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
   "packages/storyteller/src/narrator-retail-publication-monitor-admission.test.ts",
   "packages/storyteller/test-support/narrator-retail-publication-monitor-admission.ts",
+  "packages/storyteller/src/narrator-retail-publication-operations-admission.ts",
+  "packages/storyteller/src/narrator-retail-publication-operations-admission.test.ts",
   "packages/storyteller/package.json",
   "package.json",
   "docs/AUDIOBOOK_RETAIL_PUBLICATION_MONITOR.md",
   "docs/NARRATOR_RETAIL_PUBLICATION_MONITOR_ADMISSION.md",
+  "docs/NARRATOR_RETAIL_PUBLICATION_OPERATIONS_ADMISSION.md",
 ]) requireFile(path);
 
 requireTokens(
@@ -170,6 +173,80 @@ requireTokens("docs/NARRATOR_RETAIL_PUBLICATION_MONITOR_ADMISSION.md", [
   "It does not guarantee future availability",
 ]);
 
+requireTokens(
+  "packages/storyteller/src/narrator-retail-publication-operations-admission.ts",
+  [
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_EVIDENCE_REQUEST_SCHEMA",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_EVIDENCE_SCHEMA",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_INCIDENT_SCHEMA",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_OPERATION_SCHEMA",
+    "createAdmittedNarratorRetailPublicationEvidenceRequest",
+    "submitAdmittedNarratorRetailPublicationEvidence",
+    "applyAdmittedNarratorRetailPublicationEvidence",
+    "markAdmittedNarratorRetailPublicationEvidenceStale",
+    "createAdmittedNarratorRetailPublicationIncident",
+    "resolveAdmittedNarratorRetailPublicationIncident",
+    "assertAdmittedNarratorRetailPublicationEvidenceRequest",
+    "assertAdmittedNarratorRetailPublicationEvidence",
+    "assertAdmittedNarratorRetailPublicationIncident",
+    "assertAdmittedNarratorRetailPublicationOperation",
+    "admittedNarratorRetailPublicationEvidenceRequestPublicView",
+    "admittedNarratorRetailPublicationEvidencePublicView",
+    "admittedNarratorRetailPublicationIncidentPublicView",
+    "admittedNarratorRetailPublicationOperationPublicView",
+    "evidenceAcquisitionRequested: true",
+    "evidenceAvailable: true",
+    "refreshEligible: true",
+    "verifiedRecoveryRequired: true",
+    "automaticRefreshAuthority: false",
+    "automaticRemediationAuthority: false",
+    "automaticRepublishAuthority: false",
+    "publicationAuthority: false",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_OPERATIONS_EVIDENCE_LINEAGE_MISMATCH",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_OPERATIONS_NARRATOR_LINEAGE_MISMATCH",
+    "ADMITTED_NARRATOR_RETAIL_PUBLICATION_INCIDENT_RECOVERY_LINEAGE_INVALID",
+  ],
+);
+
+requireTokens(
+  "packages/storyteller/src/narrator-retail-publication-operations-admission.test.ts",
+  [
+    "adapted and zero-shot narrator monitors create exact admission-bound evidence requests",
+    "narrator metadata drift is admitted as evidence, acknowledged by refresh and raised as one critical incident",
+    "missing current evidence marks only the same admitted narrator monitor stale and creates a warning incident",
+    "verified recovery resolves an incident only through the same admitted narrator listing and ASIN",
+    "cross-title, replacement narrator and public product substitutions fail before evidence intake",
+    "another admitted narrator recovery cannot resolve an existing narrator incident",
+    "rehashing operations or incidents cannot manufacture refresh, remediation, republish or publication authority",
+    "public evidence, operation and incident projections expose bounded retail health without private narrator evidence",
+    "evidence-refresh",
+    "evidence-stale",
+    "identity-mismatch",
+    "evidence-stale",
+    "verified-recovery",
+  ],
+);
+
+requireTokens(
+  "docs/NARRATOR_RETAIL_PUBLICATION_OPERATIONS_ADMISSION.md",
+  [
+    "Admission boundary",
+    "Evidence request",
+    "Evidence intake",
+    "Refresh operation",
+    "Stale evidence",
+    "Incident creation",
+    "Verified recovery",
+    "Adapted and zero-shot provenance",
+    "Immutable lineage",
+    "Authority boundary",
+    "Private runtime boundary",
+    "Public projection",
+    "Output boundary",
+    "It does not guarantee future availability",
+  ],
+);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
   if (
@@ -186,6 +263,14 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   ) {
     problems.push(
       "storyteller package does not export ./narrator-retail-publication-monitor-admission",
+    );
+  }
+  if (
+    packageJson.exports?.["./narrator-retail-publication-operations-admission"]
+      !== "./src/narrator-retail-publication-operations-admission.ts"
+  ) {
+    problems.push(
+      "storyteller package does not export ./narrator-retail-publication-operations-admission",
     );
   }
 }
@@ -211,22 +296,21 @@ if (existsSync(fromRoot("package.json"))) {
   }
 }
 
-if (
-  existsSync(fromRoot(
-    "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
-  ))
-) {
-  const source = read(
-    "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
-  );
+for (const path of [
+  "packages/storyteller/src/narrator-retail-publication-monitor-admission.ts",
+  "packages/storyteller/src/narrator-retail-publication-operations-admission.ts",
+]) {
+  if (!existsSync(fromRoot(path))) continue;
+  const source = read(path);
   for (const forbidden of [
+    "automaticRefreshAuthority: true",
     "automaticRemediationAuthority: true",
     "automaticRepublishAuthority: true",
     "publicationAuthority: true",
   ]) {
     if (source.includes(forbidden)) {
       problems.push(
-        `narrator publication monitor grants forbidden authority: ${forbidden}`,
+        `narrator publication operations grant forbidden authority in ${path}: ${forbidden}`,
       );
     }
   }
@@ -240,12 +324,19 @@ for (const path of [
   for (const forbidden of [
     "@evavo/storyteller-engine/audiobook-retail-publication-monitor",
     "@evavo/storyteller-engine/narrator-retail-publication-monitor-admission",
+    "@evavo/storyteller-engine/narrator-retail-publication-operations-admission",
     "createAudiobookRetailPublicationMonitor",
     "createAdmittedNarratorRetailPublicationMonitor",
     "recordAudiobookRetailPublicationRefresh",
     "recordAdmittedNarratorRetailPublicationRefresh",
     "markAudiobookRetailPublicationMonitorStale",
     "markAdmittedNarratorRetailPublicationMonitorStale",
+    "createAdmittedNarratorRetailPublicationEvidenceRequest",
+    "submitAdmittedNarratorRetailPublicationEvidence",
+    "applyAdmittedNarratorRetailPublicationEvidence",
+    "markAdmittedNarratorRetailPublicationEvidenceStale",
+    "createAdmittedNarratorRetailPublicationIncident",
+    "resolveAdmittedNarratorRetailPublicationIncident",
     "FileAudiobookRetailPublicationMonitorStore",
   ]) {
     if (runtime.includes(forbidden)) {
@@ -270,4 +361,5 @@ console.log("- refresh deadlines cannot outlive the underlying public observatio
 console.log("- public and audit projections omit source evidence and private identities");
 console.log("- normal API and web runtimes cannot mutate publication monitoring");
 console.log("- narrator monitor history remains bound to the exact admitted narrator and Audible ASIN");
-console.log("- narrator regression and stale evidence never grant remediation or republish authority");
+console.log("- narrator evidence intake reopens exact profile, casting, listing and public-product lineage");
+console.log("- narrator incidents require exact admitted recovery and grant no repair or republish authority");
