@@ -99,6 +99,7 @@
     "./narrator-retail-track-production": "./src/narrator-retail-track-production.ts",
     "./narrator-retail-package-admission": "./src/narrator-retail-package-admission.ts",
     "./narrator-retail-release-delivery": "./src/narrator-retail-release-delivery.ts",
-    "./narrator-retail-submission": "./src/narrator-retail-submission.ts"
+    "./narrator-retail-submission": "./src/narrator-retail-submission.ts",
+    "./narrator-retail-status-admission": "./src/narrator-retail-status-admission.ts"
   }
 }

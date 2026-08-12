@@ -43,9 +43,13 @@ function collectRuntimeFiles(directory, output = []) {
 for (const path of [
   "packages/storyteller/src/audiobook-retailer-status-evidence.ts",
   "packages/storyteller/src/audiobook-retailer-status-evidence.test.ts",
+  "packages/storyteller/src/narrator-retail-status-admission.ts",
+  "packages/storyteller/src/narrator-retail-status-admission.test.ts",
+  "packages/storyteller/test-support/narrator-retail-status-admission.ts",
   "packages/storyteller/package.json",
   "package.json",
   "docs/AUDIOBOOK_RETAILER_STATUS_EVIDENCE.md",
+  "docs/NARRATOR_RETAILER_STATUS_ADMISSION.md",
 ]) requireFile(path);
 
 requireTokens("packages/storyteller/src/audiobook-retailer-status-evidence.ts", [
@@ -84,6 +88,63 @@ requireTokens("docs/AUDIOBOOK_RETAILER_STATUS_EVIDENCE.md", [
   "does not mean published, released, live or on sale",
 ]);
 
+requireTokens("packages/storyteller/src/narrator-retail-status-admission.ts", [
+  "ADMITTED_NARRATOR_RETAILER_STATUS_EVIDENCE_SCHEMA",
+  "createAdmittedNarratorRetailerStatusEvidence",
+  "assertAdmittedNarratorRetailerStatusEvidence",
+  "admittedNarratorRetailerStatusEvidencePublicView",
+  "assertAdmittedNarratorRetailSubmissionAttempt",
+  "createAudiobookRetailerStatusEvidence",
+  "assertAudiobookRetailerStatusEvidenceMatchesSources",
+  "assertExactNarratorVoicePin",
+  "ADMITTED_NARRATOR_RETAILER_STATUS_LINEAGE_MISMATCH",
+  "ADMITTED_NARRATOR_RETAILER_STATUS_AUTHORITY_INVALID",
+  "narratorAdmissionComplete: true",
+  "syntheticNarrationDeclared: true",
+  "platformAuthorisationBound: true",
+  "submissionComplete: true",
+  "retailerReviewEligible: true",
+  "retailerStatusEvidenceComplete: true",
+  "publicationConfirmed: false",
+  "liveConfirmed: false",
+  "automaticResubmissionAuthority: false",
+  "retailerAcceptanceAuthority: false",
+  "publicationAuthority: false",
+]);
+
+requireTokens("packages/storyteller/src/narrator-retail-status-admission.test.ts", [
+  "adapted narrator admission survives exact retailer processing evidence",
+  "zero-shot narrator uses the same retailer-status boundary without invented training provenance",
+  "retailer acceptance remains evidence awaiting separate publication verification",
+  "retailer changes requested preserve narrator lineage without automatic resubmission authority",
+  "rehashing cannot attach retailer status from another submitted narrator chain",
+  "rehashing cannot escalate retailer, resubmission or publication authority",
+  "public retailer-status view proves bounded state without private narrator, account, submission or retailer references",
+]);
+
+requireTokens("packages/storyteller/test-support/narrator-retail-status-admission.ts", [
+  "createTestAdmittedNarratorRetailerStatusFixture",
+  "createTestAdmittedNarratorRetailSubmissionAttemptFixture",
+  "createAdmittedNarratorRetailerStatusEvidence",
+  'normalisedStatus === "changes-requested"',
+  'normalisedStatus === "rejected"',
+  "humanObservationConfirmed: true",
+]);
+
+requireTokens("docs/NARRATOR_RETAILER_STATUS_ADMISSION.md", [
+  "Exact submission lineage",
+  "Independent human retailer-status observation",
+  "Normalised retailer states",
+  "Derived acceptance, not caller authority",
+  "Zero-shot and adapted parity",
+  "Substitution resistance",
+  "Authority boundary",
+  "Public privacy boundary",
+  "createAdmittedNarratorRetailerStatusEvidence",
+  "accepted-awaiting-publication",
+  "automaticResubmissionAuthority = false",
+]);
+
 if (existsSync(fromRoot("packages/storyteller/package.json"))) {
   const packageJson = JSON.parse(read("packages/storyteller/package.json"));
   if (
@@ -91,6 +152,12 @@ if (existsSync(fromRoot("packages/storyteller/package.json"))) {
       !== "./src/audiobook-retailer-status-evidence.ts"
   ) {
     problems.push("storyteller package does not export retailer status evidence");
+  }
+  if (
+    packageJson.exports?.["./narrator-retail-status-admission"]
+      !== "./src/narrator-retail-status-admission.ts"
+  ) {
+    problems.push("storyteller package does not export narrator retailer-status admission");
   }
 }
 
@@ -118,12 +185,29 @@ for (const path of [
   const runtime = read(path);
   for (const forbidden of [
     "@evavo/storyteller-engine/audiobook-retailer-status-evidence",
+    "@evavo/storyteller-engine/narrator-retail-status-admission",
     "createAudiobookRetailerStatusEvidence",
+    "createAdmittedNarratorRetailerStatusEvidence",
     "externalStatusReferenceHash",
     "externalStatusTextHash",
   ]) {
     if (runtime.includes(forbidden)) {
       problems.push(`${path} exposes private retailer-status controls: ${forbidden}`);
+    }
+  }
+}
+
+if (existsSync(fromRoot("packages/storyteller/src/narrator-retail-status-admission.ts"))) {
+  const source = read("packages/storyteller/src/narrator-retail-status-admission.ts");
+  for (const forbidden of [
+    "automaticResubmissionAuthority: true",
+    "retailerAcceptanceAuthority: true",
+    "publicationAuthority: true",
+    "publicationConfirmed: true",
+    "liveConfirmed: true",
+  ]) {
+    if (source.includes(forbidden)) {
+      problems.push(`narrator retailer-status admission grants forbidden authority: ${forbidden}`);
     }
   }
 }
@@ -137,6 +221,8 @@ if (problems.length > 0) {
 console.log("storyteller_audiobook_retailer_status_evidence_check_passed");
 console.log("- submitted attempts are rebound to external retailer observations");
 console.log("- processing, changes, acceptance and rejection remain distinct");
+console.log("- narrator retailer status reopens the exact admission-bound submitted chain");
 console.log("- retailer acceptance never implies publication or live availability");
+console.log("- changes requested never grant automatic resubmission authority");
 console.log("- external references and raw status text remain hashed and private");
 console.log("- normal API and web runtimes cannot create retailer-status evidence");
