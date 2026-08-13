@@ -13,6 +13,7 @@ import {
   parseAudioStudioJobStatus,
   parseAudioStudioSubmission,
   verifyAudioStudioBinding,
+  verifyAudioStudioExpressiveArtifactEvidence,
 } from "./audio-studio-contracts.js";
 import {
   audioStudioHeaders,
@@ -189,6 +190,12 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     if (request.text.length > capability.maximumInputCharacters) {
       throw new Error("AUDIO_STUDIO_CAPABILITY_INPUT_LIMIT_EXCEEDED");
     }
+    if (
+      request.metadata.expressivePerformanceRequired === "true"
+      && !capability.features.includes("style-instructions")
+    ) {
+      throw new Error("AUDIO_STUDIO_EXPRESSIVE_STYLE_INSTRUCTIONS_REQUIRED");
+    }
 
     const deadline = Date.now() + context.timeoutMs;
     const requestWithinDeadline = (
@@ -285,6 +292,7 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
     const selected = audioArtifacts[0];
     if (!selected) throw new Error("AUDIO_STUDIO_ARTIFACT_MISSING");
     const artifact = selected.artifact;
+    verifyAudioStudioExpressiveArtifactEvidence(request, artifact);
     const artifactUrlValue = status.artifactUrls[selected.index];
     if (!artifactUrlValue) throw new Error("AUDIO_STUDIO_ARTIFACT_MISSING");
     if (artifact.sizeBytes > this.#maximumArtifactBytes) {
@@ -347,6 +355,19 @@ export class AudioStudioVoiceAdapter implements NarrationProviderAdapter {
         engineLockFingerprint: status.engineLockFingerprint,
         artifactSha256: artifact.sha256,
         artifactPath: artifact.path,
+        ...(request.metadata.expressivePerformanceRequired === "true"
+          ? {
+              voiceProfileHash: request.voiceProfileHash!,
+              expressivePerformancePlanFingerprint:
+                request.metadata.expressivePerformancePlanFingerprint!,
+              expressiveRoleBindingFingerprint:
+                request.metadata.expressiveRoleBindingFingerprint!,
+              expressivePerformanceAnchorHash:
+                request.metadata.expressivePerformanceAnchorHash!,
+              expressiveStyleInstructionsApplied: true,
+              genericFallbackVoiceUsed: false,
+            }
+          : {}),
         zeroApiFee: true,
         offline: true,
         humanListeningApproval: false,

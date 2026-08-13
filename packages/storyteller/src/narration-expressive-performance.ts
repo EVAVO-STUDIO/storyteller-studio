@@ -725,6 +725,8 @@ export function expressivePerformanceRequestMetadata(
     expressiveRoleKind: role.roleKind,
     ...(role.characterId ? { expressiveCharacterId: role.characterId } : {}),
     expressiveVoiceStrategy: role.voiceStrategy,
+    expressiveEngineKey: role.engineKey,
+    expressiveVoiceProfileHash: role.voice.profileHash,
     expressivePerformanceAnchorHash: role.performanceAnchorHash,
     expressivePrimaryEmotion: plan.primaryEmotion,
     ...(plan.secondaryEmotion
@@ -732,6 +734,7 @@ export function expressivePerformanceRequestMetadata(
       : {}),
     expressiveEmotionTrajectory: plan.emotionalTrajectory,
     expressiveEmotionalIntensity: plan.emotionalIntensity.toFixed(3),
+    expressiveSubtextIntent: plan.subtextIntent,
     expressiveCadenceProfile: plan.cadence.profile,
     expressiveMinimumWpm: String(plan.cadence.minimumWpm),
     expressiveTargetWpm: String(plan.cadence.targetWpm),

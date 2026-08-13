@@ -14,6 +14,11 @@ import {
   type StoredEnvelope,
 } from "./project-store.js";
 import {
+  assertExpressiveWorkerInput,
+  expressiveGenerationBindingPublicView,
+  normaliseExpressiveGenerationBinding,
+} from "./expressive-generation-binding.js";
+import {
   assertNaturalNarrationWorkerInput,
   type NarrationContextBoundary,
 } from "./narration-production-policy.js";
@@ -64,6 +69,12 @@ export interface GenerationMaterialPublicView {
   narrationContextFingerprint?: string;
   narrationContextBoundary?: NarrationContextBoundary;
   narrationLanguage?: string;
+  expressiveGenerationBindingFingerprint?: string;
+  expressivePerformancePlanFingerprint?: string;
+  expressiveRoleBindingFingerprint?: string;
+  expressiveRoleKind?: "narrator" | "character";
+  expressiveVoiceStrategy?: "dedicated-voice" | "performance-variation";
+  expressiveCharacterScoped?: boolean;
   costPolicy?: Readonly<{
     currency: string;
     maximumTotalEstimatedCost: number;
@@ -343,6 +354,16 @@ export function validateGenerationWorkerMaterial(
       error instanceof Error ? error.message : "GENERATION_MATERIAL_NATURAL_NARRATION_INVALID",
     );
   }
+  try {
+    assertExpressiveWorkerInput(job, {
+      ...material,
+      mode,
+    });
+  } catch (error) {
+    throw new GenerationMaterialIntegrityError(
+      error instanceof Error ? error.message : "GENERATION_MATERIAL_EXPRESSIVE_BINDING_INVALID",
+    );
+  }
   const format = material.format ?? "wav";
   if (!STORABLE_AUDIO_FORMATS.has(format)) {
     throw new GenerationMaterialIntegrityError("GENERATION_MATERIAL_FORMAT_NOT_STORABLE");
@@ -406,6 +427,14 @@ function normaliseGenerationWorkerMaterial(
             ...material.naturalNarration,
             context: Object.freeze({ ...material.naturalNarration.context }),
           }),
+        }
+      : {}),
+    ...(material.expressivePerformance
+      ? {
+          expressivePerformance: normaliseExpressiveGenerationBinding(
+            material.expressivePerformance,
+            material.direction,
+          ),
         }
       : {}),
     ...(material.costPolicy
@@ -520,6 +549,9 @@ export function generationMaterialPublicView(
           narrationContextBoundary: material.naturalNarration.context.boundary,
           narrationLanguage: material.naturalNarration.language,
         }
+      : {}),
+    ...(material.expressivePerformance
+      ? expressiveGenerationBindingPublicView(material.expressivePerformance)
       : {}),
     ...(material.costPolicy ? { costPolicy: material.costPolicy } : {}),
     createdAt: record.createdAt,

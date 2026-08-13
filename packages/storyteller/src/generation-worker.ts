@@ -28,9 +28,15 @@ import type {
 } from "./generation-queue-contracts.js";
 import {
   stableHash,
+  type GenerationJob,
   type PerformanceDirection,
   type ProjectUse,
 } from "./index.js";
+import {
+  assertExpressiveWorkerInput,
+  type ExpressiveGenerationBinding,
+} from "./expressive-generation-binding.js";
+import { buildExpressiveSynthesisRequest } from "./narration-expressive-performance.js";
 import {
   assertNaturalNarrationWorkerInput,
   type NaturalNarrationProductionPlan,
@@ -66,6 +72,7 @@ export interface GenerationWorkerMaterial {
   commercial?: boolean;
   parentArtifactIds?: readonly string[];
   naturalNarration?: NaturalNarrationProductionPlan;
+  expressivePerformance?: ExpressiveGenerationBinding;
   costPolicy?: Readonly<{
     currency: string;
     maximumTotalEstimatedCost: number;
@@ -170,6 +177,7 @@ function requireWorkerInput(input: ClaimedGenerationWorkerInput): void {
     throw new Error("GENERATION_WORKER_UNSUPPORTED_STORAGE_FORMAT");
   }
   assertNaturalNarrationWorkerInput(input.claim.item.job, input.material);
+  assertExpressiveWorkerInput(input.claim.item.job, input.material);
   if (input.material.costPolicy) {
     if (!CURRENCY_PATTERN.test(input.material.costPolicy.currency)) {
       throw new Error("GENERATION_WORKER_COST_POLICY_CURRENCY_INVALID");
@@ -189,29 +197,50 @@ function throwIfWorkerAborted(signal: AbortSignal | undefined): void {
   throw new Error("GENERATION_WORKER_ABORTED");
 }
 
-function buildRequests(
-  claim: GenerationQueueClaim,
+export function buildGenerationWorkerRequests(
+  job: GenerationJob,
   material: GenerationWorkerMaterial,
 ): readonly SynthesisRequest[] {
+  assertNaturalNarrationWorkerInput(job, material);
+  assertExpressiveWorkerInput(job, material);
   return Object.freeze(Array.from(
-    { length: claim.item.job.candidateCount },
-    (_, candidateIndex) => buildSynthesisRequest({
-      job: claim.item.job,
-      text: material.text,
-      immutableSourceHash: material.immutableSourceHash,
-      voiceProfileId: material.voiceProfileId,
-      voiceRevision: material.voiceRevision,
-      ...(material.voiceProfileHash !== undefined ? { voiceProfileHash: material.voiceProfileHash } : {}),
-      direction: material.direction,
-      pronunciations: material.pronunciations ?? [],
-      mode: material.mode ?? "production",
-      format: material.format ?? "wav",
-      sampleRateHz: material.sampleRateHz ?? 48_000,
-      candidateIndex,
-      ...(material.naturalNarration
-        ? { naturalNarration: material.naturalNarration }
-        : {}),
-    }),
+    { length: job.candidateCount },
+    (_, candidateIndex) => material.expressivePerformance
+      ? buildExpressiveSynthesisRequest({
+          job,
+          text: material.text,
+          immutableSourceHash: material.immutableSourceHash,
+          role: material.expressivePerformance.role,
+          direction: material.direction,
+          plan: material.expressivePerformance.plan,
+          pronunciations: material.pronunciations ?? [],
+          mode: material.mode ?? "production",
+          format: material.format ?? "wav",
+          sampleRateHz: material.sampleRateHz ?? 48_000,
+          candidateIndex,
+          ...(material.naturalNarration
+            ? { naturalNarration: material.naturalNarration }
+            : {}),
+        })
+      : buildSynthesisRequest({
+          job,
+          text: material.text,
+          immutableSourceHash: material.immutableSourceHash,
+          voiceProfileId: material.voiceProfileId,
+          voiceRevision: material.voiceRevision,
+          ...(material.voiceProfileHash !== undefined
+            ? { voiceProfileHash: material.voiceProfileHash }
+            : {}),
+          direction: material.direction,
+          pronunciations: material.pronunciations ?? [],
+          mode: material.mode ?? "production",
+          format: material.format ?? "wav",
+          sampleRateHz: material.sampleRateHz ?? 48_000,
+          candidateIndex,
+          ...(material.naturalNarration
+            ? { naturalNarration: material.naturalNarration }
+            : {}),
+        }),
   ));
 }
 
@@ -614,7 +643,10 @@ export async function runClaimedGenerationWorker(
   requireWorkerInput(input);
   throwIfWorkerAborted(input.signal);
   const currentTime = () => generationWorkerNow(input);
-  const requests = buildRequests(input.claim, input.material);
+  const requests = buildGenerationWorkerRequests(
+    input.claim.item.job,
+    input.material,
+  );
   const report = await executeGenerationJob({
     job: input.claim.item.job,
     registry: input.providers,
