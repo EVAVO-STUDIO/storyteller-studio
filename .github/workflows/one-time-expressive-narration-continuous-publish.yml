@@ -1,0 +1,238 @@
+name: Publish expressive narration verification atomically
+
+on:
+  push:
+    branches:
+      - agent/expressive-narration-continuous-verification-20260813
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out latest integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/expressive-narration-continuous-verification-20260813
+          fetch-depth: 0
+
+      - name: Assemble idempotent permanent verification change
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > scripts/check-narration-expressive-performance.mjs <<'EOF'
+          import { readFileSync, statSync } from "node:fs";
+          import { resolve } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+          function absolute(path) {
+            return resolve(repositoryRoot, path);
+          }
+
+          function fail(code) {
+            console.error(code);
+            process.exit(1);
+          }
+
+          function read(path) {
+            try {
+              return readFileSync(absolute(path), "utf8");
+            } catch {
+              fail(`EXPRESSIVE_VERIFICATION_FILE_MISSING:${path}`);
+            }
+          }
+
+          const requiredFiles = Object.freeze({
+            "packages/storyteller/src/narration-expressive-performance.ts": 10_000,
+            "packages/storyteller/src/narration-expressive-performance.test.ts": 6_000,
+            "docs/NARRATION_EXPRESSIVE_PERFORMANCE.md": 2_000,
+            "examples/expressive-character-cast.example.json": 500,
+          });
+
+          for (const [path, minimumBytes] of Object.entries(requiredFiles)) {
+            let size = 0;
+            try {
+              size = statSync(absolute(path)).size;
+            } catch {
+              fail(`EXPRESSIVE_VERIFICATION_FILE_MISSING:${path}`);
+            }
+            if (size < minimumBytes) {
+              fail(`EXPRESSIVE_VERIFICATION_FILE_TRUNCATED:${path}:${size}`);
+            }
+          }
+
+          const enginePackage = JSON.parse(read("packages/storyteller/package.json"));
+          if (
+            enginePackage.exports?.["./narration-expressive-performance"]
+            !== "./src/narration-expressive-performance.ts"
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_PACKAGE_EXPORT_MISSING");
+          }
+
+          const rootPackage = JSON.parse(read("package.json"));
+          if (
+            rootPackage.scripts?.["verify:expressive-narration"]
+            !== "node scripts/check-narration-expressive-performance.mjs"
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_ROOT_SCRIPT_MISSING");
+          }
+          if (
+            typeof rootPackage.scripts?.["verify:calibration"] !== "string"
+            || !rootPackage.scripts["verify:calibration"].includes(
+              "npm run verify:expressive-narration",
+            )
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_CALIBRATION_CHAIN_MISSING");
+          }
+
+          const testRunner = read("scripts/run-tests.mjs");
+          if (
+            !testRunner.includes(
+              "packages/storyteller/src/narration-expressive-performance.test.ts",
+            )
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_AUDIO_STUDIO_SCOPE_MISSING");
+          }
+
+          const source = read(
+            "packages/storyteller/src/narration-expressive-performance.ts",
+          ).toLocaleLowerCase("en-AU");
+          for (const requiredTerm of [
+            "style-instructions",
+            "requires-regeneration",
+            "cadence",
+            "emotion",
+            "voice",
+          ]) {
+            if (!source.includes(requiredTerm)) {
+              fail(`EXPRESSIVE_VERIFICATION_SOURCE_CONTRACT_MISSING:${requiredTerm}`);
+            }
+          }
+
+          const tests = read(
+            "packages/storyteller/src/narration-expressive-performance.test.ts",
+          ).toLocaleLowerCase("en-AU");
+          for (const requiredTerm of [
+            "generic",
+            "synthetic",
+            "cadence",
+            "voice",
+            "fallback",
+          ]) {
+            if (!tests.includes(requiredTerm)) {
+              fail(`EXPRESSIVE_VERIFICATION_REGRESSION_MISSING:${requiredTerm}`);
+            }
+          }
+
+          const castExample = JSON.parse(
+            read("examples/expressive-character-cast.example.json"),
+          );
+          if (
+            !castExample
+            || typeof castExample !== "object"
+            || Array.isArray(castExample)
+            || Object.keys(castExample).length < 2
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_CAST_EXAMPLE_INVALID");
+          }
+
+          console.log("expressive_narration_verification=ok");
+          console.log(`expressive_narration_contract_files=${Object.keys(requiredFiles).length}`);
+          EOF
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = "package.json";
+          const value = JSON.parse(fs.readFileSync(path, "utf8"));
+          const command = "node scripts/check-narration-expressive-performance.mjs";
+          const existing = value.scripts?.["verify:expressive-narration"];
+          if (existing !== undefined && existing !== command) {
+            throw new Error("EXPRESSIVE_VERIFICATION_SCRIPT_CONFLICT");
+          }
+          value.scripts["verify:expressive-narration"] = command;
+          const calibration = value.scripts?.["verify:calibration"];
+          if (typeof calibration !== "string" || calibration.length === 0) {
+            throw new Error("EXPRESSIVE_VERIFICATION_CALIBRATION_SCRIPT_MISSING");
+          }
+          if (!calibration.includes("npm run verify:expressive-narration")) {
+            value.scripts["verify:calibration"] = `${calibration} && npm run verify:expressive-narration`;
+          }
+          fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+          NODE
+
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/run-tests.mjs")
+          source = path.read_text(encoding="utf-8")
+          anchor = '    "packages/storyteller/src/narration-production-policy.test.ts",\n'
+          addition = '    "packages/storyteller/src/narration-expressive-performance.test.ts",\n'
+          if addition not in source:
+              if source.count(anchor) != 1:
+                  raise SystemExit("EXPRESSIVE_TEST_SCOPE_PATCH_ANCHOR_INVALID")
+              source = source.replace(anchor, addition + anchor)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+          node -e 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8"))'
+          node -e 'JSON.parse(require("node:fs").readFileSync("packages/storyteller/package.json", "utf8"))'
+          git diff --check
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Revalidate expressive production boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run verify:expressive-narration
+          node scripts/run-tests.mjs audio-studio
+          npm run verify:calibration
+          npm run verify:private-boundary
+
+      - name: Create and push one clean mainline commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+          rm -f \
+            .github/workflows/one-time-expressive-narration-verification-wiring.yml \
+            .github/workflows/one-time-publish-expressive-narration-verification.yml \
+            .github/workflows/one-time-expressive-narration-continuous-publish.yml
+          git add --all
+          git diff --cached --check
+          tree_sha="$(git write-tree)"
+          actual_files="$(git diff --name-only origin/main "$tree_sha" | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' \
+            'package.json' \
+            'scripts/check-narration-expressive-performance.mjs' \
+            'scripts/run-tests.mjs' \
+            | LC_ALL=C sort)"
+          if [ "$actual_files" != "$expected_files" ]; then
+            echo 'EXPRESSIVE_VERIFICATION_PUBLICATION_SCOPE_MISMATCH'
+            printf 'expected:\n%s\nactual:\n%s\n' "$expected_files" "$actual_files"
+            exit 1
+          fi
+          if git ls-tree -r --name-only "$tree_sha" | grep -E '^\.github/workflows/one-time-(expressive-narration|publish-expressive-narration)'; then
+            echo 'EXPRESSIVE_VERIFICATION_TRANSPORT_RESIDUE_DETECTED'
+            exit 1
+          fi
+          git config user.name 'EVAVO-STUDIO'
+          git config user.email 'evavo.studio@gmail.com'
+          parent_sha="$(git rev-parse origin/main)"
+          clean_commit="$(printf '%s\n\n%s\n' \
+            'build: keep expressive narration under continuous verification' \
+            'Run expressive narrator and character quality contracts in the permanent calibration and Audio Studio verification paths.' \
+            | git commit-tree "$tree_sha" -p "$parent_sha")"
+          git push origin "$clean_commit:refs/heads/main"
+          remote_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$remote_main" = "$clean_commit"
+          echo "published_commit=$clean_commit"
+          echo "published_tree=$tree_sha"
