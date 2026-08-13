@@ -19,6 +19,17 @@ import {
   createGenerationMaterialRecord,
   generationMaterialPublicView,
 } from "./generation-material.js";
+import {
+  createExpressiveGenerationBinding,
+} from "./expressive-generation-binding.js";
+import {
+  createExpressivePerformancePlan,
+  createExpressiveVoiceRoleBinding,
+} from "./narration-expressive-performance.js";
+import {
+  STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA,
+  type NarratorProductionJob,
+} from "./narrator-production-job.js";
 import { buildSynthesisRequest } from "./provider-adapter.js";
 
 const source = `Chapter One
@@ -52,6 +63,11 @@ const direction: PerformanceDirection = {
     "Keep the first sentence observational; let dread arrive only on the final verb.",
   ],
 };
+const narratorVoice = Object.freeze({
+  profileId: "voice_narrator_001",
+  revision: 1,
+  profileHash: "c".repeat(64),
+});
 
 function job(candidateCount = 3): GenerationJob {
   return {
@@ -62,6 +78,17 @@ function job(candidateCount = 3): GenerationJob {
     cacheKey: "a".repeat(64),
     candidateCount,
     status: "ready",
+  };
+}
+
+function narratorJob(candidateCount = 3): NarratorProductionJob {
+  return {
+    ...job(candidateCount),
+    narratorProductionSchema: STORYTELLER_NARRATOR_PRODUCTION_JOB_SCHEMA,
+    narratorProfileAdmissionHash: "1".repeat(64),
+    narratorAdmittedCastingFingerprint: "2".repeat(64),
+    narratorCastingFingerprint: "3".repeat(64),
+    narratorVoice,
   };
 }
 
@@ -82,6 +109,49 @@ function material(candidatePlan = plan()) {
     mode: "production" as const,
     naturalNarration: candidatePlan,
   };
+}
+
+function expressiveBinding() {
+  const role = createExpressiveVoiceRoleBinding({
+    projectId: "project_natural_narration_001",
+    roleId: "role_narrator_natural_001",
+    roleKind: "narrator",
+    displayName: "Primary narrator",
+    voice: narratorVoice,
+    voiceIdentityId: "identity_narrator_natural_001",
+    engineKey: "audio-studio-narrator-v1",
+    sourceRightsFingerprint: "4".repeat(64),
+    voiceStrategy: "dedicated-voice",
+    performanceAnchorHash: "5".repeat(64),
+    approvedBy: "reviewer_narrator_natural_001",
+    approvedAt: "2026-08-09T00:00:00.000Z",
+  });
+  const expressivePlan = createExpressivePerformancePlan({
+    role,
+    direction,
+    primaryEmotion: "contained dread",
+    secondaryEmotion: "watchful suspicion",
+    emotionalTrajectory: "rising",
+    emotionalIntensity: 0.64,
+    subtextIntent: direction.subtext,
+    cadence: {
+      profile: "intimate",
+      minimumWpm: 122,
+      targetWpm: 140,
+      maximumWpm: 158,
+      phraseLengthVariation: 0.32,
+      pauseVariation: 0.28,
+      minimumPitchRangeSemitones: 5,
+      minimumDynamicRangeDb: 8,
+      maximumCadenceTemplateSimilarity: 0.72,
+      maximumSentenceFinalContourRepetitionRatio: 0.42,
+    },
+  });
+  return createExpressiveGenerationBinding({
+    role,
+    plan: expressivePlan,
+    direction,
+  });
 }
 
 test("narration context windows carry real adjacent prose without the current segment", () => {
@@ -215,14 +285,17 @@ test("deterministic synthesis requests carry the same governed context across va
 
 test("generation material persists plan fingerprints without exposing neighbouring prose", () => {
   const value = plan();
-  const record = createGenerationMaterialRecord(job(), {
+  const expressive = expressiveBinding();
+  const record = createGenerationMaterialRecord(narratorJob(), {
     text: target.text,
     immutableSourceHash: manuscript.sourceHash,
-    voiceProfileId: "voice_narrator_001",
-    voiceRevision: 1,
+    voiceProfileId: narratorVoice.profileId,
+    voiceRevision: narratorVoice.revision,
+    voiceProfileHash: narratorVoice.profileHash,
     direction,
     mode: "production",
     naturalNarration: value,
+    expressivePerformance: expressive,
     rights: {
       rightsEvidenceId: "rights_natural_narration_001",
       rightsFingerprint: "b".repeat(64),
@@ -238,8 +311,20 @@ test("generation material persists plan fingerprints without exposing neighbouri
   assert.equal(view.narrationContextFingerprint, value.context.fingerprint);
   assert.equal(view.narrationContextBoundary, "middle");
   assert.equal(view.narrationLanguage, "en-AU");
+  assert.equal(
+    view.expressiveGenerationBindingFingerprint,
+    expressive.fingerprint,
+  );
+  assert.equal(
+    view.expressivePerformancePlanFingerprint,
+    expressive.plan.fingerprint,
+  );
+  assert.equal(view.expressiveRoleKind, "narrator");
   const serialised = JSON.stringify(view);
   assert.equal(serialised.includes(value.context.previousContext), false);
   assert.equal(serialised.includes(value.context.nextContext), false);
   assert.equal(serialised.includes(target.text), false);
+  assert.equal(serialised.includes(expressive.plan.subtextIntent), false);
+  assert.equal(serialised.includes(narratorVoice.profileId), false);
+  assert.equal(serialised.includes(narratorVoice.profileHash), false);
 });
