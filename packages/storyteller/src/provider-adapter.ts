@@ -301,8 +301,42 @@ function validateResult(
   return findings;
 }
 
+function expressiveRequestRequired(request: SynthesisRequest): boolean {
+  const flag = request.metadata.expressivePerformanceRequired;
+  if (flag === undefined) return false;
+  if (flag !== "true") throw new Error("GENERATION_EXPRESSIVE_METADATA_INVALID");
+  if (!request.voiceProfileHash) {
+    throw new Error("GENERATION_EXPRESSIVE_VOICE_HASH_REQUIRED");
+  }
+  return true;
+}
+
+async function assertExpressiveProviderCapability(input: Readonly<{
+  request: SynthesisRequest;
+  adapter: NarrationProviderAdapter;
+  credential: string;
+  cache: Map<string, ProviderCapabilitySnapshot>;
+  signal?: AbortSignal;
+}>): Promise<void> {
+  if (!expressiveRequestRequired(input.request)) return;
+  let capability = input.cache.get(input.adapter.providerId);
+  if (!capability) {
+    capability = await input.adapter.inspectCapabilities({
+      credential: input.credential,
+      ...(input.signal ? { signal: input.signal } : {}),
+    });
+    input.cache.set(input.adapter.providerId, capability);
+  }
+  if (!capability.features.includes("style-instructions")) {
+    throw new Error("GENERATION_EXPRESSIVE_STYLE_INSTRUCTIONS_REQUIRED");
+  }
+  if (capability.maximumInputCharacters < input.request.text.length) {
+    throw new Error("GENERATION_EXPRESSIVE_INPUT_CAPACITY_INSUFFICIENT");
+  }
+}
+
 const SAFE_PROVIDER_GOVERNANCE_CODE =
-  /^GENERATION_CALIBRATION_[A-Z0-9_]{3,80}$/u;
+  /^GENERATION_(?:CALIBRATION|EXPRESSIVE)_[A-Z0-9_]{3,80}$/u;
 
 function providerFailureFinding(
   error: unknown,
@@ -317,7 +351,9 @@ function providerFailureFinding(
     severity: "warning",
     message: code === "PROVIDER_SYNTHESIS_FAILED"
       ? "Provider attempt failed without producing approved output."
-      : "Provider output did not satisfy the approved production calibration lock.",
+      : code.startsWith("GENERATION_EXPRESSIVE_")
+        ? "Provider route did not satisfy the exact expressive-performance contract."
+        : "Provider output did not satisfy the approved production calibration lock.",
     providerId,
   };
 }
@@ -334,6 +370,7 @@ export async function executeGenerationJob(input: Readonly<{
   const attempts: ExecutionAttempt[] = [];
   const results: SynthesisResult[] = [];
   const timeoutMs = input.timeoutMs ?? 120_000;
+  const capabilityCache = new Map<string, ProviderCapabilitySnapshot>();
 
   if (input.job.status !== "ready") {
     findings.push({
@@ -401,6 +438,13 @@ export async function executeGenerationJob(input: Readonly<{
       }
 
       try {
+        await assertExpressiveProviderCapability({
+          request,
+          adapter,
+          credential,
+          cache: capabilityCache,
+          ...(input.signal ? { signal: input.signal } : {}),
+        });
         const result = await adapter.synthesise(request, {
           credential,
           timeoutMs,

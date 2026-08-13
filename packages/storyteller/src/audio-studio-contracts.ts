@@ -268,10 +268,260 @@ function outputFormat(format: ProviderAudioFormat): "wav" | "flac" | "mp3" {
   throw new Error("AUDIO_STUDIO_OUTPUT_FORMAT_UNSUPPORTED");
 }
 
+function metadataText(
+  metadata: Readonly<Record<string, string>>,
+  key: string,
+  code: string,
+  maximum = 1_000,
+): string {
+  return requireString(metadata[key], code, 1, maximum);
+}
+
+function metadataHash(
+  metadata: Readonly<Record<string, string>>,
+  key: string,
+  code: string,
+): string {
+  const value = metadataText(metadata, key, code, 64);
+  if (!/^[a-f0-9]{64}$/u.test(value)) throw new Error(code);
+  return value;
+}
+
+function metadataNumber(
+  metadata: Readonly<Record<string, string>>,
+  key: string,
+  minimum: number,
+  maximum: number,
+  code: string,
+): number {
+  const value = Number(metadataText(metadata, key, code, 64));
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(code);
+  }
+  return value;
+}
+
+function expressiveDirectionPayload(
+  metadata: Readonly<Record<string, string>>,
+): Record<string, unknown> | undefined {
+  const required = metadata.expressivePerformanceRequired;
+  if (required === undefined) return undefined;
+  if (required !== "true") {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_REQUIRED_FLAG_INVALID");
+  }
+  if (metadata.expressivePreserveVoiceIdentity !== "true") {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_IDENTITY_POLICY_INVALID");
+  }
+  if (metadata.expressiveGenericFallbackAllowed !== "false") {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_FALLBACK_POLICY_INVALID");
+  }
+  if (metadata.expressiveBlindComparativeReviewRequired !== "true") {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_REVIEW_POLICY_INVALID");
+  }
+  const roleKind = metadataText(
+    metadata,
+    "expressiveRoleKind",
+    "AUDIO_STUDIO_EXPRESSIVE_ROLE_KIND_INVALID",
+    32,
+  );
+  if (roleKind !== "narrator" && roleKind !== "character") {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_ROLE_KIND_INVALID");
+  }
+  const voiceStrategy = metadataText(
+    metadata,
+    "expressiveVoiceStrategy",
+    "AUDIO_STUDIO_EXPRESSIVE_VOICE_STRATEGY_INVALID",
+    64,
+  );
+  if (
+    voiceStrategy !== "dedicated-voice"
+    && voiceStrategy !== "performance-variation"
+  ) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_VOICE_STRATEGY_INVALID");
+  }
+  const emotionalTrajectory = metadataText(
+    metadata,
+    "expressiveEmotionTrajectory",
+    "AUDIO_STUDIO_EXPRESSIVE_TRAJECTORY_INVALID",
+    32,
+  );
+  if (!["sustained", "rising", "falling", "pivot", "layered"].includes(
+    emotionalTrajectory,
+  )) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_TRAJECTORY_INVALID");
+  }
+  const characterId = metadata.expressiveCharacterId === undefined
+    ? undefined
+    : metadataText(
+        metadata,
+        "expressiveCharacterId",
+        "AUDIO_STUDIO_EXPRESSIVE_CHARACTER_ID_INVALID",
+        128,
+      );
+  if (roleKind === "character" && !characterId) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_CHARACTER_ID_REQUIRED");
+  }
+  if (roleKind === "narrator" && characterId) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_NARRATOR_CHARACTER_FORBIDDEN");
+  }
+  return {
+    schema: "storyteller-expressive-performance-directive-v1",
+    planFingerprint: metadataHash(
+      metadata,
+      "expressivePerformancePlanFingerprint",
+      "AUDIO_STUDIO_EXPRESSIVE_PLAN_HASH_INVALID",
+    ),
+    roleBindingFingerprint: metadataHash(
+      metadata,
+      "expressiveRoleBindingFingerprint",
+      "AUDIO_STUDIO_EXPRESSIVE_ROLE_HASH_INVALID",
+    ),
+    roleId: metadataText(
+      metadata,
+      "expressiveRoleId",
+      "AUDIO_STUDIO_EXPRESSIVE_ROLE_ID_INVALID",
+      128,
+    ),
+    roleKind,
+    ...(characterId ? { characterId } : {}),
+    voiceStrategy,
+    engineKey: metadataText(
+      metadata,
+      "expressiveEngineKey",
+      "AUDIO_STUDIO_EXPRESSIVE_ENGINE_KEY_INVALID",
+      128,
+    ),
+    voiceProfileHash: metadataHash(
+      metadata,
+      "expressiveVoiceProfileHash",
+      "AUDIO_STUDIO_EXPRESSIVE_VOICE_HASH_INVALID",
+    ),
+    performanceAnchorHash: metadataHash(
+      metadata,
+      "expressivePerformanceAnchorHash",
+      "AUDIO_STUDIO_EXPRESSIVE_ANCHOR_HASH_INVALID",
+    ),
+    emotion: {
+      primary: metadataText(
+        metadata,
+        "expressivePrimaryEmotion",
+        "AUDIO_STUDIO_EXPRESSIVE_PRIMARY_EMOTION_INVALID",
+        96,
+      ),
+      ...(metadata.expressiveSecondaryEmotion
+        ? {
+            secondary: metadataText(
+              metadata,
+              "expressiveSecondaryEmotion",
+              "AUDIO_STUDIO_EXPRESSIVE_SECONDARY_EMOTION_INVALID",
+              96,
+            ),
+          }
+        : {}),
+      trajectory: emotionalTrajectory,
+      intensity: metadataNumber(
+        metadata,
+        "expressiveEmotionalIntensity",
+        0.05,
+        1,
+        "AUDIO_STUDIO_EXPRESSIVE_INTENSITY_INVALID",
+      ),
+    },
+    subtextIntent: metadataText(
+      metadata,
+      "expressiveSubtextIntent",
+      "AUDIO_STUDIO_EXPRESSIVE_SUBTEXT_INVALID",
+      1_000,
+    ),
+    cadence: {
+      profile: metadataText(
+        metadata,
+        "expressiveCadenceProfile",
+        "AUDIO_STUDIO_EXPRESSIVE_CADENCE_PROFILE_INVALID",
+        32,
+      ),
+      minimumWpm: metadataNumber(
+        metadata,
+        "expressiveMinimumWpm",
+        40,
+        320,
+        "AUDIO_STUDIO_EXPRESSIVE_MINIMUM_WPM_INVALID",
+      ),
+      targetWpm: metadataNumber(
+        metadata,
+        "expressiveTargetWpm",
+        40,
+        320,
+        "AUDIO_STUDIO_EXPRESSIVE_TARGET_WPM_INVALID",
+      ),
+      maximumWpm: metadataNumber(
+        metadata,
+        "expressiveMaximumWpm",
+        40,
+        320,
+        "AUDIO_STUDIO_EXPRESSIVE_MAXIMUM_WPM_INVALID",
+      ),
+      phraseLengthVariation: metadataNumber(
+        metadata,
+        "expressivePhraseVariation",
+        0,
+        1,
+        "AUDIO_STUDIO_EXPRESSIVE_PHRASE_VARIATION_INVALID",
+      ),
+      pauseVariation: metadataNumber(
+        metadata,
+        "expressivePauseVariation",
+        0,
+        1,
+        "AUDIO_STUDIO_EXPRESSIVE_PAUSE_VARIATION_INVALID",
+      ),
+      minimumPitchRangeSemitones: metadataNumber(
+        metadata,
+        "expressiveMinimumPitchRangeSemitones",
+        1,
+        48,
+        "AUDIO_STUDIO_EXPRESSIVE_PITCH_RANGE_INVALID",
+      ),
+      minimumDynamicRangeDb: metadataNumber(
+        metadata,
+        "expressiveMinimumDynamicRangeDb",
+        1,
+        36,
+        "AUDIO_STUDIO_EXPRESSIVE_DYNAMIC_RANGE_INVALID",
+      ),
+      maximumCadenceTemplateSimilarity: metadataNumber(
+        metadata,
+        "expressiveMaximumCadenceTemplateSimilarity",
+        0,
+        1,
+        "AUDIO_STUDIO_EXPRESSIVE_TEMPLATE_SIMILARITY_INVALID",
+      ),
+      maximumSentenceFinalContourRepetitionRatio: metadataNumber(
+        metadata,
+        "expressiveMaximumContourRepetitionRatio",
+        0,
+        1,
+        "AUDIO_STUDIO_EXPRESSIVE_CONTOUR_REPETITION_INVALID",
+      ),
+    },
+    styleInstruction: metadataText(
+      metadata,
+      "expressiveStyleInstruction",
+      "AUDIO_STUDIO_EXPRESSIVE_STYLE_INSTRUCTION_INVALID",
+      1_000,
+    ),
+    preserveVoiceIdentity: true,
+    genericFallbackAllowed: false,
+    styleInstructionsAppliedRequired: true,
+    blindComparativeReviewRequired: true,
+  };
+}
+
 function directionPayload(
   direction: PerformanceDirection,
   metadata: Readonly<Record<string, string>>,
 ): Record<string, unknown> {
+  const expressivePerformance = expressiveDirectionPayload(metadata);
   return {
     ...direction,
     previousContext: requireString(
@@ -286,6 +536,7 @@ function directionPayload(
       1,
       4_000,
     ),
+    ...(expressivePerformance ? { expressivePerformance } : {}),
   };
 }
 
@@ -317,6 +568,9 @@ export function audioStudioRenderPayload(
     voiceProfile: {
       id: request.voiceProfileId,
       revision: request.voiceRevision,
+      ...(request.voiceProfileHash
+        ? { profileHash: request.voiceProfileHash }
+        : {}),
       engineKey: binding.engineKey,
       sourceKind: binding.sourceKind,
       ...(binding.referenceManifest ? { referenceManifest: binding.referenceManifest } : {}),
@@ -345,6 +599,47 @@ export function audioStudioRenderPayload(
       storytellerAdapterVersion: AUDIO_STUDIO_ADAPTER_VERSION,
     },
   };
+}
+
+export function verifyAudioStudioExpressiveArtifactEvidence(
+  request: SynthesisRequest,
+  artifact: AudioStudioArtifactStatus,
+): void {
+  const directive = expressiveDirectionPayload(request.metadata);
+  if (!directive) return;
+  if (!request.voiceProfileHash) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_VOICE_HASH_REQUIRED");
+  }
+  if (!isRecord(artifact.media)) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_ARTIFACT_EVIDENCE_MISSING");
+  }
+  if (artifact.media.voiceProfileHash !== request.voiceProfileHash) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_ARTIFACT_VOICE_MISMATCH");
+  }
+  if (
+    artifact.media.expressivePerformancePlanFingerprint
+      !== request.metadata.expressivePerformancePlanFingerprint
+  ) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_ARTIFACT_PLAN_MISMATCH");
+  }
+  if (
+    artifact.media.expressiveRoleBindingFingerprint
+      !== request.metadata.expressiveRoleBindingFingerprint
+  ) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_ARTIFACT_ROLE_MISMATCH");
+  }
+  if (
+    artifact.media.expressivePerformanceAnchorHash
+      !== request.metadata.expressivePerformanceAnchorHash
+  ) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_ARTIFACT_ANCHOR_MISMATCH");
+  }
+  if (artifact.media.expressiveStyleInstructionsApplied !== true) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_STYLE_EVIDENCE_MISSING");
+  }
+  if (artifact.media.genericFallbackVoiceUsed !== false) {
+    throw new Error("AUDIO_STUDIO_EXPRESSIVE_FALLBACK_EVIDENCE_INVALID");
+  }
 }
 
 function requireActiveRightsWindow(
@@ -381,6 +676,24 @@ export function verifyAudioStudioBinding(
   now: () => Date = () => new Date(),
 ): void {
   if (!isRecord(binding)) throw new Error("AUDIO_STUDIO_BINDING_INVALID");
+  if (
+    request.voiceProfileHash !== undefined
+    && !/^[a-f0-9]{64}$/u.test(request.voiceProfileHash)
+  ) {
+    throw new Error("AUDIO_STUDIO_VOICE_PROFILE_HASH_INVALID");
+  }
+  const expressiveDirective = expressiveDirectionPayload(request.metadata);
+  if (expressiveDirective) {
+    if (!request.voiceProfileHash) {
+      throw new Error("AUDIO_STUDIO_EXPRESSIVE_VOICE_HASH_REQUIRED");
+    }
+    if (expressiveDirective.voiceProfileHash !== request.voiceProfileHash) {
+      throw new Error("AUDIO_STUDIO_EXPRESSIVE_VOICE_HASH_MISMATCH");
+    }
+    if (expressiveDirective.engineKey !== binding.engineKey) {
+      throw new Error("AUDIO_STUDIO_EXPRESSIVE_ENGINE_MISMATCH");
+    }
+  }
   if (!/^[a-z0-9][a-z0-9._-]{1,127}$/u.test(binding.engineKey)) {
     throw new Error("AUDIO_STUDIO_ENGINE_KEY_INVALID");
   }
