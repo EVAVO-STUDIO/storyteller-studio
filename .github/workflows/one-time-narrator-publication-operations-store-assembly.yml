@@ -60,8 +60,81 @@ jobs:
           80b2593ec6fbe1cefdc17ba5297b5d2602a67168b1e62ba86be0f7e713fb1522  packages/storyteller/package.json
           EOF
 
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/storyteller/src/narrator-retail-publication-operations-store.ts")
+          source = path.read_text(encoding="utf-8")
+          old = '''    const intentEnvelope = await this.requireIntent(intentId);
+              const intent = intentEnvelope.payload;
+              const monitor = await this.requireMonitor(intent.monitorId);
+              let state: AdmittedNarratorRetailPublicationOperationIntentInspectionState;
+              if (intent.status === "prepared" && samePreviousMonitor(monitor, intent)) {
+                state = "ready";
+              } else if (
+                intent.status === "prepared"
+                && sameTargetMonitor(monitor, intent)
+              ) {
+                state = "monitor-applied-intent-pending";
+              } else if (
+                intent.status === "committed"
+                && sameTargetMonitor(monitor, intent)
+              ) {
+                state = "committed";
+              } else {
+                state = "conflict";
+              }
+          '''
+          new = '''    const intentEnvelope = await this.requireIntent(intentId);
+              const intent = intentEnvelope.payload;
+              const monitor = await this.requireMonitor(intent.monitorId);
+              let targetClaimedByAnotherCommittedIntent = false;
+              if (intent.status === "prepared" && sameTargetMonitor(monitor, intent)) {
+                const rows = await this.#state.list(intentEntityType);
+                for (const row of rows) {
+                  if (row.entityId === intent.id) continue;
+                  const candidate = (await this.requireIntent(row.entityId)).payload;
+                  if (
+                    candidate.monitorId === intent.monitorId
+                    && candidate.status === "committed"
+                    && candidate.targetMonitorRevision === intent.targetMonitorRevision
+                    && candidate.targetAdmittedMonitorFingerprint
+                      === intent.targetAdmittedMonitorFingerprint
+                    && candidate.targetGenericMonitorFingerprint
+                      === intent.targetGenericMonitorFingerprint
+                    && candidate.operation.fingerprint !== intent.operation.fingerprint
+                  ) {
+                    targetClaimedByAnotherCommittedIntent = true;
+                    break;
+                  }
+                }
+              }
+              let state: AdmittedNarratorRetailPublicationOperationIntentInspectionState;
+              if (intent.status === "prepared" && samePreviousMonitor(monitor, intent)) {
+                state = "ready";
+              } else if (
+                intent.status === "prepared"
+                && sameTargetMonitor(monitor, intent)
+                && !targetClaimedByAnotherCommittedIntent
+              ) {
+                state = "monitor-applied-intent-pending";
+              } else if (
+                intent.status === "committed"
+                && sameTargetMonitor(monitor, intent)
+              ) {
+                state = "committed";
+              } else {
+                state = "conflict";
+              }
+          '''
+          if source.count(old) != 1:
+              raise SystemExit("INTENT_INSPECTION_PATCH_SCOPE_MISMATCH")
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          PY
+
           node -e 'const fs=require("node:fs"); JSON.parse(fs.readFileSync("packages/storyteller/package.json","utf8"));'
           grep -F '"./narrator-retail-publication-operations-store": "./src/narrator-retail-publication-operations-store.ts"' packages/storyteller/package.json
+          sha256sum packages/storyteller/src/narrator-retail-publication-operations-store.ts
 
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
