@@ -44,7 +44,7 @@
     "verify:material": "node scripts/check-generation-material.mjs",
     "verify:budget": "node scripts/check-budget-ledger.mjs",
     "verify:generation-budget": "node scripts/check-generation-budget.mjs",
-    "verify:calibration": "node scripts/check-calibration-workflow.mjs && node scripts/check-generation-calibration.mjs && node scripts/check-calibration-engineering.mjs",
+    "verify:calibration": "node scripts/check-calibration-workflow.mjs && node scripts/check-generation-calibration.mjs && node scripts/check-calibration-engineering.mjs && npm run verify:expressive-narration",
     "verify:elevenlabs-cli": "node scripts/check-elevenlabs-cli.mjs",
     "verify:elevenlabs-generation": "node scripts/check-elevenlabs-generation.mjs",
     "verify:elevenlabs": "node scripts/check-elevenlabs-adapter.mjs && node scripts/check-elevenlabs-runtime.mjs && npm run verify:elevenlabs-cli && npm run verify:elevenlabs-generation",
@@ -101,7 +101,8 @@
     "verify:audiobook-retail-publication-alert-delivery": "node scripts/check-audiobook-retail-publication-alert-delivery.mjs",
     "verify:audiobook-retail-publication-refresh": "node scripts/check-audiobook-retail-publication-refresh.mjs",
     "verify:audiobook-retail-publication-evidence-inbox": "node scripts/check-audiobook-retail-publication-evidence-inbox.mjs",
-    "verify:publication-evidence-cli": "node scripts/check-publication-evidence-cli.mjs"
+    "verify:publication-evidence-cli": "node scripts/check-publication-evidence-cli.mjs",
+    "verify:expressive-narration": "node scripts/check-narration-expressive-performance.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
