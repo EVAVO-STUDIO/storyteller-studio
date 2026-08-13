@@ -24,6 +24,7 @@ const filesByScope = Object.freeze({
     "packages/storyteller/src/generation-material.test.ts",
     "packages/storyteller/src/generation-worker-engineering.test.ts",
     "packages/storyteller/src/generation-worker.test.ts",
+    "packages/storyteller/src/narration-expressive-performance.test.ts",
     "packages/storyteller/src/narration-production-policy.test.ts",
     "packages/storyteller/src/provider-adapter.test.ts",
     "apps/worker/src/audio-studio-provider.test.ts",
