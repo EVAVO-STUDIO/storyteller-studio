@@ -24,7 +24,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/expressive packages/storyteller/src docs examples
-          tr -d '[:space:]' < .github/agent-payload/expressive-production.tar.gz.b64 \
+          cat .github/agent-payload/expressive-production.part*.b64 \
+            | tr -d '[:space:]' \
             | base64 --decode > /tmp/expressive-production.tar.gz
           echo 'f0a7338b0124739ad3ce98cb2a0949a05b915e87bf02338bd3f5fdb9622b87c9  /tmp/expressive-production.tar.gz' | sha256sum -c -
           tar -xzf /tmp/expressive-production.tar.gz -C /tmp/expressive
