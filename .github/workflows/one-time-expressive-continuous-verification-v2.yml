@@ -1,0 +1,325 @@
+name: Validate permanent expressive verification wiring
+
+on:
+  push:
+    branches:
+      - agent/expressive-continuous-verification-20260813-v2
+
+permissions:
+  contents: write
+
+concurrency:
+  group: expressive-continuous-verification-20260813-v2
+  cancel-in-progress: false
+
+jobs:
+  validate-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/expressive-continuous-verification-20260813-v2
+          fetch-depth: 0
+
+      - name: Install permanent expressive verification wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > scripts/check-narration-expressive-performance.mjs <<'EOF'
+          import { readFileSync, statSync } from "node:fs";
+          import { resolve } from "node:path";
+          import { fileURLToPath } from "node:url";
+
+          const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+          function absolute(path) {
+            return resolve(repositoryRoot, path);
+          }
+
+          function fail(code) {
+            console.error(code);
+            process.exit(1);
+          }
+
+          function read(path) {
+            try {
+              return readFileSync(absolute(path), "utf8");
+            } catch {
+              fail(`EXPRESSIVE_VERIFICATION_FILE_MISSING:${path}`);
+            }
+          }
+
+          const requiredFiles = Object.freeze({
+            "packages/storyteller/src/narration-expressive-performance.ts": 12_000,
+            "packages/storyteller/src/narration-expressive-performance.test.ts": 8_000,
+            "packages/storyteller/src/expressive-generation-binding.ts": 4_000,
+            "packages/storyteller/src/expressive-generation-integration.test.ts": 8_000,
+            "docs/NARRATION_EXPRESSIVE_PERFORMANCE.md": 1_000,
+            "docs/EXPRESSIVE_GENERATION_BINDING.md": 500,
+            "examples/expressive-character-cast.example.json": 300,
+          });
+
+          for (const [path, minimumBytes] of Object.entries(requiredFiles)) {
+            let size = 0;
+            try {
+              size = statSync(absolute(path)).size;
+            } catch {
+              fail(`EXPRESSIVE_VERIFICATION_FILE_MISSING:${path}`);
+            }
+            if (size < minimumBytes) {
+              fail(`EXPRESSIVE_VERIFICATION_FILE_TRUNCATED:${path}:${size}`);
+            }
+          }
+
+          const storytellerPackage = JSON.parse(read("packages/storyteller/package.json"));
+          const expectedExports = Object.freeze({
+            "./narration-expressive-performance":
+              "./src/narration-expressive-performance.ts",
+            "./expressive-generation-binding":
+              "./src/expressive-generation-binding.ts",
+          });
+          for (const [key, value] of Object.entries(expectedExports)) {
+            if (storytellerPackage.exports?.[key] !== value) {
+              fail(`EXPRESSIVE_VERIFICATION_PACKAGE_EXPORT_MISSING:${key}`);
+            }
+          }
+
+          const rootPackage = JSON.parse(read("package.json"));
+          if (
+            rootPackage.scripts?.["verify:expressive-narration"]
+            !== "node scripts/check-narration-expressive-performance.mjs"
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_ROOT_SCRIPT_MISSING");
+          }
+          if (
+            typeof rootPackage.scripts?.["verify:calibration"] !== "string"
+            || !rootPackage.scripts["verify:calibration"].includes(
+              "npm run verify:expressive-narration",
+            )
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_CALIBRATION_CHAIN_MISSING");
+          }
+
+          const testRunner = read("scripts/run-tests.mjs");
+          for (const testPath of [
+            "packages/storyteller/src/narration-expressive-performance.test.ts",
+            "packages/storyteller/src/expressive-generation-integration.test.ts",
+          ]) {
+            if (!testRunner.includes(testPath)) {
+              fail(`EXPRESSIVE_VERIFICATION_AUDIO_STUDIO_SCOPE_MISSING:${testPath}`);
+            }
+          }
+
+          const audioWorkflow = read(
+            ".github/workflows/audio-studio-voice-provider.yml",
+          );
+          for (const pathFilter of [
+            "packages/storyteller/src/narration-expressive-performance*",
+            "packages/storyteller/src/expressive-generation-*",
+          ]) {
+            const occurrences = audioWorkflow.split(pathFilter).length - 1;
+            if (occurrences !== 2) {
+              fail(`EXPRESSIVE_VERIFICATION_WORKFLOW_FILTER_INVALID:${pathFilter}:${occurrences}`);
+            }
+          }
+
+          const contractSources = Object.freeze({
+            performance: read(
+              "packages/storyteller/src/narration-expressive-performance.ts",
+            ),
+            binding: read(
+              "packages/storyteller/src/expressive-generation-binding.ts",
+            ),
+            provider: read("packages/storyteller/src/provider-adapter.ts"),
+            audioStudio: read(
+              "packages/storyteller/src/audio-studio-contracts.ts",
+            ),
+          });
+
+          const requiredContracts = Object.freeze([
+            ["performance", "requires-regeneration"],
+            ["performance", "genericFallbackAllowed: false"],
+            ["performance", "EXPRESSIVE_CADENCE_TEMPLATE_REPETITIVE"],
+            ["binding", "EXPRESSIVE_PRODUCTION_BINDING_REQUIRED"],
+            ["binding", "EXPRESSIVE_GENERATION_VOICE_PIN_MISMATCH"],
+            ["provider", "GENERATION_EXPRESSIVE_STYLE_INSTRUCTIONS_REQUIRED"],
+            ["audioStudio", "AUDIO_STUDIO_EXPRESSIVE_STYLE_EVIDENCE_MISSING"],
+            ["audioStudio", "AUDIO_STUDIO_EXPRESSIVE_FALLBACK_EVIDENCE_INVALID"],
+          ]);
+          for (const [sourceName, term] of requiredContracts) {
+            if (!contractSources[sourceName].includes(term)) {
+              fail(`EXPRESSIVE_VERIFICATION_SOURCE_CONTRACT_MISSING:${sourceName}:${term}`);
+            }
+          }
+
+          const performanceTests = read(
+            "packages/storyteller/src/narration-expressive-performance.test.ts",
+          ).toLocaleLowerCase("en-AU");
+          const integrationTests = read(
+            "packages/storyteller/src/expressive-generation-integration.test.ts",
+          ).toLocaleLowerCase("en-AU");
+          for (const term of [
+            "generic ai-like delivery",
+            "synthetic artefacts",
+            "monotone cadence",
+            "voice swap",
+          ]) {
+            if (!performanceTests.includes(term)) {
+              fail(`EXPRESSIVE_VERIFICATION_PERFORMANCE_REGRESSION_MISSING:${term}`);
+            }
+          }
+          for (const term of [
+            "cannot silently fall back",
+            "style instructions",
+            "structured expressive direction",
+          ]) {
+            if (!integrationTests.includes(term)) {
+              fail(`EXPRESSIVE_VERIFICATION_INTEGRATION_REGRESSION_MISSING:${term}`);
+            }
+          }
+
+          const castExample = JSON.parse(
+            read("examples/expressive-character-cast.example.json"),
+          );
+          if (
+            !castExample
+            || typeof castExample !== "object"
+            || Array.isArray(castExample)
+            || Object.keys(castExample).length < 2
+          ) {
+            fail("EXPRESSIVE_VERIFICATION_CAST_EXAMPLE_INVALID");
+          }
+
+          console.log("storyteller_expressive_narration_verification=ok");
+          console.log(
+            `storyteller_expressive_contract_files=${Object.keys(requiredFiles).length}`,
+          );
+          EOF
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = "package.json";
+          const value = JSON.parse(fs.readFileSync(path, "utf8"));
+          const command = "node scripts/check-narration-expressive-performance.mjs";
+          const existing = value.scripts?.["verify:expressive-narration"];
+          if (existing !== undefined && existing !== command) {
+            throw new Error("EXPRESSIVE_VERIFICATION_SCRIPT_CONFLICT");
+          }
+          value.scripts["verify:expressive-narration"] = command;
+          const calibration = value.scripts?.["verify:calibration"];
+          if (typeof calibration !== "string" || calibration.length === 0) {
+            throw new Error("EXPRESSIVE_VERIFICATION_CALIBRATION_SCRIPT_MISSING");
+          }
+          if (!calibration.includes("npm run verify:expressive-narration")) {
+            value.scripts["verify:calibration"] =
+              `${calibration} && npm run verify:expressive-narration`;
+          }
+          fs.writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+          NODE
+
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/run-tests.mjs")
+          source = path.read_text(encoding="utf-8")
+          anchor = '    "packages/storyteller/src/narration-production-policy.test.ts",\n'
+          additions = (
+              '    "packages/storyteller/src/narration-expressive-performance.test.ts",\n'
+              '    "packages/storyteller/src/expressive-generation-integration.test.ts",\n'
+          )
+          if source.count(anchor) != 1:
+              raise SystemExit("EXPRESSIVE_TEST_SCOPE_PATCH_ANCHOR_INVALID")
+          missing = [line for line in additions if line not in source]
+          if missing:
+              source = source.replace(anchor, "".join(missing) + anchor)
+          path.write_text(source, encoding="utf-8")
+
+          workflow = Path(".github/workflows/audio-studio-voice-provider.yml")
+          workflow_source = workflow.read_text(encoding="utf-8")
+          workflow_anchor = '      - "packages/storyteller/src/narration-production-policy*"\n'
+          workflow_additions = (
+              '      - "packages/storyteller/src/narration-expressive-performance*"\n'
+              '      - "packages/storyteller/src/expressive-generation-*"\n'
+          )
+          if workflow_additions not in workflow_source:
+              if workflow_source.count(workflow_anchor) != 2:
+                  raise SystemExit("EXPRESSIVE_WORKFLOW_FILTER_PATCH_ANCHOR_INVALID")
+              workflow_source = workflow_source.replace(
+                  workflow_anchor,
+                  workflow_anchor + workflow_additions,
+              )
+          workflow.write_text(workflow_source, encoding="utf-8")
+          PY
+
+          node -e 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8"))'
+          node -e 'JSON.parse(require("node:fs").readFileSync("packages/storyteller/package.json", "utf8"))'
+          git diff --check
+
+      - name: Install exact dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Type-check complete repository
+        run: npm run typecheck
+
+      - name: Verify expressive narration contract
+        run: npm run verify:expressive-narration
+
+      - name: Run Audio Studio and expressive regressions
+        run: node scripts/run-tests.mjs audio-studio
+
+      - name: Verify calibration and private boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:calibration
+          npm run verify:private-boundary
+          node scripts/check-audio-studio-voice-provider.mjs
+
+      - name: Publish one clean fast-forward commit to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          base_sha="$(git rev-parse HEAD^)"
+          remote_main="$(git rev-parse origin/main)"
+          if [ "$remote_main" != "$base_sha" ]; then
+            echo "EXPRESSIVE_VERIFICATION_MAIN_MOVED:$remote_main:$base_sha"
+            exit 1
+          fi
+
+          rm -f .github/workflows/one-time-expressive-continuous-verification-v2.yml
+          git add --all
+          git diff --cached --check
+          tree_sha="$(git write-tree)"
+
+          actual_files="$(git diff --name-only "$remote_main" "$tree_sha" | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' \
+            '.github/workflows/audio-studio-voice-provider.yml' \
+            'package.json' \
+            'scripts/check-narration-expressive-performance.mjs' \
+            'scripts/run-tests.mjs' \
+            | LC_ALL=C sort)"
+          if [ "$actual_files" != "$expected_files" ]; then
+            echo 'EXPRESSIVE_VERIFICATION_PUBLICATION_SCOPE_MISMATCH'
+            printf 'expected:\n%s\nactual:\n%s\n' "$expected_files" "$actual_files"
+            exit 1
+          fi
+          if git ls-tree -r --name-only "$tree_sha" | grep -F '.github/workflows/one-time-expressive-continuous-verification-v2.yml'; then
+            echo 'EXPRESSIVE_VERIFICATION_TRANSPORT_RESIDUE_DETECTED'
+            exit 1
+          fi
+
+          git config user.name 'EVAVO-STUDIO'
+          git config user.email 'evavo.studio@gmail.com'
+          clean_commit="$(printf '%s\n\n%s\n' \
+            'build: keep expressive narration under continuous verification' \
+            'Run narrator and character expressive-performance contracts through the permanent calibration and Audio Studio paths, including the real generation binding and receipt evidence.' \
+            | git commit-tree "$tree_sha" -p "$remote_main")"
+          git push origin "$clean_commit:refs/heads/main"
+          published_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$published_main" = "$clean_commit"
+          echo "published_commit=$clean_commit"
+          echo "published_tree=$tree_sha"
