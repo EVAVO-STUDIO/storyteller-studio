@@ -71,6 +71,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git fetch origin main
           rm -f \
             .github/agent-payload/expressive-cast-continuity*.b64 \
             .github/workflows/one-time-expressive-cast-continuity.yml
@@ -79,7 +80,7 @@ jobs:
           git config user.email 'evavo.studio@gmail.com'
           git add --all
           git diff --cached --check
-          actual_files="$(git diff --cached --name-only | LC_ALL=C sort)"
+          actual_files="$(git diff --cached --name-only origin/main | LC_ALL=C sort)"
           expected_files="$(printf '%s\n' \
             'docs/EXPRESSIVE_CAST_CONTINUITY.md' \
             'packages/storyteller/package.json' \
