@@ -1,0 +1,104 @@
+name: Validate expressive cast continuity
+
+on:
+  push:
+    branches:
+      - agent/expressive-cast-continuity-20260813
+
+permissions:
+  contents: write
+
+concurrency:
+  group: expressive-cast-continuity-20260813
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out transport branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/expressive-cast-continuity-20260813
+          fetch-depth: 0
+
+      - name: Assemble exact cast continuity files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/expressive-cast packages/storyteller/src docs scripts
+          cat .github/agent-payload/expressive-cast-continuity.part*.b64 \
+            | tr -d '[:space:]' \
+            | base64 --decode > /tmp/expressive-cast-continuity.tar.gz
+          echo 'fadcf67378e9a330979d8e3ca789072992f37a22045e6d375ba2c05da1ca8fd7  /tmp/expressive-cast-continuity.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/expressive-cast-continuity.tar.gz -C /tmp/expressive-cast
+          cp /tmp/expressive-cast/expressive-cast-continuity.ts packages/storyteller/src/
+          cp /tmp/expressive-cast/expressive-cast-continuity.test.ts packages/storyteller/src/
+          cp /tmp/expressive-cast/EXPRESSIVE_CAST_CONTINUITY.md docs/
+          cp /tmp/expressive-cast/package.json packages/storyteller/package.json
+          cp /tmp/expressive-cast/run-tests.mjs scripts/run-tests.mjs
+          cp /tmp/expressive-cast/check-narration-expressive-performance.mjs scripts/check-narration-expressive-performance.mjs
+          node -e 'JSON.parse(require("node:fs").readFileSync("packages/storyteller/package.json", "utf8"))'
+          node --check scripts/run-tests.mjs
+          node --check scripts/check-narration-expressive-performance.mjs
+          git diff --check
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check complete repository
+        run: npm run typecheck
+
+      - name: Run focused cast and expressive regressions
+        run: >-
+          node --import tsx --test
+          packages/storyteller/src/expressive-cast-continuity.test.ts
+          packages/storyteller/src/narration-expressive-performance.test.ts
+          packages/storyteller/src/expressive-generation-integration.test.ts
+          packages/storyteller/src/generation-material.test.ts
+          packages/storyteller/src/generation-worker.test.ts
+
+      - name: Verify permanent expressive and Audio Studio boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run verify:expressive-narration
+          node scripts/run-tests.mjs audio-studio
+          npm run verify:private-boundary
+
+      - name: Produce clean candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/agent-payload/expressive-cast-continuity.part00.b64 \
+            .github/agent-payload/expressive-cast-continuity.part01.b64 \
+            .github/workflows/one-time-expressive-cast-continuity.yml
+          rmdir .github/agent-payload 2>/dev/null || true
+          git config user.name 'EVAVO-STUDIO'
+          git config user.email 'evavo.studio@gmail.com'
+          git add --all
+          git diff --cached --check
+          actual_files="$(git diff --cached --name-only | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' \
+            'docs/EXPRESSIVE_CAST_CONTINUITY.md' \
+            'packages/storyteller/package.json' \
+            'packages/storyteller/src/expressive-cast-continuity.test.ts' \
+            'packages/storyteller/src/expressive-cast-continuity.ts' \
+            'scripts/check-narration-expressive-performance.mjs' \
+            'scripts/run-tests.mjs' \
+            | LC_ALL=C sort)"
+          if [ "$actual_files" != "$expected_files" ]; then
+            echo 'EXPRESSIVE_CAST_CANDIDATE_SCOPE_MISMATCH'
+            printf 'expected:\n%s\nactual:\n%s\n' "$expected_files" "$actual_files"
+            exit 1
+          fi
+          git commit -m 'build: govern expressive cast continuity across scenes'
+          if git ls-tree -r --name-only HEAD | grep -E '^\.github/(agent-payload/expressive-cast-continuity|workflows/one-time-expressive-cast-continuity\.yml$)'; then
+            echo 'EXPRESSIVE_CAST_TRANSPORT_RESIDUE_DETECTED'
+            exit 1
+          fi
+          git push origin HEAD:agent/expressive-cast-continuity-20260813
+          echo "candidate_commit=$(git rev-parse HEAD)"
+          echo "candidate_tree=$(git rev-parse HEAD^{tree})"
