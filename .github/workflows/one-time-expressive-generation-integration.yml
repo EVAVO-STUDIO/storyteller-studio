@@ -41,6 +41,22 @@ jobs:
           cp /tmp/expressive-integration/expressive-generation-binding.ts packages/storyteller/src/
           cp /tmp/expressive-integration/expressive-generation-integration.test.ts packages/storyteller/src/
           cp /tmp/expressive-integration/EXPRESSIVE_GENERATION_BINDING.md docs/
+          python <<'PY'
+          from pathlib import Path
+          path = Path('packages/storyteller/src/expressive-generation-integration.test.ts')
+          source = path.read_text(encoding='utf-8')
+          source = source.replace(
+              '  type PerformanceDirection,\n  type SegmentedManuscript,\n',
+              '  type PerformanceDirection,\n  type ProviderFeature,\n  type SegmentedManuscript,\n',
+              1,
+          )
+          source = source.replace(
+              '  type NarrationProviderAdapter,\n  type ProviderFeature,\n  type SynthesisRequest,\n',
+              '  type NarrationProviderAdapter,\n  type SynthesisRequest,\n',
+              1,
+          )
+          path.write_text(source, encoding='utf-8')
+          PY
           python /tmp/expressive-integration/apply.py "$GITHUB_WORKSPACE"
           node -e 'JSON.parse(require("node:fs").readFileSync("packages/storyteller/package.json", "utf8"))'
 
