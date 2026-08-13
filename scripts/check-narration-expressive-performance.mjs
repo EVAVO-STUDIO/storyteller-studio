@@ -24,7 +24,10 @@ function read(path) {
 const requiredFiles = Object.freeze({
   "packages/storyteller/src/narration-expressive-performance.ts": 10_000,
   "packages/storyteller/src/narration-expressive-performance.test.ts": 6_000,
+  "packages/storyteller/src/expressive-cast-continuity.ts": 12_000,
+  "packages/storyteller/src/expressive-cast-continuity.test.ts": 8_000,
   "docs/NARRATION_EXPRESSIVE_PERFORMANCE.md": 2_000,
+  "docs/EXPRESSIVE_CAST_CONTINUITY.md": 2_000,
   "examples/expressive-character-cast.example.json": 500,
 });
 
@@ -47,6 +50,12 @@ if (
 ) {
   fail("EXPRESSIVE_VERIFICATION_PACKAGE_EXPORT_MISSING");
 }
+if (
+  enginePackage.exports?.["./expressive-cast-continuity"]
+  !== "./src/expressive-cast-continuity.ts"
+) {
+  fail("EXPRESSIVE_CAST_VERIFICATION_PACKAGE_EXPORT_MISSING");
+}
 
 const rootPackage = JSON.parse(read("package.json"));
 if (
@@ -65,12 +74,13 @@ if (
 }
 
 const testRunner = read("scripts/run-tests.mjs");
-if (
-  !testRunner.includes(
-    "packages/storyteller/src/narration-expressive-performance.test.ts",
-  )
-) {
-  fail("EXPRESSIVE_VERIFICATION_AUDIO_STUDIO_SCOPE_MISSING");
+for (const requiredTest of [
+  "packages/storyteller/src/narration-expressive-performance.test.ts",
+  "packages/storyteller/src/expressive-cast-continuity.test.ts",
+]) {
+  if (!testRunner.includes(requiredTest)) {
+    fail(`EXPRESSIVE_VERIFICATION_AUDIO_STUDIO_SCOPE_MISSING:${requiredTest}`);
+  }
 }
 
 const source = read(
@@ -100,6 +110,37 @@ for (const requiredTerm of [
 ]) {
   if (!tests.includes(requiredTerm)) {
     fail(`EXPRESSIVE_VERIFICATION_REGRESSION_MISSING:${requiredTerm}`);
+  }
+}
+
+const continuitySource = read(
+  "packages/storyteller/src/expressive-cast-continuity.ts",
+);
+for (const requiredTerm of [
+  "appendOnly: true",
+  "automaticRecastAuthority: false",
+  "automaticPerformanceRewriteAuthority: false",
+  "EXPRESSIVE_CAST_CADENCE_TEMPLATE_OVERUSE",
+  "assertExpressiveCastRouteMaterial",
+  "assertExpressiveCastContinuityRevision",
+]) {
+  if (!continuitySource.includes(requiredTerm)) {
+    fail(`EXPRESSIVE_CAST_VERIFICATION_CONTRACT_MISSING:${requiredTerm}`);
+  }
+}
+
+const continuityTests = read(
+  "packages/storyteller/src/expressive-cast-continuity.test.ts",
+).toLocaleLowerCase("en-AU");
+for (const requiredTerm of [
+  "silent character recast",
+  "append-only",
+  "generic direction",
+  "public continuity state",
+  "worker requests",
+]) {
+  if (!continuityTests.includes(requiredTerm)) {
+    fail(`EXPRESSIVE_CAST_VERIFICATION_REGRESSION_MISSING:${requiredTerm}`);
   }
 }
 

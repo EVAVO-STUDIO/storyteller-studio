@@ -21,6 +21,7 @@ const rootsByScope = Object.freeze({
 const filesByScope = Object.freeze({
   "audio-studio": Object.freeze([
     "packages/storyteller/src/audio-studio-adapter.test.ts",
+    "packages/storyteller/src/expressive-cast-continuity.test.ts",
     "packages/storyteller/src/generation-material.test.ts",
     "packages/storyteller/src/generation-worker-engineering.test.ts",
     "packages/storyteller/src/generation-worker.test.ts",
