@@ -79,6 +79,7 @@
     "./series-continuity": "./src/series-continuity.ts",
     "./worker-service": "./src/worker-service.ts",
     "./narration-production-policy": "./src/narration-production-policy.ts",
+    "./narration-expressive-performance": "./src/narration-expressive-performance.ts",
     "./narrator-voice-profile": "./src/narrator-voice-profile.ts",
     "./narrator-profile-admission": "./src/narrator-profile-admission.ts",
     "./narrator-casting-admission": "./src/narrator-casting-admission.ts",
