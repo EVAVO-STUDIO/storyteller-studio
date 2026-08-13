@@ -28,7 +28,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/expressive-cast packages/storyteller/src docs scripts
-          cat .github/agent-payload/expressive-cast-continuity.part*.b64 \
+          cat .github/agent-payload/expressive-cast-continuity-v2.part*.b64 \
             | tr -d '[:space:]' \
             | base64 --decode > /tmp/expressive-cast-continuity.tar.gz
           echo 'fadcf67378e9a330979d8e3ca789072992f37a22045e6d375ba2c05da1ca8fd7  /tmp/expressive-cast-continuity.tar.gz' | sha256sum -c -
@@ -72,8 +72,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -f \
-            .github/agent-payload/expressive-cast-continuity.part00.b64 \
-            .github/agent-payload/expressive-cast-continuity.part01.b64 \
+            .github/agent-payload/expressive-cast-continuity*.b64 \
             .github/workflows/one-time-expressive-cast-continuity.yml
           rmdir .github/agent-payload 2>/dev/null || true
           git config user.name 'EVAVO-STUDIO'
