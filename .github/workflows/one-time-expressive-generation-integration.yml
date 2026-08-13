@@ -55,6 +55,11 @@ jobs:
               '  type NarrationProviderAdapter,\n  type SynthesisRequest,\n',
               1,
           )
+          source = source.replace(
+              '/NARRATOR_PRODUCTION_VOICE_MISMATCH|EXPRESSIVE_GENERATION_VOICE_PIN_MISMATCH/u',
+              '/NARRATOR_PROFILE_PIN_MISMATCH|NARRATOR_PRODUCTION_VOICE_MISMATCH|EXPRESSIVE_GENERATION_VOICE_PIN_MISMATCH/u',
+              1,
+          )
           path.write_text(source, encoding='utf-8')
           PY
           python /tmp/expressive-integration/apply.py "$GITHUB_WORKSPACE"
