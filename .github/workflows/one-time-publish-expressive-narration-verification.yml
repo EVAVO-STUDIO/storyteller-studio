@@ -1,0 +1,76 @@
+name: Publish verified expressive narration wiring
+
+on:
+  push:
+    branches:
+      - agent/expressive-narration-continuous-verification-20260813
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out verified candidate branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/expressive-narration-continuous-verification-20260813
+          fetch-depth: 0
+
+      - name: Require completed clean candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f scripts/check-narration-expressive-performance.mjs
+          test ! -f .github/workflows/one-time-expressive-narration-verification-wiring.yml
+          npm_script="$(node -p 'require("./package.json").scripts["verify:expressive-narration"] || ""')"
+          test "$npm_script" = 'node scripts/check-narration-expressive-performance.mjs'
+          grep -F 'packages/storyteller/src/narration-expressive-performance.test.ts' scripts/run-tests.mjs
+          git diff --check
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Revalidate candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm run verify:expressive-narration
+          node scripts/run-tests.mjs audio-studio
+          npm run verify:calibration
+          npm run verify:private-boundary
+
+      - name: Publish one clean fast-forward commit to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git merge-base --is-ancestor origin/main HEAD
+          rm -f .github/workflows/one-time-publish-expressive-narration-verification.yml
+          git add --all
+          git diff --cached --check
+          tree_sha="$(git write-tree)"
+          actual_files="$(git diff --name-only origin/main "$tree_sha" | LC_ALL=C sort)"
+          expected_files="$(printf '%s\n' \
+            'package.json' \
+            'scripts/check-narration-expressive-performance.mjs' \
+            'scripts/run-tests.mjs' \
+            | LC_ALL=C sort)"
+          if [ "$actual_files" != "$expected_files" ]; then
+            echo 'EXPRESSIVE_VERIFICATION_PUBLICATION_SCOPE_MISMATCH'
+            printf 'expected:\n%s\nactual:\n%s\n' "$expected_files" "$actual_files"
+            exit 1
+          fi
+          parent_sha="$(git rev-parse origin/main)"
+          clean_commit="$(printf '%s\n\n%s\n' \
+            'build: keep expressive narration under continuous verification' \
+            'Run expressive narrator and character quality contracts in the permanent calibration and Audio Studio verification paths.' \
+            | git commit-tree "$tree_sha" -p "$parent_sha")"
+          git push origin "$clean_commit:refs/heads/main"
+          remote_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$remote_main" = "$clean_commit"
+          echo "published_commit=$clean_commit"
+          echo "published_tree=$tree_sha"
