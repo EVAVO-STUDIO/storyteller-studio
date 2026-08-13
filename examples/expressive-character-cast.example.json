@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "storyteller-expressive-cast-example-v1",
+  "projectId": "example-audiobook",
+  "roles": [
+    {
+      "roleId": "narrator",
+      "roleKind": "narrator",
+      "displayName": "Narrator",
+      "voiceStrategy": "performance-variation",
+      "note": "Base narrator voice remains exact while scene performance changes."
+    },
+    {
+      "roleId": "character-ada",
+      "roleKind": "character",
+      "characterId": "ada",
+      "displayName": "Ada",
+      "voiceStrategy": "performance-variation",
+      "note": "May share the narrator voice profile but uses its own approved performance anchor."
+    },
+    {
+      "roleId": "character-malik",
+      "roleKind": "character",
+      "characterId": "malik",
+      "displayName": "Malik",
+      "voiceStrategy": "dedicated-voice",
+      "note": "Uses a separately approved exact voice profile and cannot collapse onto another dedicated character voice."
+    }
+  ],
+  "qualityIntent": {
+    "genericFallbackAllowed": false,
+    "blindComparativeReviewRequired": true,
+    "minimumCandidateCount": 3,
+    "rejectSyntheticArtifacts": true,
+    "rejectGenericDelivery": true,
+    "preserveVoiceIdentityAcrossEmotion": true
+  }
+}
