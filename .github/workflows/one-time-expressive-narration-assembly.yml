@@ -27,7 +27,7 @@ jobs:
           cat .github/agent-payload/expressive-production.part*.b64 \
             | tr -d '[:space:]' \
             | base64 --decode > /tmp/expressive-production.tar.gz
-          echo 'f0a7338b0124739ad3ce98cb2a0949a05b915e87bf02338bd3f5fdb9622b87c9  /tmp/expressive-production.tar.gz' | sha256sum -c -
+          echo '3a74386c55cfbb6f62e88b5253abf89db8a52278ae06ab9338452f85229d9b0a  /tmp/expressive-production.tar.gz' | sha256sum -c -
           tar -xzf /tmp/expressive-production.tar.gz -C /tmp/expressive
           cp /tmp/expressive/narration-expressive-performance.ts packages/storyteller/src/
           cp /tmp/expressive/narration-expressive-performance.test.ts packages/storyteller/src/
