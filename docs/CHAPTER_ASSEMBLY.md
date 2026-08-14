@@ -7,10 +7,14 @@ Storyteller Studio treats chapter assembly as an immutable editorial decision re
 A take can enter a chapter assembly plan only when the complete evidence chain is valid:
 
 - the audio candidate is verified;
-- the audio candidate has explicit in-context human approval;
+- at least two objectively eligible takes were compared through a governed narration take-review session;
+- the exact selected take has matched-panel blind editorial and engineering review;
+- the selected take is top-rated or tied under the current review set;
+- the audio candidate is the exact approved artifact revision created by that session;
 - its transcript artifact is verified and directly parents the audio candidate;
 - its independent `audio-analysis` artifact is verified and directly parents the same audio candidate;
 - the engineering evidence is eligible under its reviewed delivery profile;
+- the transcript artifact, engineering artifact and engineering-evidence fingerprint are the exact chain stored for the selected take;
 - project, job, segment and take scope match;
 - generation-request hashes match;
 - manuscript-source binding matches;
@@ -18,7 +22,7 @@ A take can enter a chapter assembly plan only when the complete evidence chain i
 - rights fingerprints match and remain usable;
 - audiobook and commercial use are approved.
 
-A provider result, filename, candidate score or calibration selection cannot bypass this boundary.
+A provider result, filename, single-candidate approval, stale review set or calibration selection cannot bypass this boundary.
 
 ## Immutable edit decisions
 
@@ -26,6 +30,7 @@ Every chapter segment records:
 
 - exact source ordering and source offsets;
 - selected take and artifact revisions;
+- narration take-review session, selection, approval and performance-context fingerprints;
 - content hashes and byte counts;
 - transcript and engineering artifact revisions;
 - engineering evidence and profile fingerprints;
@@ -55,6 +60,7 @@ A plan rejects:
 - repeated manuscript segments;
 - repeated takes;
 - repeated audio artifacts;
+- missing, stale or mismatched narration take-review decisions;
 - out-of-order or overlapping source ranges;
 - engineering evidence from another take;
 - transcript evidence from another take;

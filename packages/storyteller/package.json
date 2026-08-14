@@ -73,6 +73,7 @@
     "./mastered-chapter-review": "./src/mastered-chapter-review.ts",
     "./mastering-plan": "./src/mastering-plan.ts",
     "./mastering-render": "./src/mastering-render.ts",
+    "./narration-take-review": "./src/narration-take-review.ts",
     "./private-object-store": "./src/private-object-store.ts",
     "./project-store": "./src/project-store.ts",
     "./provider-adapter": "./src/provider-adapter.ts",
