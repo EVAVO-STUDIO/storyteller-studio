@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "kind": "evavo-studio-ai-profile",
+  "studio": "storyteller-studio",
+  "minimumPlatform": {"evavo-local-storage":"0.23.3","evavo-model-lab":"0.5.1","evavo-local-compute":"0.4.0"},
+  "authorities": {"training":"evavo-model-lab","execution":"evavo-local-compute","storage":"evavo-local-storage","durable":"evavo-storage","castAndPublication":"storyteller-studio"},
+  "environments": ["audio","video","writing"],
+  "modelSlots": ["audio-tts","audio-music","audio-sfx","audio-lora","video-base","video-lora","llm-runtime","llm-adapters"],
+  "localTraining": ["stable-audio-3-lora","ace-step-1.5-lora"],
+  "largerGpuTraining": ["ltx2-lora","hunyuanvideo-1.5-lora"],
+  "languageAdaptation": ["sft","qlora","dpo","kto"],
+  "qualityGates": ["approved-cast-identity","voice-rights-and-consent","narrator-character-separation","scene-continuity","pronunciation-and-performance-review","music-and-sfx-fit","no-silent-recast","approval-before-take-or-publication"],
+  "canonical": {"voiceDatasets":"bee://primary/EVAVO/AI/Datasets/Voice/Storyteller","audioDatasets":"bee://primary/EVAVO/AI/Datasets/Audio/Storyteller","videoDatasets":"bee://primary/EVAVO/AI/Datasets/Video/Storyteller","models":"bee://primary/EVAVO/AI/Models","training":"bee://primary/EVAVO/AI/Training/Storyteller"},
+  "policy": {"weightsInGit":false,"autoDownload":false,"voiceReferenceRequiresExplicitRights":true,"aiCannotRecastRewriteApproveTakeOrPublish":true,"existingCastContinuityLedgerRemainsAuthoritative":true}
+}
