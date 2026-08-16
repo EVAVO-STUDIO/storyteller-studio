@@ -40,58 +40,61 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - name: Check out exact source without credentials
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24"
+          node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: package-lock.json
+          package-manager-cache: false
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Prepare audit report directory
-        run: mkdir -p .verification/sentinel
+        run: mkdir -p "$RUNNER_TEMP/sentinel"
 
       - name: Audit architecture foundation
         shell: bash
         run: |
           set -o pipefail
-          npm run verify:foundation 2>&1 | tee .verification/sentinel/foundation.log
+          npm run verify:foundation 2>&1 | tee $RUNNER_TEMP/sentinel/foundation.log
 
       - name: Audit private application boundary
         shell: bash
         run: |
           set -o pipefail
-          npm run verify:private-boundary 2>&1 | tee .verification/sentinel/private-boundary.log
+          npm run verify:private-boundary 2>&1 | tee $RUNNER_TEMP/sentinel/private-boundary.log
 
       - name: Audit narrator training, production, review, retail and privacy boundaries
         shell: bash
         run: |
           set -o pipefail
-          node scripts/check-narrator-profile-admission.mjs 2>&1 | tee .verification/sentinel/narrator-profile-admission.log
-          node scripts/check-narrator-production-binding.mjs 2>&1 | tee .verification/sentinel/narrator-production.log
-          node scripts/check-narrator-book-monitoring.mjs 2>&1 | tee .verification/sentinel/narrator-monitoring.log
-          node scripts/check-narrator-mastering-chain.mjs 2>&1 | tee .verification/sentinel/narrator-mastering.log
-          node scripts/check-narrator-mastered-review-sequence.mjs 2>&1 | tee .verification/sentinel/narrator-mastered-review-sequence.log
-          node scripts/check-narrator-retail-track-admission.mjs 2>&1 | tee .verification/sentinel/narrator-retail-track-admission.log
+          node scripts/check-narrator-profile-admission.mjs 2>&1 | tee $RUNNER_TEMP/sentinel/narrator-profile-admission.log
+          node scripts/check-narrator-production-binding.mjs 2>&1 | tee $RUNNER_TEMP/sentinel/narrator-production.log
+          node scripts/check-narrator-book-monitoring.mjs 2>&1 | tee $RUNNER_TEMP/sentinel/narrator-monitoring.log
+          node scripts/check-narrator-mastering-chain.mjs 2>&1 | tee $RUNNER_TEMP/sentinel/narrator-mastering.log
+          node scripts/check-narrator-mastered-review-sequence.mjs 2>&1 | tee $RUNNER_TEMP/sentinel/narrator-mastered-review-sequence.log
+          node scripts/check-narrator-retail-track-admission.mjs 2>&1 | tee $RUNNER_TEMP/sentinel/narrator-retail-track-admission.log
 
       - name: Audit TypeScript contracts
         shell: bash
         run: |
           set -o pipefail
-          npm run typecheck 2>&1 | tee .verification/sentinel/typecheck.log
+          npm run typecheck 2>&1 | tee $RUNNER_TEMP/sentinel/typecheck.log
 
       - name: Audit governed artifact lifecycle
         if: github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'full'
         shell: bash
         run: |
           set -o pipefail
-          npm run verify:artifacts 2>&1 | tee .verification/sentinel/artifacts.log
+          npm run verify:artifacts 2>&1 | tee $RUNNER_TEMP/sentinel/artifacts.log
 
       - name: Record legacy Sentinel availability without executing mutators
         shell: bash
@@ -102,27 +105,30 @@ jobs:
             echo "legacy_enhanced_present=$([[ -f .sentinel/ENHANCED_SENTINEL_V6.js ]] && echo true || echo false)"
             echo "legacy_mutation_executed=false"
             echo "force_push_allowed=false"
-          } | tee .verification/sentinel/runtime-boundary.txt
+          } | tee $RUNNER_TEMP/sentinel/runtime-boundary.txt
 
       - name: Verify the audit did not modify the repository
+        if: always()
         shell: bash
         run: |
+          set -euo pipefail
           git diff --exit-code
           git diff --cached --exit-code
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
 
       - name: Retain Sentinel audit evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: storyteller-sentinel-${{ github.sha }}
-          path: .verification/sentinel
+          path: ${{ runner.temp }}/sentinel
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 
       - name: Publish Sentinel audit commit status
         if: always() && github.event_name == 'push'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           SENTINEL_JOB_STATUS: ${{ job.status }}
         with:
