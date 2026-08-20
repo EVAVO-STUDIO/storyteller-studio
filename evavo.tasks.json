@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "evavo-repository-task-manifest",
+  "repository": "storyteller-studio",
+  "tasks": {
+    "foundation": {
+      "runtime": "npm-script",
+      "entry": "verify:foundation",
+      "network": "disabled",
+      "timeoutSeconds": 3600,
+      "description": "Validate Storyteller's source, web surface and release foundation without provider execution."
+    },
+    "verify": {
+      "runtime": "npm-script",
+      "entry": "verify",
+      "network": "disabled",
+      "timeoutSeconds": 28800,
+      "description": "Run the complete deterministic Storyteller verification, typecheck and test contract."
+    }
+  }
+}
