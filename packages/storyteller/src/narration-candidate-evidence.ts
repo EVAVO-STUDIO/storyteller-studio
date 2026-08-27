@@ -92,7 +92,7 @@ function scores(value: ExpressivePerformanceScores): ExpressivePerformanceScores
   return Object.freeze({ ...value });
 }
 function reviewers(values: readonly string[]): readonly string[] {
-  if (!Array.isArray(values) || values.length < NARRATION_SELECTION_MINIMUM_REVIEWERS || values.length > 16) {
+  if (!Array.isArray(values) || values.length < NARRATION_SELECTION_MINIMUM_REVIEWERS) {
     throw new NarrationCandidateEvidenceError("NARRATION_SELECTION_REVIEWER_COUNT_INVALID");
   }
   const output = values.map((value) => id(value, "NARRATION_SELECTION_REVIEWER_ID_INVALID"));
@@ -125,7 +125,7 @@ export function createNarrationCandidateEvidence(input: Readonly<Omit<
   | "expressivePerformanceApproved" | "titleReleaseAuthority"
   | "publicationAuthority" | "fingerprint"
 >>): NarrationCandidateEvidence {
-  integer(input.candidateIndex, 0, 63, "NARRATION_SELECTION_CANDIDATE_INDEX_INVALID");
+  integer(input.candidateIndex, 0, Number.MAX_SAFE_INTEGER, "NARRATION_SELECTION_CANDIDATE_INDEX_INVALID");
   for (const [value, code] of [
     [input.projectId, "NARRATION_SELECTION_PROJECT_ID_INVALID"],
     [input.segmentId, "NARRATION_SELECTION_SEGMENT_ID_INVALID"],
@@ -147,8 +147,8 @@ export function createNarrationCandidateEvidence(input: Readonly<Omit<
     [input.expressiveReviewFingerprint, "NARRATION_SELECTION_REVIEW_HASH_INVALID"],
     [input.rightsFingerprint, "NARRATION_SELECTION_RIGHTS_HASH_INVALID"],
   ] as const) hash(value, code);
-  integer(input.audioByteCount, 1, 4 * 1024 ** 3, "NARRATION_SELECTION_AUDIO_BYTE_COUNT_INVALID");
-  integer(input.durationMs, 1, 2 * 60 * 60_000, "NARRATION_SELECTION_DURATION_INVALID");
+  integer(input.audioByteCount, 1, Number.MAX_SAFE_INTEGER, "NARRATION_SELECTION_AUDIO_BYTE_COUNT_INVALID");
+  integer(input.durationMs, 1, Number.MAX_SAFE_INTEGER, "NARRATION_SELECTION_DURATION_INVALID");
   const partial: Omit<NarrationCandidateEvidence, "fingerprint"> = {
     schemaVersion: NARRATION_CANDIDATE_EVIDENCE_SCHEMA,
     ...input,
