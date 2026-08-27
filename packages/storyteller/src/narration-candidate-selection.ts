@@ -9,7 +9,6 @@ import {
 export const NARRATION_CANDIDATE_SELECTION_SCHEMA =
   "storyteller-narration-candidate-selection-v1" as const;
 export const NARRATION_SELECTION_MINIMUM_CANDIDATES = EXPRESSIVE_MINIMUM_CANDIDATES;
-export const NARRATION_SELECTION_MAXIMUM_CANDIDATES = 16;
 
 export interface NarrationCandidateSelection {
   schemaVersion: typeof NARRATION_CANDIDATE_SELECTION_SCHEMA;
@@ -67,7 +66,7 @@ function human(value: string, code: string): string {
   return value;
 }
 function reviewers(values: readonly string[]): readonly string[] {
-  if (!Array.isArray(values) || values.length < NARRATION_SELECTION_MINIMUM_REVIEWERS || values.length > 16) {
+  if (!Array.isArray(values) || values.length < NARRATION_SELECTION_MINIMUM_REVIEWERS) {
     throw new NarrationCandidateSelectionError("NARRATION_SELECTION_REVIEWER_COUNT_INVALID");
   }
   const output = values.map((value) => id(value, "NARRATION_SELECTION_REVIEWER_ID_INVALID"));
@@ -109,8 +108,7 @@ export function createNarrationCandidateSelection(input: Readonly<{
     || input.approvedAt.getTime() < input.selectedAt.getTime()) {
     throw new NarrationCandidateSelectionError("NARRATION_SELECTION_DATE_INVALID");
   }
-  if (!Array.isArray(input.candidates) || input.candidates.length < NARRATION_SELECTION_MINIMUM_CANDIDATES
-    || input.candidates.length > NARRATION_SELECTION_MAXIMUM_CANDIDATES) {
+  if (!Array.isArray(input.candidates) || input.candidates.length < NARRATION_SELECTION_MINIMUM_CANDIDATES) {
     throw new NarrationCandidateSelectionError("NARRATION_SELECTION_CANDIDATE_COUNT_INVALID");
   }
   const candidates = [...input.candidates].map((candidate) => {
