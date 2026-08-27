@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   assertNarrationCandidateEvidence,
@@ -205,4 +206,22 @@ test("public view exposes decision state without private artifact identities", (
     selection.finalConfirmationId,
     selection.approvedByActorId,
   ]) assert.equal(serialised.includes(forbidden), false);
+});
+
+test("package surface exports the governed candidate-selection path", () => {
+  const packageJson = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { exports?: Record<string, string> };
+  assert.equal(
+    packageJson.exports?.["./narration-candidate-evidence"],
+    "./src/narration-candidate-evidence.ts",
+  );
+  assert.equal(
+    packageJson.exports?.["./narration-candidate-selection"],
+    "./src/narration-candidate-selection.ts",
+  );
+  assert.equal(
+    packageJson.exports?.["./reviewed-chapter-assembly"],
+    "./src/reviewed-chapter-assembly.ts",
+  );
 });
