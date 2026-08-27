@@ -12,6 +12,7 @@
     "./artifact-store": "./src/artifact-store.ts",
     "./manuscript-integrity": "./src/manuscript-integrity.ts",
     "./manuscript-pipeline": "./src/manuscript-pipeline.ts",
+    "./story-truth": "./src/story-truth.ts",
     "./audio-engineering": "./src/audio-engineering.ts",
     "./audio-engineering-artifact": "./src/audio-engineering-artifact.ts",
     "./audio-studio-adapter": "./src/audio-studio-adapter.ts",
