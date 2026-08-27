@@ -9,6 +9,8 @@ The product is not intended to be another one-click text-to-speech wrapper. It t
 - **Web studio** for manuscript intake, story and pronunciation bibles, performance direction, take review, continuity, mastering and visual-story planning.
 - **HTTP API** for deterministic project planning, provider capability negotiation, take evaluation and production orchestration.
 - **CLI** for local and automated manuscript planning, manifest validation, provider ranking and quality checks.
+- **Lossless manuscript integrity** with deterministic source manifests, chained chunks, resumable hash-only checkpoints and complete word/non-whitespace coverage audits.
+- **Integrity-checked segmentation** that binds the normal Storyteller segmenter to whole-source verification and fails closed before generation planning.
 - **Provider SDK** boundary so no voice, language, image or rendering provider becomes the product architecture.
 - **Durable generation queue** with idempotent intents, exclusive worker leases, bounded retries and cancellation.
 - **Governed artifact registry** with private storage references, immutable hashes, provenance, rights snapshots, quarantine, review and final release confirmation.
@@ -18,21 +20,22 @@ The product is not intended to be another one-click text-to-speech wrapper. It t
 
 ## Core production pipeline
 
-1. Import an immutable manuscript revision and calculate its fingerprint.
-2. Segment the exact source text into stable chapters, paragraphs and production units.
-3. Build proposed story, pronunciation and performance bibles without presenting proposals as approved canon.
-4. Verify voice rights, consent, intended uses, territories and expiry before generation.
-5. Negotiate provider capabilities against the project rather than assuming a preferred vendor can do everything.
-6. Generate calibration passages and multiple candidate takes for difficult material.
-7. Enqueue approved generation intents with stable idempotency keys, bounded attempts and fail-closed worker leases.
-8. Write provider output to private temporary storage and register immutable artifact records.
-9. Verify content hashes, byte counts, media structure, transcript fidelity, engineering limits and continuity evidence.
-10. Quarantine invalid output and admit only the exact verified candidate bundle to queue completion.
-11. Approve takes non-destructively and retain complete provenance.
-12. Assemble chapters from approved artifacts and validate the dependency graph.
-13. Master against an explicit delivery profile and construct a governed release package.
-14. Require final confirmation over verified, reviewed and rights-valid dependencies before release.
-15. Optionally build an art-directed scene plan, continuity bible and restrained motion treatment for a visual companion.
+1. Import an immutable manuscript revision and calculate its whole-source fingerprint.
+2. Create deterministic chained integrity chunks and complete a resumable, hash-only intake checkpoint.
+3. Segment the exact source text into stable chapters, paragraphs and production units, then prove that every word and non-whitespace source span is covered.
+4. Build proposed story, pronunciation and performance bibles without presenting proposals as approved canon.
+5. Verify voice rights, consent, intended uses, territories and expiry before generation.
+6. Negotiate provider capabilities against the project rather than assuming a preferred vendor can do everything.
+7. Generate calibration passages and multiple candidate takes for difficult material.
+8. Enqueue approved generation intents with stable idempotency keys, bounded attempts and fail-closed worker leases.
+9. Write provider output to private temporary storage and register immutable artifact records.
+10. Verify content hashes, byte counts, media structure, transcript fidelity, engineering limits and continuity evidence.
+11. Quarantine invalid output and admit only the exact verified candidate bundle to queue completion.
+12. Approve takes non-destructively and retain complete provenance.
+13. Assemble chapters from approved artifacts and validate the dependency graph.
+14. Master against an explicit delivery profile and construct a governed release package.
+15. Require final confirmation over verified, reviewed and rights-valid dependencies before release.
+16. Optionally build an art-directed scene plan, continuity bible and restrained motion treatment for a visual companion.
 
 Generation completion, take approval and final release are separate state transitions. A successful provider response does not imply any of them.
 
@@ -81,7 +84,7 @@ npm run storyteller -- help
 
 ## Current status
 
-The repository contains an executable architecture foundation: exact-source manuscript segmentation, layered performance planning, rights and consent gates, provider capability ranking, continuity drift scoring, transcript and engineering QA, candidate-take selection, a durable file-backed generation queue, an integrity-checked artifact registry, artifact-backed queue completion, visual beat planning, API and CLI surfaces, a protected web shell and fail-closed EVAVO hub metadata.
+The repository contains an executable architecture foundation: deterministic whole-source manuscript manifests, resumable chunk intake, complete segment coverage auditing, exact-source segmentation, layered performance planning, rights and consent gates, provider capability ranking, continuity drift scoring, transcript and engineering QA, candidate-take selection, a durable file-backed generation queue, an integrity-checked artifact registry, artifact-backed queue completion, visual beat planning, API and CLI surfaces, a protected web shell and fail-closed EVAVO hub metadata.
 
 The file queue and file artifact registry are suitable for local production, tests and a single isolated worker. They deliberately preserve migration boundaries for transactional PostgreSQL claims, private versioned object storage and multi-instance workers before distributed production execution is enabled.
 

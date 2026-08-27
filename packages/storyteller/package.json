@@ -10,6 +10,8 @@
     "./artifact-queue": "./src/artifact-queue.ts",
     "./artifact-registry": "./src/artifact-registry.ts",
     "./artifact-store": "./src/artifact-store.ts",
+    "./manuscript-integrity": "./src/manuscript-integrity.ts",
+    "./manuscript-pipeline": "./src/manuscript-pipeline.ts",
     "./audio-engineering": "./src/audio-engineering.ts",
     "./audio-engineering-artifact": "./src/audio-engineering-artifact.ts",
     "./audio-studio-adapter": "./src/audio-studio-adapter.ts",
