@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "evavo.repo-manifest.v1",
+  "identity": {
+    "key": "storyteller-studio",
+    "name": "EVAVO Storyteller Studio",
+    "owner": "EVAVO-STUDIO",
+    "category": "narration-story-production-foundation",
+    "status": "active"
+  },
+  "runtime": {
+    "language": "typescript",
+    "localFirst": true,
+    "requiresPaidHostedControlPlane": false,
+    "externalVoiceProvidersDefaultEnabled": false
+  },
+  "summary": "Canonical governed long-form narration, audiobook mastering, story-truth, pronunciation/performance continuity and optional visual-story companion foundation.",
+  "defaultBranch": "main",
+  "providerPosture": {
+    "observedRepositoryVisibility": "public",
+    "trackedSourceMustRemainPublicSafe": true,
+    "visibilityIntentReviewRequired": true
+  },
+  "authority": {
+    "readOnly": [
+      "verify-manuscript-integrity",
+      "inspect-story-truth-and-contradictions",
+      "rank-provider-capabilities",
+      "evaluate-takes-and-continuity",
+      "inspect-rights-and-release-readiness"
+    ],
+    "reversible": [
+      "create-story-pronunciation-performance-proposals",
+      "enqueue-bounded-generation-intent",
+      "register-unapproved-artifact",
+      "create-visual-story-plan"
+    ],
+    "consequential": [
+      "approve-exact-take",
+      "assemble-and-master-reviewed-chapter",
+      "confirm-evidence-complete-release"
+    ],
+    "neverImplicit": [
+      "treat-provider-response-as-completion",
+      "present-proposed-story-fact-as-approved-canon",
+      "clone-identifiable-performer-without-rights-and-consent",
+      "enable-distributed-production-from-local-file-store-proof",
+      "release-without-rights-review"
+    ]
+  },
+  "integrations": [
+    "evavo-writing-studio",
+    "evavo-audio-studio",
+    "evavo-art-studio",
+    "evavo-docs-suite",
+    "presentation-studio",
+    "super-admin-ai-agent"
+  ],
+  "reviewedAt": "2026-09-05"
+}
