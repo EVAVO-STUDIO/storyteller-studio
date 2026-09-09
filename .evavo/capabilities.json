@@ -1,0 +1,98 @@
+{
+  "contractVersion": "evavo_repository_capabilities_v1",
+  "repository": "EVAVO-STUDIO/storyteller-studio",
+  "authority": "storyteller-studio",
+  "summary": "EVAVO's provider-neutral long-form narration, audiobook production and optional illustrated-story companion authority. It owns manuscript integrity, story/pronunciation/performance truth, rights and consent gates, provider capability negotiation, durable generation orchestration, artifact-backed completion, continuity, technical/creative take review, mastering and release-package preparation while keeping external provider output, take approval and final release as separate evidence-bound state transitions.",
+  "capabilities": [
+    {
+      "id": "storyteller.manuscript.admit",
+      "title": "Admit immutable manuscripts with complete coverage proof",
+      "description": "Fingerprint manuscript revisions, create deterministic chained integrity chunks, support resumable hash-only intake and prove complete word/non-whitespace coverage before generation planning.",
+      "interfaces": ["api", "cli", "library", "web-app"],
+      "effects": ["read", "compute", "write"],
+      "tags": ["storyteller", "manuscript", "integrity", "segmentation", "sha256"],
+      "requires": ["Readable manuscript source", "Bounded private project storage"]
+    },
+    {
+      "id": "storyteller.story-truth.manage",
+      "title": "Manage canonical story, pronunciation and performance truth",
+      "description": "Build and review story, pronunciation and performance bibles plus canonical entity/event truth, time-aware facts, contradiction findings, source evidence and approved append-only retcons without promoting proposals to canon automatically.",
+      "interfaces": ["api", "cli", "library", "web-app"],
+      "effects": ["read", "compute", "write"],
+      "tags": ["storyteller", "continuity", "pronunciation", "performance", "canon"],
+      "requires": ["Admitted exact manuscript revision", "Explicit review for canonical decisions"]
+    },
+    {
+      "id": "storyteller.rights.verify",
+      "title": "Verify voice and media rights before generation",
+      "description": "Verify voice identity rights, consent, intended uses, territories and expiry before generation or release; named performers are craft references rather than cloning targets absent explicit verifiable rights.",
+      "interfaces": ["api", "cli", "library", "web-app"],
+      "effects": ["read", "compute", "write"],
+      "tags": ["storyteller", "rights", "consent", "voice", "governance"],
+      "requires": ["Project rights evidence", "Explicit identity/use consent when applicable"]
+    },
+    {
+      "id": "storyteller.provider.negotiate",
+      "title": "Rank and negotiate narration provider capabilities",
+      "description": "Compare project requirements with provider voice/language/media capabilities and select bounded candidate routes without making any provider a permanent architecture dependency or claiming a configured provider is reachable.",
+      "interfaces": ["api", "cli", "library"],
+      "effects": ["read", "compute"],
+      "tags": ["storyteller", "providers", "routing", "narration", "capabilities"],
+      "requires": ["Current provider capability evidence", "Rights-valid project intent"]
+    },
+    {
+      "id": "storyteller.generation.queue",
+      "title": "Orchestrate durable narration generation",
+      "description": "Queue idempotent generation intents with exclusive worker leases, bounded retries and cancellation, write provider output to private temporary storage and require artifact verification before generation can complete.",
+      "interfaces": ["api", "cli", "library", "automation"],
+      "effects": ["read", "compute", "network", "write", "execute"],
+      "tags": ["storyteller", "generation", "queue", "leases", "artifacts"],
+      "requires": ["Rights-valid approved generation intent", "Configured admitted provider", "Private artifact storage"]
+    },
+    {
+      "id": "storyteller.take.evaluate",
+      "title": "Evaluate narration candidates and continuity",
+      "description": "Evaluate transcript fidelity, engineering limits, pronunciation, performance and cross-book continuity; quarantine invalid output and admit only the exact verified candidate bundle for subsequent human/non-destructive take approval.",
+      "interfaces": ["api", "cli", "library", "web-app", "testing"],
+      "effects": ["read", "compute", "write", "execute"],
+      "tags": ["storyteller", "take-review", "transcript", "quality", "continuity"],
+      "requires": ["Immutable candidate artifact evidence", "Current performance/pronunciation truth"]
+    },
+    {
+      "id": "storyteller.audiobook.master",
+      "title": "Assemble and master approved audiobook material",
+      "description": "Assemble chapters only from approved artifacts, validate dependency closure and master against explicit delivery profiles without turning a technically valid master into automatic release approval.",
+      "interfaces": ["api", "cli", "library", "automation"],
+      "effects": ["read", "compute", "write", "execute"],
+      "tags": ["storyteller", "audiobook", "mastering", "chapters", "delivery"],
+      "requires": ["Approved narration artifacts", "Complete dependency graph", "Declared delivery profile"]
+    },
+    {
+      "id": "storyteller.visual-companion.plan",
+      "title": "Plan restrained illustrated story companions",
+      "description": "Build art-directed scene/beat plans and visual continuity evidence for optional illustrated companions without producing generic sentence-by-sentence imagery or taking source-art authority from Art Studio.",
+      "interfaces": ["api", "cli", "library", "web-app"],
+      "effects": ["read", "compute", "write"],
+      "tags": ["storyteller", "visual-story", "beats", "illustration", "continuity"],
+      "requires": ["Canonical story truth", "Art Studio handoff for production artwork"]
+    },
+    {
+      "id": "storyteller.release.prepare",
+      "title": "Prepare evidence-bound audiobook release packages",
+      "description": "Construct governed release packages from exact verified, reviewed and rights-valid dependencies and require final confirmation separately from generation completion and take approval.",
+      "interfaces": ["api", "cli", "library", "web-app"],
+      "effects": ["read", "compute", "write"],
+      "tags": ["storyteller", "release", "package", "rights", "confirmation"],
+      "requires": ["Approved mastered artifacts", "Current rights evidence", "Separate final release confirmation"]
+    },
+    {
+      "id": "storyteller.validation.execute",
+      "title": "Run Storyteller architecture and artifact validation",
+      "description": "Run repository verification/build and fail-closed architecture, security, artifact, queue, fidelity, rights and release-contract checks without enabling an external voice provider or publishing media.",
+      "interfaces": ["cli", "testing", "automation"],
+      "effects": ["read", "compute", "execute", "write"],
+      "tags": ["storyteller", "validation", "security", "artifact", "testing"],
+      "requires": ["Supported Node/npm toolchain", "Repository fixtures/dependencies"]
+    }
+  ]
+}
