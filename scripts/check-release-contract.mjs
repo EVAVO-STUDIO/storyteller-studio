@@ -6,7 +6,7 @@ const packageDocument = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const lockDocument = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
 const runtime = fs.readFileSync(".nvmrc", "utf8").trim();
 const workflow = fs.readFileSync(
-  ".github/workflows/evavo-mainline-verification.yml",
+  ".github/workflows-retired/evavo-mainline-verification.yml",
   "utf8",
 );
 const errors = [];

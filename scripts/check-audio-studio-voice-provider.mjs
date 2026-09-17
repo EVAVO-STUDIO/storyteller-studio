@@ -49,7 +49,7 @@ for (const path of [
   "docs/AUDIO_STUDIO_VOICE_PROVIDER_STATUS.json",
   "examples/audio-studio-worker.env.example",
   "examples/audio-studio-voice-bindings.example.json",
-  ".github/workflows/audio-studio-voice-provider.yml",
+  ".github/workflows-retired/audio-studio-voice-provider.yml",
 ]) requireFile(path);
 
 requireTokens("packages/storyteller/src/audio-studio-adapter.ts", [
@@ -89,7 +89,7 @@ requireTokens("packages/storyteller/src/narration-production-policy.ts", [
   "NARRATION_PRODUCTION_OBJECTIVE_GENERIC",
   "NARRATION_PRODUCTION_CONTEXT_INSUFFICIENT",
 ]);
-requireTokens(".github/workflows/audio-studio-voice-provider.yml", [
+requireTokens(".github/workflows-retired/audio-studio-voice-provider.yml", [
   "ubuntu-latest",
   "windows-latest",
   "node scripts/run-tests.mjs audio-studio",
@@ -129,8 +129,8 @@ requireTokens("docs/AUDIO_STUDIO_VOICE_PROVIDER.md", [
   "files above 100 MB",
 ]);
 
-const workflowSource = existsSync(fromRoot(".github/workflows/audio-studio-voice-provider.yml"))
-  ? read(".github/workflows/audio-studio-voice-provider.yml")
+const workflowSource = existsSync(fromRoot(".github/workflows-retired/audio-studio-voice-provider.yml"))
+  ? read(".github/workflows-retired/audio-studio-voice-provider.yml")
   : "";
 if (workflowSource.includes("node scripts/run-tests.mjs all")) {
   problems.push("Audio Studio workflow must not run unrelated platform-specific repository tests");

@@ -195,7 +195,7 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows/one-time-audio-silence-parser-fix.yml",
+  ".github/workflows-retired/one-time-audio-silence-parser-fix.yml",
   ".github/audio-silence-parser-fix.trigger",
 ]) {
   if (existsSync(fromRoot(path))) problems.push(`completed audio parser migration remains: ${path}`);

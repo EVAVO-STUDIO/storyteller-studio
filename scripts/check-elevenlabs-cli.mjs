@@ -167,7 +167,7 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows/one-time-elevenlabs-cli-integration.yml",
+  ".github/workflows-retired/one-time-elevenlabs-cli-integration.yml",
   ".github/elevenlabs-cli-integration.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {

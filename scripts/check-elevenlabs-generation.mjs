@@ -241,9 +241,9 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows/one-time-calibrated-elevenlabs-verifier.yml",
+  ".github/workflows-retired/one-time-calibrated-elevenlabs-verifier.yml",
   ".github/calibrated-elevenlabs-verifier.trigger",
-  ".github/workflows/one-time-calibrated-elevenlabs-verifier-v2.yml",
+  ".github/workflows-retired/one-time-calibrated-elevenlabs-verifier-v2.yml",
   ".github/calibrated-elevenlabs-verifier-v2.trigger",
   "scripts/check-elevenlabs-generation-v2.mjs",
   "scripts/check-elevenlabs-generation-current.mjs",

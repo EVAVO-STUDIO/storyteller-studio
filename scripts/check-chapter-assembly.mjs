@@ -143,13 +143,13 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows/one-time-worker-engineering-completion.yml",
+  ".github/workflows-retired/one-time-worker-engineering-completion.yml",
   ".github/worker-engineering-completion.trigger",
-  ".github/workflows/one-time-worker-engineering-completion-v2.yml",
+  ".github/workflows-retired/one-time-worker-engineering-completion-v2.yml",
   ".github/worker-engineering-completion-v2.trigger",
-  ".github/workflows/one-time-worker-engineering-v2-selector-fix.yml",
+  ".github/workflows-retired/one-time-worker-engineering-v2-selector-fix.yml",
   ".github/worker-engineering-v2-selector-fix.trigger",
-  ".github/workflows/one-time-worker-engineering-completion-v3.yml",
+  ".github/workflows-retired/one-time-worker-engineering-completion-v3.yml",
   ".github/worker-engineering-completion-v3.trigger",
   ".github/worker-engineering-anchor-diagnostic.txt",
 ]) {

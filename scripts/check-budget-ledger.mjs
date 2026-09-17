@@ -189,7 +189,7 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows/one-time-budget-account-entity.yml",
+  ".github/workflows-retired/one-time-budget-account-entity.yml",
   ".github/budget-account-entity.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {

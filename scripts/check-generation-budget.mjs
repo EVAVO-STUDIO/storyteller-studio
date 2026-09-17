@@ -185,9 +185,9 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows/one-time-worker-transition-hooks.yml",
+  ".github/workflows-retired/one-time-worker-transition-hooks.yml",
   ".github/worker-transition-hooks.trigger",
-  ".github/workflows/one-time-worker-transition-hooks-v2.yml",
+  ".github/workflows-retired/one-time-worker-transition-hooks-v2.yml",
   ".github/worker-transition-hooks-v2.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {
