@@ -147,7 +147,7 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows-retired/one-time-chapter-master-duration-contract.yml",
+  ".github/workflows/one-time-chapter-master-duration-contract.yml",
   ".github/chapter-master-duration-contract.trigger",
 ]) {
   if (existsSync(fromRoot(path))) problems.push(`temporary chapter-master migration remains: ${path}`);

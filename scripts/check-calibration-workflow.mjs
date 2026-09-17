@@ -344,8 +344,8 @@ for (const forbidden of [
 }
 
 for (const path of [
-  ".github/workflows-retired/one-time-calibration-review-order-fix.yml",
-  ".github/workflows-retired/one-time-calibration-review-order-fix-v2.yml",
+  ".github/workflows/one-time-calibration-review-order-fix.yml",
+  ".github/workflows/one-time-calibration-review-order-fix-v2.yml",
   ".github/calibration-review-order-fix.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {

@@ -185,9 +185,9 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows-retired/one-time-elevenlabs-typescript-fix.yml",
+  ".github/workflows/one-time-elevenlabs-typescript-fix.yml",
   ".github/elevenlabs-typescript-fix.trigger",
-  ".github/workflows-retired/one-time-elevenlabs-test-fixture-fix.yml",
+  ".github/workflows/one-time-elevenlabs-test-fixture-fix.yml",
   ".github/elevenlabs-test-fixture-fix.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {

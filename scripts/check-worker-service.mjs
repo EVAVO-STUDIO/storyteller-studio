@@ -230,13 +230,13 @@ for (const path of [
 }
 
 for (const path of [
-  ".github/workflows-retired/one-time-worker-live-clock.yml",
+  ".github/workflows/one-time-worker-live-clock.yml",
   ".github/worker-live-clock.trigger",
-  ".github/workflows-retired/one-time-worker-service-clock.yml",
+  ".github/workflows/one-time-worker-service-clock.yml",
   ".github/worker-service-clock.trigger",
-  ".github/workflows-retired/one-time-worker-budget-integration.yml",
+  ".github/workflows/one-time-worker-budget-integration.yml",
   ".github/worker-budget-integration.trigger",
-  ".github/workflows-retired/one-time-empty-result-cost-policy-fix.yml",
+  ".github/workflows/one-time-empty-result-cost-policy-fix.yml",
   ".github/empty-result-cost-policy-fix.trigger",
 ]) {
   if (existsSync(fromRoot(path))) {

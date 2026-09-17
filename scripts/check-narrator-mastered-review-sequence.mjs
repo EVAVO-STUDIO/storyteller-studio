@@ -284,11 +284,11 @@ if (existsSync(fromRoot("packages/storyteller/src/narrator-audiobook-admission.t
 }
 
 for (const path of [
-  ".github/workflows-retired/one-time-narrator-mastered-review-fix.yml",
-  ".github/workflows-retired/narrator-mastered-review-fix.yml",
-  ".github/workflows-retired/narrator-review-auto-fix.yml",
-  ".github/workflows-retired/narrator-audiobook-auto-fix.yml",
-  ".github/workflows-retired/one-time-narrator-audiobook-fix.yml",
+  ".github/workflows/one-time-narrator-mastered-review-fix.yml",
+  ".github/workflows/narrator-mastered-review-fix.yml",
+  ".github/workflows/narrator-review-auto-fix.yml",
+  ".github/workflows/narrator-audiobook-auto-fix.yml",
+  ".github/workflows/one-time-narrator-audiobook-fix.yml",
 ]) {
   if (existsSync(fromRoot(path))) {
     problems.push(`temporary or recurring narrator source mutation workflow must not remain: ${path}`);

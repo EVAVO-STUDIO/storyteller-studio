@@ -137,8 +137,8 @@ for (const path of [
 }
 
 for (const temporary of [
-  ".github/workflows-retired/one-time-mastered-chapter-foundation.yml",
-  ".github/workflows-retired/one-time-mastered-chapter-foundation-v2.yml",
+  ".github/workflows/one-time-mastered-chapter-foundation.yml",
+  ".github/workflows/one-time-mastered-chapter-foundation-v2.yml",
   ".github/mastered-chapter-foundation.trigger",
   ".github/mastered-chapter-foundation-v2.trigger",
   ".github/mastered-chapter-foundation-diagnostic.txt",

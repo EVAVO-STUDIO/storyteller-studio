@@ -139,7 +139,7 @@ for (const path of [
 }
 
 for (const temporary of [
-  ".github/workflows-retired/one-time-mastering-plan-promotion.yml",
+  ".github/workflows/one-time-mastering-plan-promotion.yml",
   ".github/mastering-plan-promotion.trigger",
 ]) {
   if (existsSync(fromRoot(temporary))) problems.push(`temporary mastering migration remains: ${temporary}`);
